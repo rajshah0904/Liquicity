@@ -83,6 +83,7 @@ class User(Base):
     teams = relationship("Team", secondary=team_members, back_populates="members")
     data_queries = relationship("DataQuery", back_populates="created_by")
     user_metadata = relationship("UserMetadata", back_populates="user", uselist=False)
+    bank_accounts = relationship("BankAccount", back_populates="user")
 
 class UserMetadata(Base):
     __tablename__ = "user_metadata"
@@ -354,4 +355,4 @@ class BankAccount(Base):
     last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     bank_metadata = Column(Text, nullable=True)  # JSON encoded metadata
     
-    user = relationship("User", backref="bank_accounts")
+    user = relationship("User", back_populates="bank_accounts")

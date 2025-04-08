@@ -2,12 +2,15 @@ import React, { useState, useEffect } from 'react';
 import { 
   Container, Box, Typography, TextField, Button, 
   Grid, Paper, CircularProgress, Alert, FormControl,
-  InputLabel, Select, MenuItem, Divider
+  InputLabel, Select, MenuItem, Divider, Card, CardContent
 } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { initiateWithdrawal, listBankAccounts, linkBankAccount } from '../utils/stripeUtils';
 import api from '../utils/api';
+import { API_URL } from '../utils/constants';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import MoneyOffIcon from '@mui/icons-material/MoneyOff';
 
 const WithdrawFunds = () => {
   const { currentUser } = useAuth();
@@ -57,7 +60,7 @@ const WithdrawFunds = () => {
           // Fetch wallet balance
           const walletResponse = await api.get(`/wallet/${currentUser.id}`);
           if (walletResponse.status === 200) {
-            setWalletBalance(walletResponse.data.main_balance || 0);
+            setWalletBalance(walletResponse.data.fiat_balance || 0);
             setCurrency(walletResponse.data.base_currency || 'USD');
           }
         } catch (err) {
@@ -74,13 +77,16 @@ const WithdrawFunds = () => {
     if (!currentUser?.id) return;
     
     try {
+      setLoading(true);
       const accounts = await listBankAccounts(currentUser.id);
       setBankAccounts(accounts);
       if (accounts.length > 0) {
         setSelectedAccount(accounts[0].id);
       }
+      setLoading(false);
     } catch (err) {
       console.error('Failed to fetch bank accounts', err);
+      setLoading(false);
     }
   };
   
@@ -173,12 +179,12 @@ const WithdrawFunds = () => {
   
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
-      <Paper sx={{ p: 4, borderRadius: 2 }}>
+      <Paper sx={{ p: 4, borderRadius: 2, bgcolor: '#111', color: 'white', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
         <Typography variant="h4" gutterBottom align="center" fontWeight="bold">
           Withdraw Funds
         </Typography>
         
-        <Typography variant="body1" paragraph align="center" color="textSecondary" sx={{ mb: 4 }}>
+        <Typography variant="body1" paragraph align="center" color="text.secondary" sx={{ mb: 4 }}>
           Transfer funds from your TerraFlow wallet to your bank account
         </Typography>
         
@@ -198,141 +204,120 @@ const WithdrawFunds = () => {
           p: 2, 
           textAlign: 'center', 
           mb: 4, 
-          bgcolor: 'rgba(0, 0, 0, 0.03)', 
-          borderRadius: 1 
+          borderRadius: 2,
+          border: '1px solid rgba(255, 255, 255, 0.1)',
         }}>
-          <Typography variant="subtitle1">
+          <Typography variant="h6" gutterBottom>
             Available Balance
           </Typography>
-          <Typography variant="h4" fontWeight="bold">
+          <Typography variant="h3" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
             {formatCurrency(walletBalance)}
           </Typography>
         </Box>
         
         <Grid container spacing={4}>
           <Grid item xs={12} md={6}>
-            <Box sx={{ p: 2, border: '1px solid rgba(0, 0, 0, 0.1)', borderRadius: 1, height: '100%' }}>
+            <Box sx={{ p: 2, border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 2, height: '100%' }}>
               <Typography variant="h6" gutterBottom>
                 Bank Account
               </Typography>
               
               {bankAccounts.length > 0 ? (
                 <FormControl fullWidth sx={{ mb: 3 }}>
-                  <InputLabel id="bank-account-label">Select Account</InputLabel>
+                  <InputLabel id="bank-account-label">Select Bank Account</InputLabel>
                   <Select
                     labelId="bank-account-label"
+                    id="bank-account"
                     value={selectedAccount}
-                    label="Select Account"
                     onChange={(e) => setSelectedAccount(e.target.value)}
+                    label="Select Bank Account"
                   >
-                    {bankAccounts.map(account => (
+                    {bankAccounts.map((account) => (
                       <MenuItem key={account.id} value={account.id}>
-                        {account.bank_name} •••• {account.last4}
+                        {account.bank_name} (*{account.last4})
                       </MenuItem>
                     ))}
                   </Select>
                 </FormControl>
               ) : (
-                <Box sx={{ mb: 3 }}>
-                  <Typography variant="body2" color="textSecondary" paragraph>
-                    You need to link a bank account to make withdrawals.
-                  </Typography>
-                </Box>
+                <Card sx={{ bgcolor: '#222', color: 'white', mb: 3 }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      <MoneyOffIcon sx={{ mr: 1 }} />
+                      <Typography variant="body2">
+                        No bank accounts linked
+                      </Typography>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary">
+                      You need to link a bank account to withdraw funds
+                    </Typography>
+                  </CardContent>
+                </Card>
               )}
               
               <Button 
                 variant="outlined" 
+                color="primary" 
                 onClick={handleAddBankAccount}
+                startIcon={<AccountBalanceIcon />}
                 fullWidth
               >
-                {bankAccounts.length > 0 ? 'Link Another Account' : 'Link Bank Account'}
+                {bankAccounts.length > 0 ? 'Link Another Bank Account' : 'Link Bank Account'}
               </Button>
               
-              <Box sx={{ mt: 3 }}>
-                <Typography variant="subtitle2" gutterBottom>
-                  Withdrawal Information
-                </Typography>
-                <Typography variant="body2" color="textSecondary">
-                  Withdrawals typically take 1-3 business days to arrive in your bank account.
-                </Typography>
-              </Box>
+              <Divider sx={{ my: 3, borderColor: 'rgba(255, 255, 255, 0.1)' }} />
+              
+              <Typography variant="body2" color="text.secondary">
+                Bank withdrawals typically take 1-3 business days to process. 
+                Funds will be debited from your TerraFlow wallet immediately.
+              </Typography>
             </Box>
           </Grid>
           
           <Grid item xs={12} md={6}>
-            <Box sx={{ p: 2, border: '1px solid rgba(0, 0, 0, 0.1)', borderRadius: 1, height: '100%' }}>
+            <Box sx={{ p: 2, border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 2, height: '100%' }}>
               <Typography variant="h6" gutterBottom>
                 Withdrawal Amount
               </Typography>
               
               <TextField
+                fullWidth
                 label="Amount"
                 variant="outlined"
-                fullWidth
                 value={amount}
                 onChange={handleAmountChange}
-                type="text"
                 placeholder="0.00"
                 InputProps={{
-                  startAdornment: <Box component="span" sx={{ mr: 1 }}>{getCurrencySymbol(currency)}</Box>
+                  startAdornment: <Typography sx={{ mr: 1 }}>{getCurrencySymbol(currency)}</Typography>
                 }}
                 sx={{ mb: 3 }}
               />
-              
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 2 }}>
-                <Typography variant="body2" color="textSecondary">
-                  Fee:
-                </Typography>
-                <Typography variant="body2">
-                  {formatCurrency(0)} {/* You could calculate fees here */}
-                </Typography>
-              </Box>
-              
-              <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
-                <Typography variant="body2" color="textSecondary">
-                  You'll receive:
-                </Typography>
-                <Typography variant="body2" fontWeight="bold">
-                  {amount ? formatCurrency(parseFloat(amount)) : formatCurrency(0)}
-                </Typography>
-              </Box>
               
               <Button
                 variant="contained"
                 color="primary"
                 fullWidth
-                size="large"
                 onClick={handleWithdraw}
-                disabled={loading || !amount || parseFloat(amount) <= 0 || parseFloat(amount) > walletBalance || !selectedAccount}
-                sx={{ py: 1.5, fontSize: '1.1rem' }}
+                disabled={!amount || loading || !selectedAccount || bankAccounts.length === 0}
+                sx={{ 
+                  py: 1.5, 
+                  background: 'linear-gradient(90deg, #4776E6 0%, #8E54E9 100%)',
+                  '&:hover': {
+                    background: 'linear-gradient(90deg, #4776E6 0%, #8E54E9 70%)',
+                  }
+                }}
               >
-                {loading ? <CircularProgress size={24} /> : `Withdraw ${amount ? formatCurrency(parseFloat(amount)) : formatCurrency(0)}`}
+                {loading ? <CircularProgress size={24} /> : 'Withdraw to Bank Account'}
               </Button>
+              
+              {parseFloat(amount || 0) > walletBalance && (
+                <Alert severity="warning" sx={{ mt: 2 }}>
+                  The amount you're trying to withdraw exceeds your available balance.
+                </Alert>
+              )}
             </Box>
           </Grid>
         </Grid>
-        
-        <Divider sx={{ my: 4 }} />
-        
-        <Box sx={{ textAlign: 'center' }}>
-          <Typography variant="subtitle2" gutterBottom>
-            Secure Processing
-          </Typography>
-          <Typography variant="body2" color="textSecondary">
-            All withdrawals are securely processed through our banking partners. For security reasons, 
-            your first withdrawal may require additional verification.
-          </Typography>
-          
-          <Box sx={{ mt: 2 }}>
-            <Button
-              variant="text"
-              onClick={() => navigate('/wallet')}
-              sx={{ mx: 1 }}
-            >
-              Cancel
-            </Button>
-          </Box>
-        </Box>
       </Paper>
     </Container>
   );

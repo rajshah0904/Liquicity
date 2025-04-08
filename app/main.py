@@ -25,7 +25,7 @@ app.include_router(blockchain.router, prefix="/blockchain", tags=["blockchain"])
 app.include_router(compliance.router, prefix="/compliance", tags=["compliance"])
 app.include_router(payment.router, prefix="/payment", tags=["payment"])
 app.include_router(deployment.router, prefix="/deployment", tags=["deployment"])
-app.include_router(stripe.router, prefix="/payment/stripe", tags=["stripe"])
+app.include_router(stripe.router, prefix="/stripe", tags=["stripe"])
 
 # Temporarily commented out AI router
 # app.include_router(ai.router, prefix="/ai", tags=["ai"])

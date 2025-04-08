@@ -238,20 +238,58 @@ const SendMoney = () => {
     }
   };
 
-  const lookupRecipient = async () => {
-    if (!formData.recipientAddress) return;
+  const handleRecipientChange = (e) => {
+    const value = e.target.value;
+    setFormData(prevState => ({
+      ...prevState,
+      recipientAddress: value
+    }));
+    
+    setRecipientInfo(null);
+    
+    // Reset any errors
+    setFormErrors(prev => ({
+      ...prev,
+      recipientAddress: ''
+    }));
+    
+    // Look up recipient when a valid ID is entered
+    if (value && !isNaN(value) && parseInt(value) > 0) {
+      lookupRecipient(value);
+    }
+  };
+  
+  const lookupRecipient = async (recipientId) => {
+    if (!recipientId) recipientId = formData.recipientAddress;
     
     try {
-      const response = await api.get(`/wallet/lookup/${formData.recipientAddress}/`);
-      setRecipientInfo(response.data);
-      setFormErrors(prev => ({ ...prev, recipientAddress: null }));
-    } catch (err) {
-      console.error('Error looking up recipient:', err);
+      // Reset recipient info
       setRecipientInfo(null);
-      setFormErrors(prev => ({ 
-        ...prev, 
-        recipientAddress: 'Invalid recipient address' 
-      }));
+      
+      if (!recipientId || isNaN(recipientId)) {
+        return;
+      }
+      
+      const response = await api.get(`/user/profile/${recipientId}`);
+      if (response.data) {
+        setRecipientInfo(response.data);
+        
+        // Also fetch recipient's wallet to get their currency
+        const walletResponse = await api.get(`/wallet/${recipientId}`);
+        if (walletResponse.data) {
+          const recipientWallet = walletResponse.data;
+          const recipientCurrency = recipientWallet.base_currency || recipientWallet.currency || 'USD';
+          
+          // Set transaction target currency to match recipient's currency
+          setFormData(prevState => ({
+            ...prevState,
+            currency: recipientCurrency
+          }));
+        }
+      }
+    } catch (error) {
+      console.error('Error looking up recipient:', error);
+      // Not setting error here, as recipient might not exist yet
     }
   };
 
@@ -272,44 +310,24 @@ const SendMoney = () => {
     }
     
     if (!formData.recipientAddress) {
-      errors.recipientAddress = 'Recipient address is required';
+      errors.recipientAddress = 'Please enter a recipient address or ID';
+    } else if (isNaN(formData.recipientAddress)) {
+      errors.recipientAddress = 'Recipient must be a valid user ID';
     }
     
-    if (!formData.amount) {
-      errors.amount = 'Amount is required';
-    } else if (isNaN(formData.amount) || parseFloat(formData.amount) <= 0) {
-      errors.amount = 'Amount must be a positive number';
+    if (!formData.amount || isNaN(formData.amount) || parseFloat(formData.amount) <= 0) {
+      errors.amount = 'Please enter a valid amount';
     } else {
       const selectedWallet = wallets.find(wallet => wallet.id === formData.sourceWalletId);
-      if (selectedWallet) {
-        // Check balance based on transaction type
-        if (formData.isCryptoTransaction) {
-          // For crypto transactions, check stablecoin balance
-          const cryptoBalance = parseFloat(selectedWallet.stablecoin_balance || 0);
-          if (parseFloat(formData.amount) > cryptoBalance) {
-            errors.amount = `Insufficient ${formData.cryptoCurrency} funds in the source wallet`;
-          }
-        } else {
-          // For regular transactions, check fiat balance
-          const amountInSourceCurrency = formData.currency === selectedWallet.currency
-            ? parseFloat(formData.amount)
-            : parseFloat(formData.amount) / (conversionRate || 1);
-          
-          const walletBalance = parseFloat(selectedWallet.fiat_balance || selectedWallet.balance || 0);
-          
-          if (amountInSourceCurrency > walletBalance) {
-            errors.amount = 'Insufficient funds in the source wallet';
-          }
-        }
+      if (selectedWallet && selectedWallet.fiat_balance < parseFloat(formData.amount)) {
+        errors.amount = 'Insufficient balance';
       }
     }
     
-    if (!formData.isCryptoTransaction && !formData.currency) {
-      errors.currency = 'Currency is required';
-    }
+    // Currency validation is no longer needed since we use recipient's currency
     
     if (formData.isCryptoTransaction && !formData.cryptoCurrency) {
-      errors.cryptoCurrency = 'Cryptocurrency is required';
+      errors.cryptoCurrency = 'Please select a cryptocurrency';
     }
     
     setFormErrors(errors);
@@ -329,16 +347,6 @@ const SendMoney = () => {
         [name]: null
       });
     }
-  };
-
-  const handleRecipientChange = (e) => {
-    const { value } = e.target;
-    setFormData(prev => ({
-      ...prev,
-      recipientAddress: value
-    }));
-    
-    setRecipientInfo(null);
   };
 
   const handleSubmit = async () => {
@@ -369,12 +377,13 @@ const SendMoney = () => {
         });
       } else {
         // For regular transactions, use the standard endpoint with automatic stablecoin conversion
+        // Always use the sender's and recipient's base currencies
         response = await api.post('/payment/transfer', {
           sender_id: currentUser.id,
           recipient_id: parseInt(formData.recipientAddress), // Assuming this is a user ID
           amount: parseFloat(formData.amount),
           source_currency: selectedWallet.base_currency || selectedWallet.currency,
-          target_currency: formData.currency,
+          target_currency: formData.currency, // This is set to recipient's currency by lookupRecipient()
           description: formData.description || 'Standard transfer',
           use_stablecoin: formData.useStablecoinBridge // Pass the stablecoin bridge option
         });
@@ -788,25 +797,13 @@ const SendMoney = () => {
                       )}
                     </FormControl>
                   ) : (
-                    <FormControl fullWidth error={!!formErrors.currency}>
-                      <InputLabel id="currency-select-label">Currency</InputLabel>
-                      <Select
-                        labelId="currency-select-label"
-                        id="currency-select"
-                        name="currency"
-                        value={formData.currency}
-                        onChange={handleInputChange}
-                        label="Currency"
-                      >
-                        <MenuItem value="USD">USD</MenuItem>
-                        <MenuItem value="EUR">EUR</MenuItem>
-                        <MenuItem value="GBP">GBP</MenuItem>
-                        <MenuItem value="JPY">JPY</MenuItem>
-                      </Select>
-                      {formErrors.currency && (
-                        <FormHelperText>{formErrors.currency}</FormHelperText>
-                      )}
-                    </FormControl>
+                    <TextField
+                      fullWidth
+                      label="Currency"
+                      value={formData.currency || "Will use recipient's currency"}
+                      disabled
+                      helperText="Transfers are processed in the recipient's currency"
+                    />
                   )}
                 </Grid>
                 
@@ -1013,6 +1010,17 @@ const SendMoney = () => {
               <Alert severity="warning" sx={{ mb: 3 }}>
                 Please review the transaction details carefully. All transactions are final and cannot be reversed.
               </Alert>
+
+              {/* Add currency conversion info */}
+              {!formData.isCryptoTransaction && (
+                <Alert severity="info" sx={{ mt: 2, mb: 3 }}>
+                  <Typography variant="body2">
+                    <strong>Currency handling:</strong> Money will be sent from your account in {getSelectedWallet()?.base_currency || 'your currency'} 
+                    and will be received by the recipient in {formData.currency || 'their base currency'}. 
+                    The system will automatically handle the currency conversion using the current exchange rates.
+                  </Typography>
+                </Alert>
+              )}
             </Box>
             
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>

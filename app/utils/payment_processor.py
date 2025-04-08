@@ -239,6 +239,13 @@ class PaymentProcessor:
                 detail=f"Sender wallet is in {sender_wallet.base_currency}, not {source_currency}"
             )
             
+        # Validate recipient has the target currency as their base
+        if target_currency != recipient_wallet.base_currency:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Recipient wallet is in {recipient_wallet.base_currency}, not {target_currency}"
+            )
+            
         # Check sufficient balance
         if sender_wallet.fiat_balance < amount:
             raise HTTPException(status_code=400, detail="Insufficient funds")

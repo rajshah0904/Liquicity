@@ -18,6 +18,10 @@ stripe.api_key = os.getenv("STRIPE_API_KEY", "")
 STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET", "")
 APP_URL = os.getenv("APP_URL", "http://localhost:3000")
 
+# Check if API key is set
+if not stripe.api_key:
+    print("WARNING: Stripe API key is not set. Stripe endpoints will not work.")
+
 # Models
 class CheckoutSessionRequest(BaseModel):
     amount: int  # in cents
@@ -119,7 +123,7 @@ def update_wallet_balance(db: Session, user_id: int, amount: float, currency: st
         # Create wallet if it doesn't exist
         wallet = Wallet(
             user_id=user_id,
-            main_balance=amount if transaction_type == "deposit" else 0,
+            fiat_balance=amount if transaction_type == "deposit" else 0,
             base_currency=currency.upper(),
             display_currency=currency.upper()
         )
@@ -127,21 +131,24 @@ def update_wallet_balance(db: Session, user_id: int, amount: float, currency: st
     else:
         # Update existing wallet
         if transaction_type == "deposit":
-            wallet.main_balance += amount
+            wallet.fiat_balance += amount
         elif transaction_type == "withdrawal":
-            wallet.main_balance -= amount
+            wallet.fiat_balance -= amount
     
     db.commit()
     
     # Record transaction
     transaction = Transaction(
-        user_id=user_id,
-        transaction_type=transaction_type.upper(),
-        amount=amount,
-        currency=currency.upper(),
-        status="completed",
-        source="stripe",
-        description=f"{transaction_type.capitalize()} via Stripe"
+        sender_id=user_id,
+        recipient_id=user_id,  # Self-transaction for deposits/withdrawals
+        stablecoin_amount=amount,
+        source_amount=amount,
+        source_currency=currency.upper(),
+        target_amount=amount,
+        target_currency=currency.upper(),
+        source_to_stablecoin_rate=1.0,
+        stablecoin_to_target_rate=1.0,
+        status="completed"
     )
     
     db.add(transaction)
@@ -190,6 +197,17 @@ async def create_checkout_session(
                 "quantity": 1
             }],
             metadata=metadata
+        )
+        
+        # Update wallet immediately for development
+        # In production this would be handled by webhook
+        amount_dollars = request.amount / 100.0  # Convert cents to dollars
+        update_wallet_balance(
+            db=db,
+            user_id=user.id,
+            amount=amount_dollars,
+            currency=request.currency.upper(),
+            transaction_type="deposit"
         )
         
         return {"url": session.url, "session_id": session.id}
@@ -368,7 +386,7 @@ async def process_withdrawal(
             raise HTTPException(status_code=404, detail="Wallet not found")
         
         amount_dollars = request.amount / 100.0  # Convert cents to dollars
-        if wallet.main_balance < amount_dollars:
+        if wallet.fiat_balance < amount_dollars:
             raise HTTPException(status_code=400, detail="Insufficient funds")
         
         # In a real implementation, you would:
@@ -505,4 +523,20 @@ async def stripe_webhook(request: Request, background_tasks: BackgroundTasks, db
     except Exception as e:
         # Log the error but return 200 to acknowledge receipt
         print(f"Error processing webhook: {str(e)}")
+        return {"status": "error", "message": str(e)}
+
+@router.get("/health")
+async def health_check():
+    """Check if Stripe is properly configured"""
+    try:
+        # Make a simple API call to test the key
+        if not stripe.api_key:
+            return {"status": "error", "message": "Stripe API key is not set"}
+            
+        # Try to list a customer to verify API key is valid
+        stripe.Customer.list(limit=1)
+        return {"status": "ok", "message": "Stripe API is properly configured"}
+    except stripe.error.AuthenticationError:
+        return {"status": "error", "message": "Invalid Stripe API key"}
+    except Exception as e:
         return {"status": "error", "message": str(e)} 

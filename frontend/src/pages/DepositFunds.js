@@ -2,12 +2,20 @@ import React, { useState, useEffect } from 'react';
 import { 
   Container, Box, Typography, TextField, Button, 
   Grid, Paper, CircularProgress, Alert, FormControl,
-  InputLabel, Select, MenuItem, Divider
+  InputLabel, Select, MenuItem, Divider, Card, CardContent
 } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { createDepositCheckout, listBankAccounts, linkBankAccount, initiateDirectDeposit } from '../utils/stripeUtils';
 import api from '../utils/api';
+import { API_URL } from '../utils/constants';
+import { 
+  createDepositCheckout, 
+  listBankAccounts, 
+  linkBankAccount, 
+  initiateDirectDeposit 
+} from '../utils/stripeUtils';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import CreditCardIcon from '@mui/icons-material/CreditCard';
 
 const DepositFunds = () => {
   const { currentUser } = useAuth();
@@ -72,13 +80,16 @@ const DepositFunds = () => {
     if (!currentUser?.id) return;
     
     try {
+      setLoading(true);
       const accounts = await listBankAccounts(currentUser.id);
       setBankAccounts(accounts);
       if (accounts.length > 0) {
         setSelectedAccount(accounts[0].id);
       }
+      setLoading(false);
     } catch (err) {
       console.error('Failed to fetch bank accounts', err);
+      setLoading(false);
     }
   };
   
@@ -170,12 +181,12 @@ const DepositFunds = () => {
   
   return (
     <Container maxWidth="md" sx={{ py: 4 }}>
-      <Paper sx={{ p: 4, borderRadius: 2 }}>
+      <Paper sx={{ p: 4, borderRadius: 2, bgcolor: '#111', color: 'white', boxShadow: '0 4px 20px rgba(0,0,0,0.3)' }}>
         <Typography variant="h4" gutterBottom align="center" fontWeight="bold">
           Deposit Funds
         </Typography>
         
-        <Typography variant="body1" paragraph align="center" color="textSecondary" sx={{ mb: 4 }}>
+        <Typography variant="body1" paragraph align="center" color="text.secondary" sx={{ mb: 4 }}>
           Add funds to your TerraFlow wallet in {currency}
         </Typography>
         
@@ -193,124 +204,120 @@ const DepositFunds = () => {
         
         <Grid container spacing={4}>
           <Grid item xs={12} md={6}>
-            <Box sx={{ p: 2, border: '1px solid rgba(0, 0, 0, 0.1)', borderRadius: 1, height: '100%' }}>
+            <Box sx={{ p: 2, border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 2, height: '100%' }}>
               <Typography variant="h6" gutterBottom>
                 Deposit Method
               </Typography>
               
               <FormControl fullWidth sx={{ mb: 3 }}>
-                <InputLabel id="deposit-method-label">Select Method</InputLabel>
+                <InputLabel id="deposit-method-label">Payment Method</InputLabel>
                 <Select
                   labelId="deposit-method-label"
+                  id="deposit-method"
                   value={depositMethod}
-                  label="Select Method"
                   onChange={handleDepositMethodChange}
+                  label="Payment Method"
                 >
-                  <MenuItem value="card">Credit or Debit Card</MenuItem>
-                  <MenuItem value="bank">Bank Transfer (ACH)</MenuItem>
+                  <MenuItem value="card">Credit/Debit Card</MenuItem>
+                  <MenuItem value="bank">Bank Account (ACH)</MenuItem>
                 </Select>
               </FormControl>
               
               {depositMethod === 'bank' && (
                 <>
-                  <Typography variant="subtitle2" gutterBottom>
-                    Your Linked Bank Accounts
-                  </Typography>
-                  
-                  {bankAccounts.length > 0 ? (
-                    <FormControl fullWidth sx={{ mb: 2 }}>
-                      <InputLabel id="bank-account-label">Select Account</InputLabel>
-                      <Select
-                        labelId="bank-account-label"
-                        value={selectedAccount}
-                        label="Select Account"
-                        onChange={(e) => setSelectedAccount(e.target.value)}
-                      >
-                        {bankAccounts.map(account => (
-                          <MenuItem key={account.id} value={account.id}>
-                            {account.bank_name} •••• {account.last4}
-                          </MenuItem>
-                        ))}
-                      </Select>
-                    </FormControl>
-                  ) : (
-                    <Typography variant="body2" color="textSecondary" paragraph>
-                      You don't have any linked bank accounts.
-                    </Typography>
-                  )}
+                  <FormControl fullWidth sx={{ mb: 3 }}>
+                    <InputLabel id="bank-account-label">Select Bank Account</InputLabel>
+                    <Select
+                      labelId="bank-account-label"
+                      id="bank-account"
+                      value={selectedAccount}
+                      onChange={(e) => setSelectedAccount(e.target.value)}
+                      label="Select Bank Account"
+                      disabled={bankAccounts.length === 0}
+                    >
+                      {bankAccounts.map((account) => (
+                        <MenuItem key={account.id} value={account.id}>
+                          {account.bank_name} (*{account.last4})
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
                   
                   <Button 
                     variant="outlined" 
+                    color="primary" 
                     onClick={handleAddBankAccount}
+                    startIcon={<AccountBalanceIcon />}
                     fullWidth
-                    sx={{ mt: 1 }}
                   >
-                    {bankAccounts.length > 0 ? 'Link Another Account' : 'Link Bank Account'}
+                    Link New Bank Account
                   </Button>
                 </>
+              )}
+              
+              {depositMethod === 'card' && (
+                <Card sx={{ bgcolor: '#222', color: 'white', mb: 2 }}>
+                  <CardContent>
+                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                      <CreditCardIcon sx={{ mr: 1 }} />
+                      <Typography variant="body2">
+                        You'll be redirected to Stripe's secure payment page
+                      </Typography>
+                    </Box>
+                    <Typography variant="caption" color="text.secondary">
+                      Stripe processes your payment securely. Your card details are never stored on our servers.
+                    </Typography>
+                  </CardContent>
+                </Card>
               )}
             </Box>
           </Grid>
           
           <Grid item xs={12} md={6}>
-            <Box sx={{ p: 2, border: '1px solid rgba(0, 0, 0, 0.1)', borderRadius: 1, height: '100%' }}>
+            <Box sx={{ p: 2, border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 2, height: '100%' }}>
               <Typography variant="h6" gutterBottom>
-                Deposit Amount
+                Amount to Deposit
               </Typography>
               
               <TextField
+                fullWidth
                 label="Amount"
                 variant="outlined"
-                fullWidth
                 value={amount}
                 onChange={handleAmountChange}
-                type="text"
                 placeholder="0.00"
                 InputProps={{
-                  startAdornment: <Box component="span" sx={{ mr: 1 }}>{getCurrencySymbol(currency)}</Box>
+                  startAdornment: <Typography sx={{ mr: 1 }}>{getCurrencySymbol(currency)}</Typography>
                 }}
                 sx={{ mb: 3 }}
               />
-              
-              <Typography variant="body2" color="textSecondary" paragraph>
-                Funds will be immediately available in your wallet after the deposit is processed.
-              </Typography>
               
               <Button
                 variant="contained"
                 color="primary"
                 fullWidth
-                size="large"
                 onClick={handleDeposit}
-                disabled={loading || !amount || parseFloat(amount) <= 0 || (depositMethod === 'bank' && bankAccounts.length === 0)}
-                sx={{ py: 1.5, fontSize: '1.1rem' }}
+                disabled={!amount || loading}
+                sx={{ 
+                  py: 1.5, 
+                  background: 'linear-gradient(90deg, #4776E6 0%, #8E54E9 100%)',
+                  '&:hover': {
+                    background: 'linear-gradient(90deg, #4776E6 0%, #8E54E9 70%)',
+                  }
+                }}
               >
-                {loading ? <CircularProgress size={24} /> : `Deposit ${getCurrencySymbol(currency)}${amount || '0.00'}`}
+                {loading ? <CircularProgress size={24} /> : `Deposit ${amount ? getCurrencySymbol(currency) + amount : ''}`}
               </Button>
+              
+              <Divider sx={{ my: 3, borderColor: 'rgba(255, 255, 255, 0.1)' }} />
+              
+              <Typography variant="body2" color="text.secondary" align="center">
+                Funds will be available in your wallet immediately when using a credit/debit card.
+                Bank transfers may take 1-3 business days to process.
+              </Typography>
             </Box>
           </Grid>
         </Grid>
-        
-        <Divider sx={{ my: 4 }} />
-        
-        <Box sx={{ textAlign: 'center' }}>
-          <Typography variant="subtitle2" gutterBottom>
-            Secure Payment Processing
-          </Typography>
-          <Typography variant="body2" color="textSecondary">
-            All payments are securely processed by Stripe. Your financial information is never stored on our servers.
-          </Typography>
-          
-          <Box sx={{ mt: 2 }}>
-            <Button
-              variant="text"
-              onClick={() => navigate('/wallet')}
-              sx={{ mx: 1 }}
-            >
-              Cancel
-            </Button>
-          </Box>
-        </Box>
       </Paper>
     </Container>
   );
