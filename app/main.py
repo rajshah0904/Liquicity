@@ -6,13 +6,14 @@ app = FastAPI(title="TerraFlow",
               description="A cross-currency payment system using stablecoins",
               version="1.0.0")
 
-# Enable CORS for frontend
+# Configure CORS properly for frontend communication
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # Frontend URL
+    allow_origins=["http://localhost:3000"],
     allow_credentials=True,
-    allow_methods=["*"],  # Allow all methods
-    allow_headers=["*"],  # Allow all headers
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["*"]
 )
 
 # Include the routers with appropriate prefixes and tags.

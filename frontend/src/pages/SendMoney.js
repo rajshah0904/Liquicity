@@ -97,8 +97,8 @@ const SendMoney = () => {
   useEffect(() => {
     if (formData.sourceWalletId && formData.currency) {
       const selectedWallet = wallets.find(wallet => wallet.id === formData.sourceWalletId);
-      if (selectedWallet && selectedWallet.currency !== formData.currency) {
-        fetchConversionRate(selectedWallet.currency, formData.currency);
+      if (selectedWallet && selectedWallet.base_currency !== formData.currency) {
+        fetchConversionRate(selectedWallet.base_currency || selectedWallet.currency, formData.currency);
       } else {
         setConversionRate(null);
       }
@@ -207,7 +207,7 @@ const SendMoney = () => {
           setFormData(prev => ({
             ...prev,
             sourceWalletId: validWallets[0].id,
-            currency: validWallets[0].currency
+            currency: validWallets[0].base_currency || validWallets[0].currency
           }));
         }
       } else {
@@ -505,8 +505,8 @@ const SendMoney = () => {
         if (id === '') return null;
         
         const balance = wallet.fiat_balance || wallet.balance || 0;
-        const currency = wallet.currency || 'USD'; 
-        const walletAddress = wallet.wallet_address || wallet.address || '';
+        const currency = wallet.base_currency || wallet.currency || 'USD'; 
+        const walletAddress = wallet.blockchain_address || wallet.wallet_address || wallet.address || '';
         const displayAddress = walletAddress && typeof walletAddress === 'string' && walletAddress.length >= 6 
           ? `${walletAddress.substring(0, 6)}...` 
           : id.toString().substring(0, 6);

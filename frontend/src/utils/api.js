@@ -1,12 +1,14 @@
 import axios from 'axios';
+import { API_URL } from './constants';
 
 // Create a base axios instance with default configuration
 const api = axios.create({
-  baseURL: 'http://localhost:8000', // Backend API URL
+  baseURL: API_URL, // Backend API URL from constants
   timeout: 30000, // 30 second timeout
   headers: {
     'Content-Type': 'application/json',
   },
+  withCredentials: true, // Add this line to ensure cookies and auth headers are properly sent
 });
 
 // Request interceptor for adding auth token

@@ -6,6 +6,7 @@ from app.utils.conversion import fetch_conversion_rate
 from pydantic import BaseModel
 import requests
 from typing import Optional, Literal
+from sqlalchemy.sql import text
 
 router = APIRouter()
 
@@ -199,20 +200,62 @@ def get_all_transactions(db: Session = Depends(get_db)):
     return transactions
 
 @router.get("/user/{user_id}")
-def get_user_transactions(user_id: int, db: Session = Depends(get_db)):
+def get_user_transactions(user_id: int, limit: int = 10, offset: int = 0, db: Session = Depends(get_db)):
     """Get all transactions for a specific user (both sent and received)"""
-    # Check if user exists
-    user = db.query(User).filter(User.id == user_id).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+    try:
+        # Check if user exists using raw SQL
+        user_query = "SELECT id FROM users WHERE id = :user_id"
+        user_result = db.execute(text(user_query), {"user_id": user_id}).first()
+        
+        if not user_result:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        # Get transactions for this user
+        transactions_query = """
+            SELECT 
+                id, sender_id, recipient_id, stablecoin_amount, 
+                source_amount, source_currency, target_amount, target_currency,
+                source_to_stablecoin_rate, stablecoin_to_target_rate, 
+                timestamp, status, blockchain_txn_hash
+            FROM transactions 
+            WHERE sender_id = :user_id OR recipient_id = :user_id
+            ORDER BY timestamp DESC
+            LIMIT :limit OFFSET :offset
+        """
+        
+        transactions = db.execute(
+            text(transactions_query), 
+            {"user_id": user_id, "limit": limit, "offset": offset}
+        ).fetchall()
+        
+        # Format transactions as a list of dictionaries
+        result = []
+        for t in transactions:
+            tx = {
+                "id": t[0],
+                "sender_id": t[1],
+                "recipient_id": t[2],
+                "stablecoin_amount": t[3],
+                "source_amount": t[4],
+                "source_currency": t[5],
+                "target_amount": t[6],
+                "target_currency": t[7],
+                "source_to_stablecoin_rate": t[8],
+                "stablecoin_to_target_rate": t[9],
+                "timestamp": t[10].isoformat() if t[10] else None,
+                "status": t[11],
+                "blockchain_txn_hash": t[12]
+            }
+            
+            # Add transaction type (sent or received)
+            tx["type"] = "sent" if t[1] == user_id else "received"
+            result.append(tx)
+            
+        return result
     
-    # Get transactions where user is either sender or recipient
-    sent = db.query(Transaction).filter(Transaction.sender_id == user_id).all()
-    received = db.query(Transaction).filter(Transaction.recipient_id == user_id).all()
-    
-    # Combine and return all transactions
-    all_user_transactions = sent + received
-    return all_user_transactions
+    except Exception as e:
+        print(f"Error fetching transactions: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching transactions: {str(e)}")
 
 class SimpleTransactionCreate(BaseModel):
     sender_id: int
@@ -250,9 +293,9 @@ def create_direct_transaction(transaction: SimpleTransactionCreate, db: Session 
         recipient_id=transaction.recipient_id,
         stablecoin_amount=transaction.amount,  # Use same amount since no conversion
         source_amount=transaction.amount,
-        source_currency=sender_wallet.currency,
+        source_currency=sender_wallet.base_currency,
         target_amount=transaction.amount,
-        target_currency=recipient_wallet.currency,
+        target_currency=recipient_wallet.base_currency,
         source_to_stablecoin_rate=1.0,
         stablecoin_to_target_rate=1.0,
         status="completed"
@@ -266,10 +309,10 @@ def create_direct_transaction(transaction: SimpleTransactionCreate, db: Session 
         "message": "Direct transaction successful",
         "transaction_id": transaction_record.id,
         "details": {
-            "sender_deducted": f"{transaction.amount} {sender_wallet.currency}",
-            "recipient_received": f"{transaction.amount} {recipient_wallet.currency}",
-            "sender_new_balance": f"{sender_wallet.fiat_balance} {sender_wallet.currency}",
-            "recipient_new_balance": f"{recipient_wallet.fiat_balance} {recipient_wallet.currency}",
+            "sender_deducted": f"{transaction.amount} {sender_wallet.base_currency}",
+            "recipient_received": f"{transaction.amount} {recipient_wallet.base_currency}",
+            "sender_new_balance": f"{sender_wallet.fiat_balance} {sender_wallet.base_currency}",
+            "recipient_new_balance": f"{recipient_wallet.fiat_balance} {recipient_wallet.base_currency}",
             "description": transaction.description
         }
     }

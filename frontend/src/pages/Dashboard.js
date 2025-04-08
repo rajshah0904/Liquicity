@@ -101,8 +101,11 @@ const Dashboard = () => {
 
     const fetchData = async () => {
       try {
+        const userId = currentUser?.id || localStorage.getItem('userId') || 1;
+        console.log("Dashboard: Fetching data for user ID:", userId);
+        
         // Fetch wallet data
-        const walletResponse = await api.get(`/wallet/${currentUser.id}`);
+        const walletResponse = await api.get(`/wallet/${userId}`);
         if (walletResponse.status === 200) {
           setWallets([walletResponse.data]);
           
@@ -110,10 +113,11 @@ const Dashboard = () => {
           const walletData = walletResponse.data;
           setMainBalance(walletData?.fiat_balance || 0);
           setMainCurrency(walletData?.base_currency || 'USD');
+          setStablecoinBalance(walletData?.stablecoin_balance || 0);
         }
 
         // Fetch transaction history
-        const historyResponse = await api.get(`/transaction/user/${currentUser.id}`);
+        const historyResponse = await api.get(`/transaction/user/${userId}`);
         if (historyResponse.status === 200) {
           setTransactions(historyResponse.data);
           
@@ -128,7 +132,7 @@ const Dashboard = () => {
             .filter(tx => tx.status === 'pending')
             .reduce((sum, tx) => {
               // If user is recipient, add to pending
-              if (tx.recipient_id === currentUser.id) {
+              if (tx.recipient_id === userId) {
                 return sum + (tx.target_amount || 0);
               }
               return sum;
@@ -143,9 +147,7 @@ const Dashboard = () => {
       }
     };
 
-    if (currentUser?.id) {
-      fetchData();
-    }
+    fetchData();
   }, [currentUser]);
 
   // Format currency

@@ -17,27 +17,72 @@ class User(Base):
     id = Column(Integer, primary_key=True, index=True)
     username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
-    wallet_address = Column(String)  # Added wallet_address field for registration data
-    email = Column(String, unique=True, index=True, nullable=True)
+    wallet_address = Column(String, nullable=True)
+    email = Column(String, unique=True, index=True)
     role = Column(String, default="user")  # admin, user, etc.
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)
+    
+    # Personal information
     first_name = Column(String, nullable=True)
     last_name = Column(String, nullable=True)
+    date_of_birth = Column(String, nullable=True)
+    country = Column(String, nullable=True)
+    nationality = Column(String, nullable=True)
+    gender = Column(String, nullable=True)
+    ssn = Column(String, nullable=True)
+    
+    # Address information
+    street_address = Column(String, nullable=True)
+    street_address_2 = Column(String, nullable=True)
+    city = Column(String, nullable=True)
+    state = Column(String, nullable=True)
+    postal_code = Column(String, nullable=True)
+    address_country = Column(String, nullable=True)
+    
+    # Stripe and payment info
     stripe_customer_id = Column(String, nullable=True)
 
-    # Relationships
-    trades_sent = relationship("Trade", back_populates="sender", foreign_keys="Trade.sender_id")
-    trades_received = relationship("Trade", back_populates="recipient", foreign_keys="Trade.recipient_id")
+    # Relationships - Basic single relationship
     wallet = relationship("Wallet", back_populates="owner", uselist=False)
-    transactions_sent = relationship("Transaction", back_populates="sender", foreign_keys="Transaction.sender_id")
-    transactions_received = relationship("Transaction", back_populates="recipient", foreign_keys="Transaction.recipient_id")
+    
+    # User-to-Transaction relationships with explicit foreign keys
+    # These cannot be named 'transactions_sent' and 'transactions_received'
+    # to avoid SQLAlchemy conflicts with multiple foreign keys
+    sent_txns = relationship(
+        "Transaction", 
+        foreign_keys="[Transaction.sender_id]",
+        primaryjoin="User.id==Transaction.sender_id",
+        back_populates="sender"
+    )
+    
+    received_txns = relationship(
+        "Transaction", 
+        foreign_keys="[Transaction.recipient_id]",
+        primaryjoin="User.id==Transaction.recipient_id",
+        back_populates="recipient"
+    )
+    
+    # Trade relationships with explicit foreign keys
+    trade_sent = relationship(
+        "Trade", 
+        foreign_keys="[Trade.sender_id]",
+        primaryjoin="User.id==Trade.sender_id",
+        back_populates="sender"
+    )
+    
+    trade_received = relationship(
+        "Trade", 
+        foreign_keys="[Trade.recipient_id]",
+        primaryjoin="User.id==Trade.recipient_id",
+        back_populates="recipient"
+    )
+    
+    # Other relationships
     blockchain_wallets = relationship("BlockchainWallet", back_populates="owner")
     teams = relationship("Team", secondary=team_members, back_populates="members")
     data_queries = relationship("DataQuery", back_populates="created_by")
     user_metadata = relationship("UserMetadata", back_populates="user", uselist=False)
-    wallets = relationship("Wallet", back_populates="user")
-    transactions = relationship("Transaction", back_populates="user")
 
 class UserMetadata(Base):
     __tablename__ = "user_metadata"
@@ -89,8 +134,20 @@ class Trade(Base):
     timestamp = Column(DateTime, default=datetime.utcnow)
     status = Column(String, default="pending")
 
-    sender = relationship("User", back_populates="trades_sent", foreign_keys=[sender_id])
-    recipient = relationship("User", back_populates="trades_received", foreign_keys=[recipient_id])
+    # Relationships with explicit foreign keys
+    sender = relationship(
+        "User", 
+        foreign_keys=[sender_id],
+        primaryjoin="Trade.sender_id==User.id",
+        back_populates="trade_sent"
+    )
+    
+    recipient = relationship(
+        "User", 
+        foreign_keys=[recipient_id],
+        primaryjoin="Trade.recipient_id==User.id",
+        back_populates="trade_received"
+    )
 
 class Wallet(Base):
     __tablename__ = "wallets"
@@ -114,6 +171,7 @@ class Wallet(Base):
     # JSON field to store additional currency information
     currency_settings = Column(JSON, nullable=True)
 
+    # Simple relationship with User model
     owner = relationship("User", back_populates="wallet")
 
 class Transaction(Base):
@@ -132,8 +190,20 @@ class Transaction(Base):
     status = Column(String, default="pending")
     blockchain_txn_hash = Column(String, nullable=True)  # For on-chain transactions
     
-    sender = relationship("User", back_populates="transactions_sent", foreign_keys=[sender_id])
-    recipient = relationship("User", back_populates="transactions_received", foreign_keys=[recipient_id])
+    # Clear relationship definitions with foreign keys
+    sender = relationship(
+        "User", 
+        foreign_keys=[sender_id],
+        primaryjoin="Transaction.sender_id==User.id",
+        back_populates="sent_txns"
+    )
+    
+    recipient = relationship(
+        "User", 
+        foreign_keys=[recipient_id],
+        primaryjoin="Transaction.recipient_id==User.id",
+        back_populates="received_txns"
+    )
 
 class BlockchainWallet(Base):
     __tablename__ = "blockchain_wallets"
@@ -282,6 +352,6 @@ class BankAccount(Base):
     status = Column(String, default="active")  # active, deleted, etc.
     created_at = Column(DateTime, default=datetime.utcnow)
     last_updated = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    metadata = Column(Text, nullable=True)  # JSON encoded metadata
+    bank_metadata = Column(Text, nullable=True)  # JSON encoded metadata
     
     user = relationship("User", backref="bank_accounts")

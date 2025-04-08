@@ -102,26 +102,51 @@ def create_access_token(data: dict, expires_delta: timedelta):
     return jwt.encode(to_encode, SECRET_KEY, algorithm=ALGORITHM)
 
 @router.post("/login/", response_model=Token)
-def login(user: LoginRequest, db: Session = Depends(get_db)):
-    # Get user using raw SQL to avoid ORM schema issues
-    result = db.execute(
-        text(f"SELECT id, username, hashed_password FROM users WHERE username = :username"), 
-        {"username": user.username}
-    ).first()
-    if not result:
-        raise HTTPException(status_code=400, detail="Invalid username or password")
-    
-    user_id, username, hashed_password = result
-    
-    if not bcrypt.checkpw(user.password.encode("utf-8"), hashed_password.encode("utf-8")):
-        raise HTTPException(status_code=400, detail="Invalid username or password")
-    
-    access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    access_token = create_access_token(
-        data={'sub': username}, expires_delta=access_token_expires
-    )
-    
-    return {"access_token": access_token, "token_type": "bearer"}
+async def login(user: LoginRequest, db: Session = Depends(get_db)):
+    """
+    Authenticate a user and return a JWT token.
+    This endpoint verifies username and password credentials and returns an access token.
+    """
+    try:
+        # Get user using raw SQL to avoid ORM schema issues
+        result = db.execute(
+            text("SELECT id, username, hashed_password, role FROM users WHERE username = :username"), 
+            {"username": user.username}
+        ).first()
+        
+        if not result:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        user_id, username, hashed_password, role = result
+        
+        # Verify password
+        if not bcrypt.checkpw(user.password.encode("utf-8"), hashed_password.encode("utf-8")):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid username or password",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Create access token
+        access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        access_token = create_access_token(
+            data={'sub': username, 'user_id': user_id, 'role': role}, 
+            expires_delta=access_token_expires
+        )
+        
+        print(f"User {username} (ID: {user_id}) logged in successfully")
+        
+        return {"access_token": access_token, "token_type": "bearer"}
+    except Exception as e:
+        print(f"Login error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, 
+            detail=f"Internal server error during login: {str(e)}"
+        )
     
 @router.get("/user/")
 def get_user_details(username: str = Depends(get_current_user), db: Session = Depends(get_db)):
@@ -148,7 +173,7 @@ def get_user_details(username: str = Depends(get_current_user), db: Session = De
     
     # Get wallet details
     wallet = db.execute(
-        text("SELECT currency, country_code FROM wallets WHERE user_id = :user_id"),
+        text("SELECT base_currency, country_code FROM wallets WHERE user_id = :user_id"),
         {"user_id": user_id}
     ).first()
     
@@ -375,3 +400,78 @@ def verify_user_identity(user_id: int, db: Session = Depends(get_db), current_us
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error updating verification status: {str(e)}")
+
+class TestUserCreate(BaseModel):
+    username: str
+    password: str
+    email: str
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+
+@router.post("/register-test/")
+def create_test_user(user: TestUserCreate, db: Session = Depends(get_db)):
+    """
+    Test endpoint for registering users without requiring all fields.
+    For development and testing purposes only.
+    """
+    # Check if username already exists
+    result = db.execute(text("SELECT id FROM users WHERE username = :username"), {"username": user.username}).first()
+    if result:
+        raise HTTPException(status_code=400, detail="Username already exists")
+    
+    # Check if email already exists
+    result = db.execute(text("SELECT id FROM users WHERE email = :email"), {"email": user.email}).first()
+    if result:
+        raise HTTPException(status_code=400, detail="Email already registered")
+    
+    # Hash password
+    hashed_password = bcrypt.hashpw(user.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+    
+    try:
+        # Insert user with minimal information
+        db.execute(
+            text("""
+                INSERT INTO users (username, hashed_password, email, first_name, last_name, role, is_active) 
+                VALUES (:username, :hashed_password, :email, :first_name, :last_name, :role, :is_active)
+            """),
+            {
+                "username": user.username,
+                "hashed_password": hashed_password,
+                "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name,
+                "role": "user",
+                "is_active": True
+            }
+        )
+        db.commit()
+        
+        # Get the newly created user ID
+        new_user = db.execute(text("SELECT id FROM users WHERE username = :username"), {"username": user.username}).first()
+        user_id = new_user[0]
+        
+        # Create a wallet for the new user with default USD
+        db.execute(
+            text("""
+                INSERT INTO wallets (user_id, fiat_balance, stablecoin_balance, base_currency, display_currency) 
+                VALUES (:user_id, :fiat_balance, :stablecoin_balance, :base_currency, :display_currency)
+            """),
+            {
+                "user_id": user_id,
+                "fiat_balance": 1000.0,  # Give them $1000 to start with
+                "stablecoin_balance": 100.0,  # Give them 100 USDT
+                "base_currency": "USD",
+                "display_currency": "USD"
+            }
+        )
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Database error: {str(e)}")
+
+    return {
+        "message": "Test user registered successfully!",
+        "user_id": user_id,
+        "username": user.username,
+        "note": "This user has been created with minimal information for testing purposes."
+    }

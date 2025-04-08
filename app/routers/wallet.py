@@ -26,7 +26,7 @@ class WalletCreate(BaseModel):
     display_currency: Optional[str] = None
 
 class WalletUpdateFull(BaseModel):
-    currency: Optional[str] = None
+    base_currency: Optional[str] = None
     display_currency: Optional[str] = None
     country_code: Optional[str] = None
     blockchain_address: Optional[str] = None
@@ -80,40 +80,64 @@ def get_wallet(user_id: int, db: Session = Depends(get_db)):
     Each user has one wallet that stores their balances in their local currency.
     If the wallet doesn't exist, create a default one.
     """
-    wallet = db.query(Wallet).filter(Wallet.user_id == user_id).first()
-    
-    if not wallet:
-        # Auto-create a wallet for the user if it doesn't exist
-        wallet = Wallet(
-            user_id=user_id,
-            fiat_balance=0,
-            stablecoin_balance=0,
-            base_currency="USD",  # Default to USD, can be changed later
-            display_currency="USD"
-        )
-        db.add(wallet)
-        db.commit()
-        db.refresh(wallet)
-    
-    # Get display balance in the preferred display currency
-    display_balance = wallet.fiat_balance
-    
-    if wallet.base_currency != wallet.display_currency:
-        # Convert the balance for display purposes
-        from app.utils.conversion import fetch_conversion_rate
-        conversion_rate = fetch_conversion_rate(wallet.base_currency, wallet.display_currency)
-        display_balance = wallet.fiat_balance * conversion_rate
-    
-    return {
-        "id": wallet.id,
-        "user_id": wallet.user_id,
-        "fiat_balance": wallet.fiat_balance,
-        "base_currency": wallet.base_currency,
-        "display_balance": display_balance,
-        "display_currency": wallet.display_currency,
-        "stablecoin_balance": wallet.stablecoin_balance,
-        "country_code": wallet.country_code
-    }
+    try:
+        # Use raw SQL to avoid ORM issues
+        wallet_query = """
+            SELECT id, user_id, fiat_balance, stablecoin_balance, base_currency, 
+                   display_currency, country_code, blockchain_address
+            FROM wallets 
+            WHERE user_id = :user_id
+        """
+        wallet_result = db.execute(text(wallet_query), {"user_id": user_id}).first()
+        
+        if not wallet_result:
+            # Auto-create a wallet for the user if it doesn't exist
+            create_wallet_query = """
+                INSERT INTO wallets (user_id, fiat_balance, stablecoin_balance, base_currency, display_currency)
+                VALUES (:user_id, 0, 0, 'USD', 'USD')
+                RETURNING id, user_id, fiat_balance, stablecoin_balance, base_currency, display_currency, country_code, blockchain_address
+            """
+            wallet_result = db.execute(text(create_wallet_query), {"user_id": user_id}).first()
+            db.commit()
+        
+        # Transform the SQL result into a dictionary
+        wallet = {
+            "id": wallet_result[0],
+            "user_id": wallet_result[1],
+            "fiat_balance": wallet_result[2],
+            "stablecoin_balance": wallet_result[3],
+            "base_currency": wallet_result[4],
+            "display_currency": wallet_result[5],
+            "country_code": wallet_result[6],
+            "blockchain_address": wallet_result[7]
+        }
+        
+        # Get display balance in the preferred display currency
+        display_balance = wallet["fiat_balance"]
+        
+        # Only convert if necessary
+        if wallet["base_currency"] != wallet["display_currency"]:
+            # Convert the balance for display purposes
+            from app.utils.conversion import fetch_conversion_rate
+            try:
+                conversion_rate = fetch_conversion_rate(wallet["base_currency"], wallet["display_currency"])
+                display_balance = wallet["fiat_balance"] * conversion_rate
+            except Exception as e:
+                print(f"Error in conversion: {str(e)}")
+        
+        return {
+            "id": wallet["id"],
+            "user_id": wallet["user_id"],
+            "fiat_balance": wallet["fiat_balance"],
+            "base_currency": wallet["base_currency"],
+            "display_balance": display_balance,
+            "display_currency": wallet["display_currency"],
+            "stablecoin_balance": wallet["stablecoin_balance"],
+            "country_code": wallet["country_code"]
+        }
+    except Exception as e:
+        print(f"Error getting wallet: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error fetching wallet: {str(e)}")
 
 @router.patch("/display-currency")
 def update_display_currency(wallet_update: WalletUpdate, db: Session = Depends(get_db)):
@@ -199,26 +223,26 @@ def update_wallet_full(user_id: int, wallet_data: WalletUpdateFull, db: Session 
         raise HTTPException(status_code=404, detail="Wallet not found")
     
     # Update fields if provided
-    if wallet_data.currency:
+    if wallet_data.base_currency:
         # If changing base currency, we need to handle conversion of the balance
-        if wallet.base_currency != wallet_data.currency.upper():
+        if wallet.base_currency != wallet_data.base_currency.upper():
             # Get current balance in the original currency
             original_balance = wallet.fiat_balance
             original_currency = wallet.base_currency
             
             # Get conversion rate to new currency
             from app.utils.conversion import fetch_conversion_rate
-            conversion_rate = fetch_conversion_rate(original_currency, wallet_data.currency.upper())
+            conversion_rate = fetch_conversion_rate(original_currency, wallet_data.base_currency.upper())
             
             # Convert the balance to the new currency
             new_balance = original_balance * conversion_rate
             
             # Update the wallet with new currency and converted balance
-            wallet.base_currency = wallet_data.currency.upper()
+            wallet.base_currency = wallet_data.base_currency.upper()
             wallet.fiat_balance = new_balance
         else:
             # Just update the currency code without conversion
-            wallet.base_currency = wallet_data.currency.upper()
+            wallet.base_currency = wallet_data.base_currency.upper()
     
     # Update display currency if provided
     if wallet_data.display_currency:

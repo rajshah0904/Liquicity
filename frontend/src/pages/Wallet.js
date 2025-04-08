@@ -4,19 +4,21 @@ import {
   Grid, Card, CardContent, Divider, IconButton, Chip,
   List, ListItem, ListItemText, ListItemIcon, CircularProgress,
   Alert, Tooltip, Menu, MenuItem, alpha, FormControl, InputLabel,
-  Select, Snackbar, TextField
+  Select, Snackbar, TextField, useMediaQuery
 } from '@mui/material';
 import { 
   AccountBalanceWallet, Send, QrCode, SwapHoriz, 
   CurrencyExchange, ContentCopy, MoreVert, Visibility, 
   VisibilityOff, ArrowUpward, ArrowDownward, LinkOff, Link,
-  AddCircleOutline, CurrencyBitcoin, AttachMoney
+  AddCircleOutline, CurrencyBitcoin, AttachMoney, Add, Remove
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { StaggerContainer, StaggerItem } from '../components/animations/AnimatedComponents';
 import { useTheme } from '@mui/material/styles';
+import axios from 'axios';
+import { API_URL } from '../utils/constants';
 
 const Wallet = () => {
   const { currentUser } = useAuth();
@@ -44,36 +46,38 @@ const Wallet = () => {
   ];
 
   useEffect(() => {
-    if (currentUser && currentUser.id) {
-      fetchWalletData();
-      fetchRecentTransactions();
-    }
+    // Fetch wallet data for the logged-in user
+    const userId = currentUser?.id || localStorage.getItem('userId') || 1;
+    console.log("Fetching wallet data for user ID:", userId);
+    
+    fetchWalletData(userId);
+    fetchRecentTransactions(userId);
   }, [currentUser]);
 
-  const fetchWalletData = async () => {
+  const fetchWalletData = async (userId) => {
     try {
-      const response = await api.get(`/wallet/${currentUser.id}`);
-      if (response.status === 200) {
-        setWalletData(response.data);
-        setCurrency(response.data.base_currency || 'USD');
-      }
-    } catch (err) {
-      console.error('Error fetching wallet data:', err);
+      setLoading(true);
+      const response = await axios.get(`${API_URL}/wallet/${userId}`);
+      console.log("Wallet data response:", response.data);
+      setWalletData(response.data);
+      setCurrency(response.data.base_currency || 'USD');
+      setLoading(false);
+    } catch (error) {
+      console.error("Error fetching wallet data:", error);
       setError('Unable to load your wallet. Please try again later.');
-    } finally {
       setLoading(false);
     }
   };
 
-  const fetchRecentTransactions = async () => {
+  const fetchRecentTransactions = async (userId) => {
     try {
-      const response = await api.get(`/transaction/user/${currentUser.id}?limit=5`);
-      if (response.status === 200) {
+      const response = await axios.get(`${API_URL}/transaction/user/${userId}?limit=5`);
+      console.log("Transaction data:", response.data);
+      if (response.data) {
         setTransactions(response.data);
       }
-    } catch (err) {
-      console.error('Error fetching transactions:', err);
-      // Don't set error here to avoid overriding wallet error
+    } catch (error) {
+      console.error("Error fetching transactions:", error);
     }
   };
 
@@ -135,6 +139,9 @@ const Wallet = () => {
     }
   };
 
+  const handleDeposit = () => navigate('/deposit');
+  const handleWithdraw = () => navigate('/withdraw');
+
   if (loading) {
     return (
       <Container maxWidth="lg" sx={{ mt: 4, mb: 4, textAlign: 'center' }}>
@@ -188,7 +195,7 @@ const Wallet = () => {
             
             <Box sx={{ mb: 2 }}>
               <Typography variant="h3" sx={{ fontWeight: 'bold', my: 1, color: 'text.primary' }}>
-                {formatCurrency(walletData?.main_balance || 0, currency)}
+                {formatCurrency(walletData?.fiat_balance || 0, currency)}
               </Typography>
             </Box>
             
@@ -204,7 +211,7 @@ const Wallet = () => {
                 <Button 
                   variant="contained" 
                   fullWidth
-                  onClick={() => navigate('/deposit')}
+                  onClick={handleDeposit}
                   sx={{ 
                     py: 1.5, 
                     color: (theme) => theme.palette.getContrastText(theme.palette.primary.main),
@@ -224,7 +231,7 @@ const Wallet = () => {
                 <Button 
                   variant="outlined" 
                   fullWidth
-                  onClick={() => navigate('/withdraw')}
+                  onClick={handleWithdraw}
                   sx={{ 
                     py: 1.5,
                     fontWeight: 'bold',
