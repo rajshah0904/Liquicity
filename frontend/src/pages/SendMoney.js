@@ -23,7 +23,10 @@ import {
   FormControlLabel,
   Switch,
   LinearProgress,
-  Tooltip
+  Tooltip,
+  RadioGroup,
+  Radio,
+  Autocomplete
 } from '@mui/material';
 import { 
   Send, 
@@ -33,13 +36,20 @@ import {
   ArrowForward, 
   ArrowForwardIos,
   Info,
-  Currency
+  Currency,
+  CreditCard,
+  AccountBalance
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { SlideUpBox } from '../components/animations/AnimatedComponents';
+import { 
+  createDepositCheckout, 
+  getPaymentMethods,
+  processDirectPayment
+} from '../utils/stripeUtils';
 
 const SendMoney = () => {
   const navigate = useNavigate();
@@ -55,6 +65,7 @@ const SendMoney = () => {
   const [formData, setFormData] = useState({
     sourceWalletId: '',
     recipientAddress: '',
+    recipientType: 'any', // 'any' instead of specific types - we'll search across all
     amount: '',
     currency: 'USD',
     description: '',
@@ -73,6 +84,12 @@ const SendMoney = () => {
   const [estimatedFee, setEstimatedFee] = useState(0);
   const [recipientInfo, setRecipientInfo] = useState(null);
   const [transactionBreakdown, setTransactionBreakdown] = useState(null);
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const [selectedPaymentMethod, setSelectedPaymentMethod] = useState(null);
+  const [paymentSource, setPaymentSource] = useState('wallet'); // 'wallet', 'card', 'bank'
+  const [showPaymentOptions, setShowPaymentOptions] = useState(false);
+  const [userSearchResults, setUserSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
 
   const steps = ['Select wallet', 'Enter recipient', 'Confirm transfer'];
 
@@ -108,6 +125,174 @@ const SendMoney = () => {
     }
   }, [formData.sourceWalletId, formData.currency, formData.amount, formData.useStablecoinBridge, wallets]);
 
+  useEffect(() => {
+    // Only show payment options when wallet balance is insufficient
+    if (formData.sourceWalletId && formData.amount) {
+      const amount = parseFloat(formData.amount) || 0;
+      const fee = amount * 0.01; // 1% fee
+      const totalAmount = amount + fee;
+      
+      const selectedWallet = wallets.find(wallet => wallet.id === formData.sourceWalletId);
+      if (selectedWallet && totalAmount > selectedWallet.fiat_balance) {
+        // Balance is insufficient, show payment options
+        setShowPaymentOptions(true);
+        // Clear any error related to insufficient balance
+        setError(null);
+      } else {
+        // Balance is sufficient, don't show external payment options
+        setShowPaymentOptions(false);
+      }
+    }
+  }, [formData.sourceWalletId, formData.amount, wallets]);
+
+  useEffect(() => {
+    // Check for a saved pending transaction when returning from payment
+    const pendingTransaction = localStorage.getItem('pendingTransaction');
+    const paymentSuccess = new URLSearchParams(location.search).get('payment_success');
+    const paymentCanceled = new URLSearchParams(location.search).get('payment_canceled');
+    
+    // Only process if we have a pending transaction and a payment status
+    if (pendingTransaction && (paymentSuccess || paymentCanceled)) {
+      try {
+        // Restore the transaction data
+        const savedTransaction = JSON.parse(pendingTransaction);
+        setFormData(savedTransaction.formData || savedTransaction);
+        
+        // Also restore recipient info if available
+        if (savedTransaction.recipientInfo) {
+          setRecipientInfo(savedTransaction.recipientInfo);
+        }
+        
+        // Check if this was a payment from step 2
+        const wasFullPayment = savedTransaction.activeStep === 2 && 
+                            (savedTransaction.paymentSource === 'card' || 
+                             savedTransaction.paymentSource === 'bank' ||
+                             savedTransaction.paymentSource === 'wallet_partial');
+        
+        // First, clean up the pending transaction to prevent issues
+        localStorage.removeItem('pendingTransaction');
+        
+        // Set appropriate message and state based on result
+        if (paymentSuccess === 'true') {
+          if (wasFullPayment) {
+            // This was a full payment that succeeded - complete the transaction
+            setSendingFunds(true);
+            
+            // Get correct form data (could be nested inside formData property)
+            const formDataToUse = savedTransaction.formData || savedTransaction;
+            
+            // Validate that we have recipientInfo
+            if (!savedTransaction.recipientInfo || !savedTransaction.recipientInfo.id) {
+              setError('Missing recipient information. Please try again or contact support.');
+              setActiveStep(1); // Go back to recipient selection step
+              setSendingFunds(false);
+              return;
+            }
+            
+            // Prevent sending money to yourself with Stripe
+            if (currentUser.id === savedTransaction.recipientInfo.id) {
+              setError('Cannot send money to yourself using a card payment. The payment was processed but no transfer was made. Please contact support for a refund.');
+              setSendingFunds(false);
+              return;
+            }
+            
+            // Process the actual transfer to the recipient
+            api.post('/payment/transfer', {
+              sender_id: currentUser.id,
+              recipient_id: savedTransaction.recipientInfo.id,
+              amount: parseFloat(formDataToUse.amount),
+              source_currency: formDataToUse.currency,
+              target_currency: formDataToUse.currency,
+              stripe_payment: true,
+              payment_source: savedTransaction.paymentSource || 'card',
+              transaction_type: savedTransaction.paymentSource ? 
+                `${savedTransaction.paymentSource.toUpperCase()}_PAYMENT` : 'CARD_PAYMENT',
+              skip_sender_deduction: true, // This prevents double deduction since Stripe already took the money
+              use_stablecoin: formDataToUse.useStablecoinBridge || false,
+              description: formDataToUse.description || "Payment via Stripe"
+            })
+            .then(response => {
+              // Show success screen
+              setSuccess(true);
+              setTransactionId(response.data.transaction_id || 'stripe-' + Date.now());
+              setSendingFunds(false);
+            })
+            .catch(err => {
+              console.error('Error completing transaction:', err);
+              // Enhanced error handling with more detailed information
+              let errorMessage = 'Payment was successful, but there was an error completing the transfer.';
+              
+              // Check for specific error response
+              if (err.response && err.response.data) {
+                if (err.response.data.detail) {
+                  errorMessage += ` Error: ${err.response.data.detail}`;
+                } else if (err.response.data.message) {
+                  errorMessage += ` Error: ${err.response.data.message}`;
+                }
+                
+                // Log detailed error data for debugging
+                console.error('Transfer API error details:', err.response.data);
+              }
+              
+              // Add transaction reference for support
+              const transactionRef = Date.now().toString(36);
+              errorMessage += ` Please contact support with reference #${transactionRef}.`;
+              
+              setError(errorMessage);
+              setActiveStep(2); // Return to confirmation step
+              setSendingFunds(false);
+            });
+          } else {
+            // This was just a payment method setup
+            setSuccess('Payment method added successfully. Please continue with your transaction.');
+            setActiveStep(savedTransaction.activeStep || 0);
+            
+            // Refresh payment methods
+            fetchPaymentMethods();
+          }
+        } else if (paymentCanceled === 'true') {
+          setError('Payment was canceled. You can try again or use a different payment method.');
+          // Return to the confirmation step
+          setActiveStep(2);
+        } else {
+          // No specific status, return to confirmation
+          setActiveStep(2);
+        }
+      } catch (err) {
+        console.error('Error restoring transaction:', err);
+        setError('Something went wrong processing your payment. Please try again or contact support.');
+        setActiveStep(0);
+      }
+    }
+  }, [location.search]);
+
+  useEffect(() => {
+    fetchPaymentMethods();
+  }, [currentUser]);
+
+  const fetchPaymentMethods = async () => {
+    try {
+      if (!currentUser?.id) return;
+      
+      // Fetch the user's payment methods
+      const methods = await getPaymentMethods(currentUser.id);
+      
+      if (methods && methods.length > 0) {
+        setPaymentMethods(methods);
+        // Set default payment method to the first one
+        setSelectedPaymentMethod(methods[0].id);
+      } else {
+        // Empty array - user has no payment methods
+        setPaymentMethods([]);
+        setSelectedPaymentMethod(null);
+      }
+    } catch (err) {
+      console.error('Error fetching payment methods:', err);
+      setPaymentMethods([]);
+      setSelectedPaymentMethod(null);
+    }
+  };
+
   const calculateTransactionBreakdown = () => {
     if (!formData.amount || isNaN(formData.amount) || parseFloat(formData.amount) <= 0) {
       setTransactionBreakdown(null);
@@ -124,7 +309,7 @@ const SendMoney = () => {
     const sourceCurrency = selectedWallet.base_currency || selectedWallet.currency || 'USD';
     const targetCurrency = formData.currency;
     
-    // If same currency, no conversion needed
+    // If same currency, no conversion needed - always use direct path
     if (sourceCurrency === targetCurrency) {
       setTransactionBreakdown({
         sourceAmount,
@@ -138,6 +323,7 @@ const SendMoney = () => {
       return;
     }
     
+    // Only use stablecoin bridge for different currencies
     if (formData.useStablecoinBridge) {
       // Fiat → Stablecoin → Fiat conversion
       // Calculate using stablecoin as intermediary
@@ -203,6 +389,7 @@ const SendMoney = () => {
         
         setWallets(validWallets);
         
+        // Always select the first wallet
         if (validWallets.length > 0) {
           setFormData(prev => ({
             ...prev,
@@ -238,43 +425,92 @@ const SendMoney = () => {
     }
   };
 
-  const handleRecipientChange = (e) => {
-    const value = e.target.value;
-    setFormData(prevState => ({
-      ...prevState,
+  const searchUsers = async (searchTerm) => {
+    if (!searchTerm || searchTerm.length < 2) {
+      setUserSearchResults([]);
+      return;
+    }
+    
+    setIsSearching(true);
+    
+    try {
+      // Unified search endpoint that searches across email, username and ID
+      const endpoint = `/user/search?query=${encodeURIComponent(searchTerm)}`;
+      
+      const response = await api.get(endpoint);
+      
+      if (response.data && Array.isArray(response.data)) {
+        // Filter out current user from results
+        const filteredResults = response.data.filter(user => user.id !== currentUser.id);
+        setUserSearchResults(filteredResults);
+      } else {
+        setUserSearchResults([]);
+      }
+    } catch (error) {
+      console.error('Error searching users:', error);
+      setUserSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleRecipientInputChange = (e) => {
+    const { value } = e.target;
+    
+    // Update the form data
+    setFormData(prev => ({
+      ...prev,
       recipientAddress: value
     }));
     
-    setRecipientInfo(null);
-    
-    // Reset any errors
+    // Clear any previous errors
+    if (formErrors.recipientAddress) {
     setFormErrors(prev => ({
       ...prev,
       recipientAddress: ''
     }));
+    }
     
-    // Look up recipient when a valid ID is entered
-    if (value && !isNaN(value) && parseInt(value) > 0) {
-      lookupRecipient(value);
+    // Clear recipient info when input changes
+    setRecipientInfo(null);
+    
+    // Search if there's at least 2 characters
+    if (value.length >= 2) {
+      searchUsers(value);
     }
   };
-  
-  const lookupRecipient = async (recipientId) => {
-    if (!recipientId) recipientId = formData.recipientAddress;
+
+  const handleUserSelect = (event, selectedUser) => {
+    if (!selectedUser) return;
     
-    try {
-      // Reset recipient info
-      setRecipientInfo(null);
-      
-      if (!recipientId || isNaN(recipientId)) {
-        return;
-      }
-      
-      const response = await api.get(`/user/profile/${recipientId}`);
-      if (response.data) {
-        setRecipientInfo(response.data);
+    // For display purposes, we'll use whichever identifier is most recognizable
+    // but we'll store the user's actual ID for the transaction
+    let displayValue = '';
+    
+    if (selectedUser.username) {
+      displayValue = selectedUser.username;
+    } else if (selectedUser.email) {
+      displayValue = selectedUser.email;
+    } else if (selectedUser.id) {
+      displayValue = `User #${selectedUser.id}`;
+    }
+    
+    setFormData(prev => ({
+      ...prev,
+      recipientAddress: displayValue
+    }));
+    
+    // Set recipient info directly
+    setRecipientInfo(selectedUser);
         
         // Also fetch recipient's wallet to get their currency
+    if (selectedUser.id) {
+      fetchRecipientWallet(selectedUser.id);
+    }
+  };
+
+  const fetchRecipientWallet = async (recipientId) => {
+    try {
         const walletResponse = await api.get(`/wallet/${recipientId}`);
         if (walletResponse.data) {
           const recipientWallet = walletResponse.data;
@@ -285,11 +521,9 @@ const SendMoney = () => {
             ...prevState,
             currency: recipientCurrency
           }));
-        }
       }
     } catch (error) {
-      console.error('Error looking up recipient:', error);
-      // Not setting error here, as recipient might not exist yet
+      console.error('Error fetching recipient wallet:', error);
     }
   };
 
@@ -309,22 +543,22 @@ const SendMoney = () => {
       errors.sourceWalletId = 'Please select a source wallet';
     }
     
-    if (!formData.recipientAddress) {
-      errors.recipientAddress = 'Please enter a recipient address or ID';
-    } else if (isNaN(formData.recipientAddress)) {
-      errors.recipientAddress = 'Recipient must be a valid user ID';
+    // Check for recipient info, which indicates a valid registered user
+    if (!recipientInfo || !recipientInfo.id) {
+      errors.recipientAddress = 'Please select a valid registered TerraFlow user';
+    } else if (recipientInfo.id === currentUser.id) {
+      errors.recipientAddress = 'You cannot send money to yourself';
     }
     
     if (!formData.amount || isNaN(formData.amount) || parseFloat(formData.amount) <= 0) {
       errors.amount = 'Please enter a valid amount';
-    } else {
+    } else if (paymentSource === 'wallet') {
+      // Only check balance if using wallet as payment source
       const selectedWallet = wallets.find(wallet => wallet.id === formData.sourceWalletId);
       if (selectedWallet && selectedWallet.fiat_balance < parseFloat(formData.amount)) {
-        errors.amount = 'Insufficient balance';
+        errors.amount = 'Insufficient balance. Consider using a card or bank account instead.';
       }
     }
-    
-    // Currency validation is no longer needed since we use recipient's currency
     
     if (formData.isCryptoTransaction && !formData.cryptoCurrency) {
       errors.cryptoCurrency = 'Please select a cryptocurrency';
@@ -349,85 +583,196 @@ const SendMoney = () => {
     }
   };
 
-  const handleSubmit = async () => {
+  const handlePaymentSourceChange = (event) => {
+    setPaymentSource(event.target.value);
+  };
+
+  const handlePaymentMethodChange = (event) => {
+    setSelectedPaymentMethod(event.target.value);
+  };
+
+  const handleSubmitPayment = async () => {
     setSendingFunds(true);
     setError(null);
-    
-    try {
-      if (!isAuthenticated || !currentUser || !currentUser.id) {
-        throw new Error('You must be logged in to send funds');
-      }
-      
-      const selectedWallet = wallets.find(wallet => wallet.id === formData.sourceWalletId);
-      if (!selectedWallet || selectedWallet.user_id !== currentUser.id) {
-        throw new Error('Invalid source wallet selected');
-      }
 
-      // Handle different transaction types
-      let response;
-      
-      if (formData.isCryptoTransaction) {
-        // For crypto transactions, use the crypto endpoint
-        response = await api.post('/transaction/crypto/', {
-          sender_id: currentUser.id,
-          recipient_id: parseInt(formData.recipientAddress), // Assuming this is a user ID
-          amount: parseFloat(formData.amount),
-          crypto_currency: formData.cryptoCurrency,
-          description: formData.description || 'Crypto transfer'
-        });
-      } else {
-        // For regular transactions, use the standard endpoint with automatic stablecoin conversion
-        // Always use the sender's and recipient's base currencies
-        response = await api.post('/payment/transfer', {
-          sender_id: currentUser.id,
-          recipient_id: parseInt(formData.recipientAddress), // Assuming this is a user ID
-          amount: parseFloat(formData.amount),
-          source_currency: selectedWallet.base_currency || selectedWallet.currency,
-          target_currency: formData.currency, // This is set to recipient's currency by lookupRecipient()
-          description: formData.description || 'Standard transfer',
-          use_stablecoin: formData.useStablecoinBridge // Pass the stablecoin bridge option
-        });
+    try {
+      // Make sure we have recipient info
+      if (!recipientInfo || !recipientInfo.id) {
+        throw new Error('Invalid recipient. Please select a valid registered user.');
       }
       
-      setSuccess(true);
-      setTransactionId(response.data.transaction_id);
+      // Get the selected wallet
+      const selectedWallet = wallets.find(wallet => wallet.id === formData.sourceWalletId);
       
-      setFormData({
-        sourceWalletId: '',
-        recipientAddress: '',
-        amount: '',
-        currency: 'USD',
-        description: '',
-        isCryptoTransaction: false,
-        cryptoCurrency: 'USDT',
-        useStablecoinBridge: true
-      });
+      // If user is paying entirely from wallet (has sufficient balance)
+      if (paymentSource === 'wallet') {
+        // Use existing transfer logic for wallet-to-wallet transfers
+        await handleSubmit();
+      } 
+      // If user is using a combination of wallet + payment method
+      else if (paymentSource === 'wallet_partial' && selectedWallet) {
+        // Use the wallet balance for partial payment and charge the rest to the payment method
+        const walletAmount = selectedWallet.fiat_balance;
+        const remainingAmount = parseFloat(formData.amount) - walletAmount;
+        
+        // Process the transaction using the direct payment utility
+        const response = await processDirectPayment({
+          ...formData,
+          recipient_id: recipientInfo.id, // Add recipient ID
+          use_wallet_amount: walletAmount,
+          remaining_amount: remainingAmount,
+        }, selectedPaymentMethod, paymentSource);
+        
+        if (response.success) {
+          setSuccess(true);
+          setTransactionId(response.transaction_id);
+      } else {
+          throw new Error(response.message || 'Payment failed');
+        }
+      }
+      // If user is paying directly with card or bank without using wallet
+      else {
+        // Process the direct payment
+        const response = await processDirectPayment({
+          ...formData,
+          recipient_id: recipientInfo.id, // Add recipient ID
+          use_wallet_amount: 0,
+        }, selectedPaymentMethod, paymentSource);
+        
+        if (response.success) {
+          setSuccess(true);
+          setTransactionId(response.transaction_id);
+        } else {
+          throw new Error(response.message || 'Payment failed');
+        }
+      }
     } catch (err) {
-      console.error('Error sending funds:', err);
-      setError(err.response?.data?.detail || err.message || 'Failed to send funds. Please try again.');
+      console.error('Payment error:', err);
+      setError(err.message || 'Failed to process payment');
+    } finally {
+      setSendingFunds(false);
+    }
+  };
+
+  const handleSubmit = async () => {
+    setSendingFunds(true);
+    try {
+      const selectedWallet = wallets.find(wallet => wallet.id === formData.sourceWalletId);
+      
+      // Calculate total amount including fee
+      const totalAmount = parseFloat(formData.amount) + estimatedFee;
+      
+      if (paymentSource === 'wallet') {
+        // Directly process wallet payment
+      const response = await api.post('/payment/transfer', {
+          sender_id: currentUser.id,
+          recipient_id: recipientInfo.id,
+          amount: totalAmount, // Include fees in the amount
+          source_currency: selectedWallet.base_currency || selectedWallet.currency,
+          target_currency: formData.currency,
+          use_stablecoin: formData.useStablecoinBridge && 
+                         (selectedWallet.base_currency || selectedWallet.currency) !== formData.currency,
+          stripe_payment: false,
+          payment_source: paymentSource,
+          skip_sender_deduction: false
+      });
+
+      if (response.status === 200) {
+        setSuccess(true);
+          setTransactionId(response.data.transaction_id);
+        }
+      } else if (paymentSource === 'card' || paymentSource === 'bank') {
+        // Store pending transaction before redirecting to Stripe
+        const transactionData = {
+          formData: {
+            ...formData,
+            useStablecoinBridge: formData.useStablecoinBridge || false
+          },
+          activeStep,
+          paymentSource,
+          recipientInfo: recipientInfo,
+          stripe_payment: true
+        };
+        
+        // Debug log to verify data
+        console.log('Saving pending transaction data:', transactionData);
+        
+        // Ensure all required data is present
+        if (!recipientInfo || !recipientInfo.id) {
+          throw new Error('Missing recipient information. Please select a valid recipient before proceeding.');
+        }
+        
+        // Don't allow sending money to yourself with a card payment
+        if (currentUser.id === recipientInfo.id) {
+          throw new Error('Cannot send money to yourself using a card payment. Please select a different recipient.');
+        }
+        
+        localStorage.setItem('pendingTransaction', JSON.stringify(transactionData));
+        
+        createDepositCheckout(
+          Math.round(totalAmount * 100),
+          formData.currency.toLowerCase(),
+          currentUser,
+          true, // Set to true for a payment
+          {
+            is_payment: true,
+            recipient_id: recipientInfo.id,
+            stripe_payment: true,
+            payment_source: paymentSource,
+            transfer_type: 'direct_payment',
+            skip_sender_deduction: true // Ensure no wallet deduction
+          }
+        )
+        .then(checkoutUrl => {
+          if (checkoutUrl) {
+            window.location.href = checkoutUrl;
+      } else {
+            throw new Error("No checkout URL returned");
+          }
+        })
+        .catch(error => {
+          console.error("Failed to create Stripe session:", error);
+          setError(`Payment error: ${error.message}`);
+          setSendingFunds(false);
+          // Void pending transaction if Stripe session fails
+          localStorage.removeItem('pendingTransaction');
+        });
+      }
+    } catch (err) {
+      console.error('Error during transfer:', err);
+      if (err.response && err.response.data && err.response.data.detail) {
+        setError(`Failed to process transfer: ${err.response.data.detail}`);
+      } else {
+        setError('Network error. Please try again later.');
+      }
     } finally {
       setSendingFunds(false);
     }
   };
 
   const handleNext = () => {
+    console.log(`handleNext called, activeStep: ${activeStep}, paymentSource: ${paymentSource}`);
+    
     if (activeStep === 0) {
-      if (!formData.sourceWalletId) {
-        setFormErrors(prev => ({ ...prev, sourceWalletId: 'Please select a source wallet' }));
-        return;
-      }
-    } else if (activeStep === 1) {
+      // Move to recipient details step
+      setActiveStep(1);
+      return;
+    } 
+    
+    if (activeStep === 1) {
       if (!validateForm()) {
         return;
       }
       calculateFee();
-      lookupRecipient();
-    } else if (activeStep === 2) {
-      handleSubmit();
-      return;
+      // Move to confirmation step
+      setActiveStep(2);
     }
-    
-    setActiveStep((prevActiveStep) => prevActiveStep + 1);
+  };
+
+  const handleSend = () => {
+    if (activeStep === 2) {
+      handleSubmit();
+    }
   };
 
   const handleBack = () => {
@@ -465,8 +810,8 @@ const SendMoney = () => {
 
   const formatWalletDisplay = (wallet) => {
     if (!wallet) return 'Unknown Wallet';
-    
-    return (
+
+  return (
       <Box>
         <Typography variant="body1" component="span" fontWeight="medium">
           {currentUser.username}'s Wallet
@@ -537,13 +882,25 @@ const SendMoney = () => {
     
     const { sourceAmount, sourceCurrency, stablecoinAmount, targetAmount, targetCurrency, conversionPath } = transactionBreakdown;
     
-    if (conversionPath === 'direct' || sourceCurrency === targetCurrency) {
+    // Special message for same currency transfers
+    if (sourceCurrency === targetCurrency) {
       return (
         <Alert severity="info" sx={{ mt: 3 }}>
           <Typography variant="subtitle2">Direct Transfer</Typography>
           <Typography variant="body2">
-            Since you're sending in the same currency or using direct conversion, 
-            no stablecoin intermediary is needed.
+            Since you're sending in the same currency, no currency conversion is needed.
+          </Typography>
+        </Alert>
+      );
+    }
+    
+    if (conversionPath === 'direct') {
+      return (
+        <Alert severity="info" sx={{ mt: 3 }}>
+          <Typography variant="subtitle2">Direct Conversion</Typography>
+          <Typography variant="body2">
+            Your funds will be converted directly from {sourceCurrency} to {targetCurrency}
+            without using a stablecoin intermediary.
           </Typography>
         </Alert>
       );
@@ -559,46 +916,34 @@ const SendMoney = () => {
             </Tooltip>
           </Typography>
           
-          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', my: 3 }}>
-            <Box sx={{ textAlign: 'center', minWidth: '100px' }}>
-              <Typography variant="subtitle2">
+          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mt: 2 }}>
+            <Box textAlign="center">
+              <Typography variant="body2" color="text.secondary">Source</Typography>
+              <Typography variant="body1" fontWeight="medium">
                 {formatCurrency(sourceAmount, sourceCurrency)}
               </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Source
-              </Typography>
             </Box>
             
-            <ArrowForward color="primary" />
+            <ArrowForward color="action" />
             
-            <Box sx={{ textAlign: 'center', minWidth: '100px' }}>
-              <Typography variant="subtitle2">
+            <Box textAlign="center">
+              <Typography variant="body2" color="text.secondary">Via Stablecoin</Typography>
+              <Typography variant="body1" fontWeight="medium">
                 {stablecoinAmount.toFixed(2)} USDT
               </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Stablecoin
-              </Typography>
             </Box>
             
-            <ArrowForward color="primary" />
+            <ArrowForward color="action" />
             
-            <Box sx={{ textAlign: 'center', minWidth: '100px' }}>
-              <Typography variant="subtitle2">
+            <Box textAlign="center">
+              <Typography variant="body2" color="text.secondary">Destination</Typography>
+              <Typography variant="body1" fontWeight="medium">
                 {formatCurrency(targetAmount, targetCurrency)}
-              </Typography>
-              <Typography variant="caption" color="text.secondary">
-                Destination
               </Typography>
             </Box>
           </Box>
           
-          <Box sx={{ mt: 2 }}>
-            <Typography variant="body2">
-              Your money will be converted from {sourceCurrency} to USDT, then from USDT to {targetCurrency}.
-              This provides better rates and transparency compared to direct conversion.
-            </Typography>
-            
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 2 }}>
+          <Box sx={{ mt: 2, display: 'flex', justifyContent: 'space-between' }}>
               <Typography variant="caption" color="text.secondary">
                 Rate: 1 {sourceCurrency} = {(1/stablecoinRates[sourceCurrency]).toFixed(4)} USDT
               </Typography>
@@ -607,23 +952,91 @@ const SendMoney = () => {
               </Typography>
             </Box>
           </Box>
-          
-          <FormControlLabel
-            control={
-              <Switch
-                checked={formData.useStablecoinBridge}
-                onChange={(e) => setFormData({
-                  ...formData,
-                  useStablecoinBridge: e.target.checked
-                })}
-              />
-            }
-            label="Use stablecoin bridge (recommended for better rates)"
-            sx={{ mt: 2 }}
-          />
-        </Box>
       </SlideUpBox>
     );
+  };
+
+  const lookupRecipient = async (recipientValue) => {
+    if (!recipientValue) recipientValue = formData.recipientAddress;
+    
+    if (!recipientValue || recipientValue.length < 2) {
+      return;
+    }
+    
+    setIsSearching(true);
+    
+    try {
+      // Reset recipient info
+      setRecipientInfo(null);
+      
+      // Try to determine what type of identifier it is
+      let endpoint;
+      
+      // If it's a number, try ID lookup
+      if (!isNaN(recipientValue) && parseInt(recipientValue) > 0) {
+        endpoint = `/user/profile/${recipientValue}`;
+      }
+      // Otherwise, use the universal search endpoint
+      else {
+        endpoint = `/user/search?query=${encodeURIComponent(recipientValue)}&exact=true`;
+      }
+      
+      const response = await api.get(endpoint);
+      
+      if (response.data) {
+        let user;
+        
+        // If it's an array (from search), take the first exact match
+        if (Array.isArray(response.data) && response.data.length > 0) {
+          // Find the exact match
+          user = response.data.find(u => 
+            u.username === recipientValue || 
+            u.email === recipientValue
+          );
+          
+          // If no exact match, take first result
+          if (!user && response.data.length > 0) {
+            user = response.data[0];
+          }
+        } else {
+          // Direct profile response
+          user = response.data;
+        }
+        
+        if (user) {
+          // Check if user is sending to themselves
+          if (user.id === currentUser.id) {
+            setFormErrors(prev => ({
+              ...prev,
+              recipientAddress: 'You cannot send money to yourself'
+            }));
+            return;
+          }
+          
+          setRecipientInfo(user);
+          
+          // Also fetch recipient's wallet to get their currency
+          fetchRecipientWallet(user.id);
+        }
+      }
+    } catch (error) {
+      console.error('Error looking up recipient:', error);
+      // Set error for invalid recipient
+      setFormErrors(prev => ({
+        ...prev,
+        recipientAddress: 'Recipient not found'
+      }));
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const getRecipientOptionLabel = (option) => {
+    // If it's just a string (user input), return it
+    if (typeof option === 'string') return option;
+    
+    // If it's a user object, show the most user-friendly format
+    return option.email || option.username || `User #${option.id}`;
   };
 
   if (loading) {
@@ -657,8 +1070,34 @@ const SendMoney = () => {
               variant="outlined" 
               sx={{ ml: 2 }}
               onClick={() => {
+                // Reset success state
                 setSuccess(false);
                 setActiveStep(0);
+                
+                // Reset form data to initial state
+                setFormData({
+                  sourceWalletId: wallets.length > 0 ? wallets[0].id : '',
+                  recipientAddress: '',
+                  recipientType: 'any',
+                  amount: '',
+                  currency: wallets.length > 0 ? (wallets[0].base_currency || wallets[0].currency) : 'USD',
+                  description: '',
+                  isCryptoTransaction: false,
+                  cryptoCurrency: 'USDT',
+                  useStablecoinBridge: true
+                });
+                
+                // Clear recipient info
+                setRecipientInfo(null);
+                
+                // Clear any errors
+                setError(null);
+                
+                // Reset transaction breakdown
+                setTransactionBreakdown(null);
+                
+                // Reset payment source to wallet
+                setPaymentSource('wallet');
               }}
             >
               Send Another Payment
@@ -721,15 +1160,52 @@ const SendMoney = () => {
               
               <Grid container spacing={3}>
                 <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    label="Recipient Address"
-                    name="recipientAddress"
-                    value={formData.recipientAddress}
-                    onChange={handleRecipientChange}
+                  <Autocomplete
+            fullWidth
+                    options={userSearchResults}
+                    loading={isSearching}
+                    getOptionLabel={getRecipientOptionLabel}
+                    onChange={handleUserSelect}
+                    freeSolo
+                    renderOption={(props, option) => (
+                      <li {...props}>
+                        <Box sx={{ display: 'flex', flexDirection: 'column' }}>
+                          <Typography variant="body1">
+                            {option.username || option.email || `User #${option.id}`}
+                          </Typography>
+                          {option.username && option.email && (
+                            <Typography variant="caption" color="text.secondary">
+                              {option.email}
+                            </Typography>
+                          )}
+                        </Box>
+                      </li>
+                    )}
+                    renderInput={(params) => (
+                      <TextField
+                        {...params}
+                        label="Recipient"
                     error={!!formErrors.recipientAddress}
-                    helperText={formErrors.recipientAddress}
-                    onBlur={lookupRecipient}
+                        helperText={formErrors.recipientAddress || "Enter username or email of any registered TerraFlow user"}
+                        onChange={handleRecipientInputChange}
+                        onBlur={() => {
+                          // If user manually typed something but didn't select from dropdown
+                          if (formData.recipientAddress && !recipientInfo) {
+                            lookupRecipient(formData.recipientAddress);
+                          }
+                        }}
+                        placeholder="Enter username or email"
+                        InputProps={{
+                          ...params.InputProps,
+                          endAdornment: (
+                            <>
+                              {isSearching ? <CircularProgress color="inherit" size={20} /> : null}
+                              {params.InputProps.endAdornment}
+                            </>
+                          ),
+                        }}
+                      />
+                    )}
                   />
                 </Grid>
                 
@@ -760,13 +1236,13 @@ const SendMoney = () => {
                 </Grid>
                 
                 <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    label="Amount"
-                    name="amount"
-                    type="number"
-                    value={formData.amount}
-                    onChange={handleInputChange}
+          <TextField
+            fullWidth
+            label="Amount"
+            name="amount"
+            type="number"
+            value={formData.amount}
+            onChange={handleInputChange}
                     error={!!formErrors.amount}
                     helperText={formErrors.amount}
                     InputProps={{
@@ -797,8 +1273,8 @@ const SendMoney = () => {
                       )}
                     </FormControl>
                   ) : (
-                    <TextField
-                      fullWidth
+          <TextField
+            fullWidth
                       label="Currency"
                       value={formData.currency || "Will use recipient's currency"}
                       disabled
@@ -811,9 +1287,9 @@ const SendMoney = () => {
                   <TextField
                     fullWidth
                     label="Description (Optional)"
-                    name="description"
-                    value={formData.description}
-                    onChange={handleInputChange}
+            name="description"
+            value={formData.description}
+            onChange={handleInputChange}
                     multiline
                     rows={2}
                   />
@@ -1015,16 +1491,95 @@ const SendMoney = () => {
               {!formData.isCryptoTransaction && (
                 <Alert severity="info" sx={{ mt: 2, mb: 3 }}>
                   <Typography variant="body2">
-                    <strong>Currency handling:</strong> Money will be sent from your account in {getSelectedWallet()?.base_currency || 'your currency'} 
-                    and will be received by the recipient in {formData.currency || 'their base currency'}. 
+                    <strong>Currency handling:</strong> Money will be sent from your account in {getSelectedWallet()?.base_currency || 'your currency'} {' '}
+                    and will be received by the recipient in {formData.currency || 'their base currency'}. {' '}
                     The system will automatically handle the currency conversion using the current exchange rates.
                   </Typography>
                 </Alert>
               )}
+
+              {/* Add payment source selection when balance is insufficient */}
+              {showPaymentOptions && (
+                <>
+                  <Grid item xs={12} sx={{ mt: 3 }}>
+                    <Divider sx={{ my: 1 }} />
+                    
+                    {/* Only show insufficient balance warning when balance is actually insufficient */}
+                    {getSelectedWallet() && 
+                     parseFloat(formData.amount) + estimatedFee > getSelectedWallet().fiat_balance && (
+                      <Alert severity="warning" sx={{ mb: 2 }}>
+                        Your wallet balance is insufficient for this transaction. Please select a payment method.
+                      </Alert>
+                    )}
+                    
+                    <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                      Payment Method
+                    </Typography>
+                    
+                    <RadioGroup
+                      value={paymentSource}
+                      onChange={handlePaymentSourceChange}
+                      name="payment-source-group"
+                    >
+                      <FormControlLabel 
+                        value="wallet_partial" 
+                        control={<Radio />}
+                        label={
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <AccountBalanceWallet sx={{ mr: 1, fontSize: 20 }} />
+                            <Typography variant="body2">
+                              Use wallet balance + additional payment method
+                            </Typography>
+                          </Box>
+                        }
+                        disabled={getSelectedWallet() && parseFloat(formData.amount) <= getSelectedWallet().fiat_balance}
+                      />
+                      
+                      <FormControlLabel 
+                        value="card" 
+                        control={<Radio />}
+                        label={
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <CreditCard sx={{ mr: 1, fontSize: 20 }} />
+                            <Typography variant="body2">
+                              Pay directly with credit/debit card
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                      
+                      <FormControlLabel 
+                        value="bank" 
+                        control={<Radio />}
+                        label={
+                          <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                            <AccountBalance sx={{ mr: 1, fontSize: 20 }} />
+                            <Typography variant="body2">
+                              Pay directly from bank account
+                            </Typography>
+                          </Box>
+                        }
+                      />
+                    </RadioGroup>
+                    
+                    {(paymentSource === 'card' || paymentSource === 'bank' || paymentSource === 'wallet_partial') && (
+                      <Box sx={{ mt: 2 }}>
+                        {paymentSource === 'wallet_partial' && (
+                          <Alert severity="info" sx={{ mt: 2 }}>
+                            We'll use your available wallet balance of {formatCurrency(getSelectedWallet()?.fiat_balance, getSelectedWallet()?.currency)} {' '}
+                            and charge the remaining {formatCurrency(Math.max(0, parseFloat(formData.amount) - (getSelectedWallet()?.fiat_balance || 0)), formData.currency)} {' '}
+                            to your selected payment method.
+                          </Alert>
+                        )}
+                      </Box>
+                    )}
+                  </Grid>
+                </>
+              )}
             </Box>
             
             <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
-              <Button
+            <Button
                 disabled={activeStep === 0}
                 onClick={handleBack}
                 variant="outlined"
@@ -1032,26 +1587,13 @@ const SendMoney = () => {
                 Back
               </Button>
               <Button
-                variant="contained"
-                onClick={handleNext}
+              variant="contained"
+                onClick={activeStep === steps.length - 1 ? handleSend : handleNext}
                 endIcon={activeStep === steps.length - 1 ? <Send /> : null}
-                disabled={
-                  wallets.length === 0 || 
-                  sendingFunds || 
-                  (activeStep === 0 && !formData.sourceWalletId)
-                }
-              >
-                {sendingFunds ? (
-                  <>
-                    <CircularProgress size={24} color="inherit" sx={{ mr: 1 }} />
-                    Processing...
-                  </>
-                ) : activeStep === steps.length - 1 ? (
-                  'Send Money'
-                ) : (
-                  'Next'
-                )}
-              </Button>
+                disabled={wallets.length === 0 || sendingFunds}
+            >
+                {sendingFunds ? "Processing..." : "Send Money"}
+            </Button>
             </Box>
           </Paper>
         </Box>
@@ -1082,11 +1624,11 @@ const SendMoney = () => {
           )}
           
           {activeStep === 0 && (
-            <Box>
+            <>
               <Typography variant="h6" gutterBottom>
-                Select Source Wallet
+                Your Wallet
               </Typography>
-              
+              <Box>
               {wallets.length === 0 ? (
                 <Box textAlign="center" py={3}>
                   <AccountBalanceWallet sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
@@ -1102,47 +1644,98 @@ const SendMoney = () => {
                   >
                     Go to Wallet
                   </Button>
-                </Box>
+        </Box>
               ) : (
                 <Grid container spacing={3}>
-                  {wallets.map((wallet) => {
-                    if (!wallet || wallet.id == null) return null;
-                    
-                    if (wallet.user_id !== currentUser.id) return null;
-                    
-                    return (
-                      <Grid item xs={12} sm={6} key={wallet.id}>
+                    <Grid item xs={12}>
                         <Card 
                           sx={{ 
-                            cursor: 'pointer',
-                            border: formData.sourceWalletId === wallet.id ? 2 : 0,
+                          border: '1px solid',
                             borderColor: 'primary.main',
+                          backgroundColor: 'action.selected',
                             transition: 'all 0.3s'
                           }}
-                          onClick={() => setFormData(prev => ({ 
-                            ...prev, 
-                            sourceWalletId: wallet.id,
-                            currency: wallet.currency
-                          }))}
                         >
                           <CardContent>
                             <Typography variant="h6" gutterBottom>
-                              {formatWalletDisplay(wallet)}
+                            {formatWalletDisplay(wallets[0])}
                             </Typography>
                           </CardContent>
                         </Card>
                       </Grid>
-                    );
-                  })}
                 </Grid>
               )}
+              </Box>
+            </>
+          )}
+
+          {/* Add payment method selection */}
+          <Box sx={{ mt: 4 }}>
+            <Divider sx={{ mb: 3 }} />
+            
+            <Typography variant="h6" gutterBottom>
+              Select Payment Method
+            </Typography>
+            
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+              Choose how you want to pay for this transaction
+            </Typography>
+            
+            <RadioGroup
+              value={paymentSource}
+              onChange={handlePaymentSourceChange}
+              name="payment-source-group"
+            >
+              <FormControlLabel 
+                value="wallet" 
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <AccountBalanceWallet sx={{ mr: 1, fontSize: 20 }} />
+                    <Typography variant="body2">
+                      Use wallet balance 
+                      {getSelectedWallet() && 
+                        ` (Available: ${formatCurrency(getSelectedWallet().fiat_balance, getSelectedWallet().currency)})`}
+                    </Typography>
+                  </Box>
+                }
+              />
               
-              {formErrors.sourceWalletId && (
-                <FormHelperText error>{formErrors.sourceWalletId}</FormHelperText>
-              )}
+              <FormControlLabel 
+                value="card" 
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <CreditCard sx={{ mr: 1, fontSize: 20 }} />
+                    <Typography variant="body2">
+                      Pay directly with credit/debit card
+                    </Typography>
+                  </Box>
+                }
+              />
+              
+              <FormControlLabel 
+                value="bank" 
+                control={<Radio />}
+                label={
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <AccountBalance sx={{ mr: 1, fontSize: 20 }} />
+                    <Typography variant="body2">
+                      Pay directly from bank account
+                    </Typography>
+                  </Box>
+                }
+              />
+            </RadioGroup>
+            
+            {(paymentSource === 'card' || paymentSource === 'bank') && (
+              <Box sx={{ mt: 2 }}>
+                {/* Box for any alerts */}
             </Box>
           )}
+          </Box>
           
+          {/* Now restore the navigation buttons at the end of the component */}
           <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
             <Button
               disabled={activeStep === 0}
@@ -1153,12 +1746,11 @@ const SendMoney = () => {
             </Button>
             <Button
               variant="contained"
-              onClick={handleNext}
+              onClick={activeStep === steps.length - 1 ? handleSend : handleNext}
               endIcon={activeStep === steps.length - 1 ? <Send /> : null}
               disabled={
                 wallets.length === 0 || 
-                sendingFunds || 
-                (activeStep === 0 && !formData.sourceWalletId)
+                sendingFunds
               }
             >
               {sendingFunds ? (
@@ -1179,4 +1771,4 @@ const SendMoney = () => {
   );
 };
 
-export default SendMoney; 
+export default SendMoney;

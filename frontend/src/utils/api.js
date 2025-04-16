@@ -69,4 +69,15 @@ api.interceptors.response.use(
   }
 );
 
+// Get saved payment methods for a user
+export const getPaymentMethods = async (userId) => {
+  try {
+    const response = await api.get(`/api/payment-methods/${userId}`);
+    return response.data; // Ensure the API returns a list of payment methods
+  } catch (error) {
+    console.error('Error fetching payment methods:', error);
+    throw new Error('Failed to fetch payment methods');
+  }
+};
+
 export default api; 

@@ -1,11 +1,13 @@
-from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException
 from app.database import get_db
-from app.utils.payment_processor import get_payment_processor, PaymentProcessor
 from app.dependencies.auth import get_current_user
-from typing import Dict, List, Optional, Any
+from app.models import User, Transaction, Wallet
+from app.utils.payment_processor import get_payment_processor
 from pydantic import BaseModel, validator
+from typing import Optional, Dict, Any
 import re
+from datetime import datetime, timedelta
 
 router = APIRouter()
 
@@ -40,20 +42,18 @@ class TransferRequest(BaseModel):
     recipient_id: int
     amount: float
     source_currency: str
-    target_currency: Optional[str] = None
+    target_currency: str = None
     description: str = ""
     use_stablecoin: bool = True
+    stripe_payment: bool = False
+    skip_sender_deduction: bool = False
+    payment_source: str = "wallet"
+    transaction_type: str = "TRANSFER"
     
     @validator('amount')
     def amount_must_be_positive(cls, v):
         if v <= 0:
             raise ValueError('Amount must be positive')
-        return v
-        
-    @validator('sender_id', 'recipient_id')
-    def ids_must_be_different(cls, v, values):
-        if 'sender_id' in values and values['sender_id'] == v and v == values.get('recipient_id'):
-            raise ValueError('Sender and recipient must be different')
         return v
 
 class CryptoTransferRequest(BaseModel):
@@ -136,16 +136,72 @@ def process_transfer(
     username: str = Depends(get_current_user)
 ):
     """Process a transfer between users, handling currency conversion"""
+    # Verify current user is allowed to make this transfer
+    user = db.query(User).filter(User.username == username).first()
+    if not user or (user.id != request.sender_id and not user.is_admin):
+        raise HTTPException(status_code=403, detail="Not authorized to make transfers from this account")
+    
+    # Prevent sending money to yourself with Stripe payments
+    if request.sender_id == request.recipient_id and request.stripe_payment:
+        raise HTTPException(status_code=400, detail="Cannot send money to yourself using a card payment")
+    
     payment_processor = get_payment_processor(db)
-    return payment_processor.process_transfer(
-        sender_id=request.sender_id,
-        recipient_id=request.recipient_id,
-        amount=request.amount,
-        source_currency=request.source_currency,
-        target_currency=request.target_currency,
-        description=request.description,
-        use_stablecoin=request.use_stablecoin
-    )
+    
+    try:
+        # Process the transfer
+        result = payment_processor.process_transfer(
+            sender_id=request.sender_id,
+            recipient_id=request.recipient_id,
+            amount=request.amount,
+            source_currency=request.source_currency,
+            target_currency=request.target_currency,
+            description=request.description,
+            use_stablecoin=request.use_stablecoin,
+            stripe_payment=request.stripe_payment,
+            skip_sender_deduction=request.skip_sender_deduction,
+            payment_source=request.payment_source,
+            transaction_type=request.transaction_type
+        )
+        
+        # For Stripe payments, immediately check for and fix any self-deposits
+        # This handles the issue where sender gets incorrectly credited when using Stripe
+        if request.stripe_payment and request.sender_id != request.recipient_id:
+            # Find any self-deposits created for the sender in the last minute
+            sender_deposits = db.query(Transaction).filter(
+                Transaction.sender_id == request.sender_id,
+                Transaction.recipient_id == request.sender_id,
+                Transaction.source_amount == request.amount,
+                Transaction.source_currency == request.source_currency,
+                Transaction.status == "completed",
+                Transaction.timestamp >= datetime.utcnow() - timedelta(minutes=1)
+            ).all()
+            
+            # If any incorrect self-deposits are found, void them and adjust balance
+            for deposit in sender_deposits:
+                print(f"Found incorrect self-deposit: ID={deposit.id}, Amount={deposit.source_amount}")
+                
+                # Get the sender's wallet
+                sender_wallet = db.query(Wallet).filter(Wallet.user_id == request.sender_id).first()
+                if sender_wallet:
+                    # Adjust the balance by removing the duplicate amount
+                    original_balance = sender_wallet.fiat_balance
+                    sender_wallet.fiat_balance = max(0, original_balance - deposit.source_amount)
+                    
+                    # Mark the deposit as voided
+                    deposit.status = "voided"
+                    
+                    print(f"Fixed balance: {original_balance} -> {sender_wallet.fiat_balance}")
+                    print(f"Marked transaction #{deposit.id} as voided")
+            
+            # Commit changes if any deposits were fixed
+            if sender_deposits:
+                db.commit()
+        
+        return result
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to process transfer: {str(e)}")
 
 @router.post("/crypto/transfer")
 def process_crypto_transfer(

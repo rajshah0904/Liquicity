@@ -180,16 +180,18 @@ class Transaction(Base):
     id = Column(Integer, primary_key=True, index=True)
     sender_id = Column(Integer, ForeignKey("users.id"))
     recipient_id = Column(Integer, ForeignKey("users.id"))
-    stablecoin_amount = Column(Float, nullable=False)
-    source_amount = Column(Float, nullable=False)
-    source_currency = Column(String, nullable=False)
-    target_amount = Column(Float, nullable=False)
-    target_currency = Column(String, nullable=False)
-    source_to_stablecoin_rate = Column(Float, nullable=False)
-    stablecoin_to_target_rate = Column(Float, nullable=False)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    stablecoin_amount = Column(Float)
+    source_amount = Column(Float)
+    source_currency = Column(String)
+    target_amount = Column(Float)
+    target_currency = Column(String)
+    source_to_stablecoin_rate = Column(Float)
+    stablecoin_to_target_rate = Column(Float)
     status = Column(String, default="pending")
     blockchain_txn_hash = Column(String, nullable=True)  # For on-chain transactions
+    timestamp = Column(DateTime, default=datetime.utcnow)
+    payment_source = Column(String, nullable=True)  # wallet, card, bank, wallet_partial
+    transaction_type = Column(String, default="TRANSFER")  # TRANSFER, CARD_PAYMENT, BANK_PAYMENT, etc.
     
     # Clear relationship definitions with foreign keys
     sender = relationship(

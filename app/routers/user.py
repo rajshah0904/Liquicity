@@ -475,3 +475,79 @@ def create_test_user(user: TestUserCreate, db: Session = Depends(get_db)):
         "username": user.username,
         "note": "This user has been created with minimal information for testing purposes."
     }
+
+@router.get("/profile/{user_id}")
+def get_user_profile(user_id: int, db: Session = Depends(get_db), current_user: str = Depends(get_current_user)):
+    """Get user profile by ID"""
+    # Get user using raw SQL
+    result = db.execute(
+        text("SELECT id, username, wallet_address, email FROM users WHERE id = :user_id"),
+        {"user_id": user_id}
+    ).first()
+    
+    if not result:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    user_id, username, wallet_address, email = result
+    
+    return {
+        "id": user_id,
+        "username": username,
+        "email": email,
+        "wallet_address": wallet_address
+    }
+
+@router.get("/search")
+def search_users(query: str, exact: bool = False, db: Session = Depends(get_db), current_user: str = Depends(get_current_user)):
+    """
+    Search for users by username or email
+    - query: search term
+    - exact: if True, only return exact matches
+    """
+    try:
+        search_term = query.strip()
+        
+        if not search_term or len(search_term) < 2:
+            return []
+        
+        # Create SQL query based on exact match parameter
+        if exact:
+            sql_query = """
+                SELECT id, username, email, wallet_address
+                FROM users
+                WHERE username = :query OR email = :query
+                LIMIT 10
+            """
+        else:
+            # Use ILIKE for case-insensitive partial matching
+            sql_query = """
+                SELECT id, username, email, wallet_address
+                FROM users
+                WHERE username ILIKE :pattern OR email ILIKE :pattern
+                LIMIT 10
+            """
+            search_term = f"%{search_term}%"
+            
+        # Execute the query
+        results = db.execute(
+            text(sql_query),
+            {"query": query, "pattern": search_term} if not exact else {"query": query}
+        ).fetchall()
+        
+        # Format the results
+        users = []
+        for user in results:
+            users.append({
+                "id": user[0],
+                "username": user[1],
+                "email": user[2],
+                "wallet_address": user[3]
+            })
+            
+        return users
+    except Exception as e:
+        print(f"Search error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error searching users: {str(e)}"
+        )

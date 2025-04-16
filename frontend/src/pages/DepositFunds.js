@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { 
   Container, Box, Typography, TextField, Button, 
   Grid, Paper, CircularProgress, Alert, FormControl,
-  InputLabel, Select, MenuItem, Divider, Card, CardContent
+  InputLabel, Select, MenuItem, Divider, Card, CardContent,
+  Switch, FormControlLabel
 } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
@@ -29,6 +30,7 @@ const DepositFunds = () => {
   const [bankAccounts, setBankAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState('');
   const [depositMethod, setDepositMethod] = useState('card');
+  const [depositToWallet, setDepositToWallet] = useState(true);
   
   // Check URL parameters for payment status
   useEffect(() => {
@@ -104,6 +106,10 @@ const DepositFunds = () => {
     setDepositMethod(e.target.value);
   };
   
+  const handleDepositToggleChange = (e) => {
+    setDepositToWallet(e.target.checked);
+  };
+  
   const handleDeposit = async () => {
     if (!amount || parseFloat(amount) <= 0) {
       setError('Please enter a valid amount');
@@ -119,7 +125,12 @@ const DepositFunds = () => {
       
       if (depositMethod === 'card') {
         // Credit card deposit via Stripe Checkout
-        const checkoutUrl = await createDepositCheckout(amountInCents, currency.toLowerCase(), currentUser);
+        const checkoutUrl = await createDepositCheckout(
+          amountInCents, 
+          currency.toLowerCase(), 
+          currentUser,
+          depositToWallet // Pass whether to deposit to wallet or save for later
+        );
         
         // Redirect to Stripe checkout
         window.location.href = checkoutUrl;
@@ -136,11 +147,12 @@ const DepositFunds = () => {
           amountInCents,
           currency.toLowerCase(),
           selectedAccount,
-          currentUser.id
+          currentUser.id,
+          depositToWallet // Pass whether to deposit to wallet or save for later
         );
         
         if (response.success) {
-          setSuccess(`Bank transfer initiated successfully for ${getCurrencySymbol(currency)}${amount}. Funds will appear in your account once the transfer completes.`);
+          setSuccess(`Bank transfer initiated successfully for ${getCurrencySymbol(currency)}${amount}. ${depositToWallet ? 'Funds will appear in your account once the transfer completes.' : 'Your payment method has been saved for future transactions.'}`);
           setAmount('');
         } else {
           setError('Failed to initiate bank transfer. Please try again.');
@@ -223,6 +235,24 @@ const DepositFunds = () => {
                 </Select>
               </FormControl>
               
+              <FormControlLabel
+                control={
+                  <Switch 
+                    checked={depositToWallet}
+                    onChange={handleDepositToggleChange}
+                    color="primary"
+                  />
+                }
+                label={depositToWallet ? "Deposit to wallet" : "Save payment method for later"}
+                sx={{ mb: 2 }}
+              />
+              
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+                {depositToWallet 
+                  ? "Funds will be added to your wallet balance and can be used for payments."
+                  : "Your payment method will be saved for future transactions without adding funds to your wallet."}
+              </Typography>
+              
               {depositMethod === 'bank' && (
                 <>
                   <FormControl fullWidth sx={{ mb: 3 }}>
@@ -254,37 +284,21 @@ const DepositFunds = () => {
                   </Button>
                 </>
               )}
-              
-              {depositMethod === 'card' && (
-                <Card sx={{ bgcolor: '#222', color: 'white', mb: 2 }}>
-                  <CardContent>
-                    <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
-                      <CreditCardIcon sx={{ mr: 1 }} />
-                      <Typography variant="body2">
-                        You'll be redirected to Stripe's secure payment page
-                      </Typography>
-                    </Box>
-                    <Typography variant="caption" color="text.secondary">
-                      Stripe processes your payment securely. Your card details are never stored on our servers.
-                    </Typography>
-                  </CardContent>
-                </Card>
-              )}
             </Box>
           </Grid>
           
           <Grid item xs={12} md={6}>
             <Box sx={{ p: 2, border: '1px solid rgba(255, 255, 255, 0.1)', borderRadius: 2, height: '100%' }}>
               <Typography variant="h6" gutterBottom>
-                Amount to Deposit
+                Amount Details
               </Typography>
               
               <TextField
                 fullWidth
                 label="Amount"
-                variant="outlined"
                 value={amount}
                 onChange={handleAmountChange}
+                type="text"
                 placeholder="0.00"
                 InputProps={{
                   startAdornment: <Typography sx={{ mr: 1 }}>{getCurrencySymbol(currency)}</Typography>
@@ -292,29 +306,35 @@ const DepositFunds = () => {
                 sx={{ mb: 3 }}
               />
               
+              <FormControl fullWidth sx={{ mb: 3 }}>
+                <InputLabel id="currency-label">Currency</InputLabel>
+                <Select
+                  labelId="currency-label"
+                  id="currency"
+                  value={currency}
+                  onChange={(e) => setCurrency(e.target.value)}
+                  label="Currency"
+                >
+                  <MenuItem value="USD">USD - US Dollar</MenuItem>
+                  <MenuItem value="EUR">EUR - Euro</MenuItem>
+                  <MenuItem value="GBP">GBP - British Pound</MenuItem>
+                </Select>
+              </FormControl>
+              
               <Button
                 variant="contained"
                 color="primary"
-                fullWidth
                 onClick={handleDeposit}
-                disabled={!amount || loading}
-                sx={{ 
-                  py: 1.5, 
-                  background: 'linear-gradient(90deg, #4776E6 0%, #8E54E9 100%)',
-                  '&:hover': {
-                    background: 'linear-gradient(90deg, #4776E6 0%, #8E54E9 70%)',
-                  }
-                }}
+                disabled={loading || !amount || parseFloat(amount) <= 0 || (depositMethod === 'bank' && !selectedAccount)}
+                fullWidth
+                sx={{ mt: 2 }}
               >
-                {loading ? <CircularProgress size={24} /> : `Deposit ${amount ? getCurrencySymbol(currency) + amount : ''}`}
+                {loading ? (
+                  <CircularProgress size={24} sx={{ color: 'white' }} />
+                ) : (
+                  depositToWallet ? 'Deposit Funds' : 'Save Payment Method'
+                )}
               </Button>
-              
-              <Divider sx={{ my: 3, borderColor: 'rgba(255, 255, 255, 0.1)' }} />
-              
-              <Typography variant="body2" color="text.secondary" align="center">
-                Funds will be available in your wallet immediately when using a credit/debit card.
-                Bank transfers may take 1-3 business days to process.
-              </Typography>
             </Box>
           </Grid>
         </Grid>
