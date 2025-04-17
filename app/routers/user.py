@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 from app.database import get_db
@@ -10,6 +10,10 @@ from datetime import datetime, timedelta
 from app.dependencies.auth import get_current_user
 from app.config import AppConfig
 from typing import Optional, Dict, Any
+import os
+import shutil
+import uuid
+from fastapi.staticfiles import StaticFiles
 
 router = APIRouter()
 
@@ -551,3 +555,460 @@ def search_users(query: str, exact: bool = False, db: Session = Depends(get_db),
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Error searching users: {str(e)}"
         )
+
+# Add these new models at the end of the existing models section
+class UserUpdateProfile(BaseModel):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    email: Optional[EmailStr] = None
+    date_of_birth: Optional[str] = None
+    phone_number: Optional[str] = None
+    country: Optional[str] = None
+    country_code: Optional[str] = None
+    address_line1: Optional[str] = None
+    address_line2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    postal_code: Optional[str] = None
+    avatar_url: Optional[str] = None
+    bio: Optional[str] = None
+
+class NotificationSettings(BaseModel):
+    email_notifications: Optional[bool] = True
+    push_notifications: Optional[bool] = True
+    transaction_alerts: Optional[bool] = True
+    marketing_emails: Optional[bool] = False
+    login_alerts: Optional[bool] = True
+    security_alerts: Optional[bool] = True
+
+class PasswordUpdate(BaseModel):
+    current_password: str
+    new_password: str
+
+@router.put("/update-profile/{user_id}")
+def update_user_profile(
+    user_id: int, 
+    profile: UserUpdateProfile, 
+    db: Session = Depends(get_db), 
+    current_user: str = Depends(get_current_user)
+):
+    """Update user profile information"""
+    # Check if the user exists
+    user = db.execute(
+        text("SELECT id, username FROM users WHERE id = :user_id"), 
+        {"user_id": user_id}
+    ).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check permissions: only the user themselves can update their profile (or an admin)
+    current_user_data = db.execute(
+        text("SELECT id, role FROM users WHERE username = :username"),
+        {"username": current_user}
+    ).first()
+    
+    if not current_user_data:
+        raise HTTPException(status_code=404, detail="Current user not found")
+    
+    current_user_id, role = current_user_data
+    if current_user_id != user_id and role != "admin":
+        raise HTTPException(status_code=403, detail="You don't have permission to update this user's profile")
+    
+    try:
+        # Update email address in users table if provided
+        if profile.email:
+            # Check if email is already in use by a different user
+            existing_email = db.execute(
+                text("SELECT id FROM users WHERE email = :email AND id != :user_id"),
+                {"email": profile.email, "user_id": user_id}
+            ).first()
+            
+            if existing_email:
+                raise HTTPException(status_code=400, detail="Email address is already in use")
+            
+            db.execute(
+                text("UPDATE users SET email = :email WHERE id = :user_id"),
+                {"email": profile.email, "user_id": user_id}
+            )
+        
+        # Check if metadata already exists
+        existing = db.execute(
+            text("SELECT id FROM user_metadata WHERE user_id = :user_id"),
+            {"user_id": user_id}
+        ).first()
+        
+        # Get existing profile data or create new if it doesn't exist
+        if existing:
+            current_profile_data = db.execute(
+                text("SELECT profile_data FROM user_metadata WHERE user_id = :user_id"),
+                {"user_id": user_id}
+            ).first()
+            profile_data = current_profile_data[0] if current_profile_data and current_profile_data[0] else {}
+        else:
+            profile_data = {}
+        
+        # Merge new profile values
+        profile_dict = {k: v for k, v in profile.dict().items() if v is not None}
+        if profile_dict:
+            if not profile_data:
+                profile_data = profile_dict
+            else:
+                profile_data.update(profile_dict)
+        
+        # Process database update
+        if existing:
+            # Update existing record
+            db.execute(
+                text("""
+                    UPDATE user_metadata SET 
+                    first_name = :first_name,
+                    last_name = :last_name,
+                    date_of_birth = :date_of_birth,
+                    country = :country,
+                    country_code = :country_code,
+                    profile_data = :profile_data,
+                    updated_at = :updated_at
+                    WHERE user_id = :user_id
+                """),
+                {
+                    "user_id": user_id,
+                    "first_name": profile.first_name,
+                    "last_name": profile.last_name,
+                    "date_of_birth": profile.date_of_birth,
+                    "country": profile.country,
+                    "country_code": profile.country_code,
+                    "profile_data": profile_data,
+                    "updated_at": datetime.utcnow()
+                }
+            )
+        else:
+            # Create new record
+            db.execute(
+                text("""
+                    INSERT INTO user_metadata 
+                    (user_id, first_name, last_name, date_of_birth, country, country_code, profile_data, created_at) 
+                    VALUES 
+                    (:user_id, :first_name, :last_name, :date_of_birth, :country, :country_code, :profile_data, :created_at)
+                """),
+                {
+                    "user_id": user_id,
+                    "first_name": profile.first_name,
+                    "last_name": profile.last_name,
+                    "date_of_birth": profile.date_of_birth,
+                    "country": profile.country,
+                    "country_code": profile.country_code,
+                    "profile_data": profile_data,
+                    "created_at": datetime.utcnow()
+                }
+            )
+        
+        db.commit()
+        return {"message": "Profile updated successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating profile: {str(e)}")
+
+@router.put("/notification-settings/{user_id}")
+def update_notification_settings(
+    user_id: int, 
+    settings: NotificationSettings, 
+    db: Session = Depends(get_db), 
+    current_user: str = Depends(get_current_user)
+):
+    """Update user notification settings"""
+    # Check if the user exists
+    user = db.execute(
+        text("SELECT id, username FROM users WHERE id = :user_id"), 
+        {"user_id": user_id}
+    ).first()
+    
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check permissions: only the user themselves can update their settings (or an admin)
+    current_user_data = db.execute(
+        text("SELECT id, role FROM users WHERE username = :username"),
+        {"username": current_user}
+    ).first()
+    
+    if not current_user_data:
+        raise HTTPException(status_code=404, detail="Current user not found")
+    
+    current_user_id, role = current_user_data
+    if current_user_id != user_id and role != "admin":
+        raise HTTPException(status_code=403, detail="You don't have permission to update this user's notification settings")
+    
+    try:
+        # Get existing metadata
+        metadata = db.execute(
+            text("SELECT id, profile_data FROM user_metadata WHERE user_id = :user_id"),
+            {"user_id": user_id}
+        ).first()
+        
+        if metadata:
+            metadata_id, profile_data = metadata
+            
+            # Extract notification settings
+            if profile_data is None:
+                profile_data = {}
+            
+            # Update notification settings
+            if 'notification_settings' not in profile_data:
+                profile_data['notification_settings'] = {}
+                
+            profile_data['notification_settings'] = settings.dict()
+            
+            # Update metadata
+            db.execute(
+                text("""
+                    UPDATE user_metadata SET
+                    profile_data = :profile_data,
+                    updated_at = :updated_at
+                    WHERE id = :id
+                """),
+                {
+                    "id": metadata_id,
+                    "profile_data": profile_data,
+                    "updated_at": datetime.utcnow()
+                }
+            )
+        else:
+            # Create new metadata with notification settings
+            profile_data = {
+                'notification_settings': settings.dict()
+            }
+            
+            db.execute(
+                text("""
+                    INSERT INTO user_metadata
+                    (user_id, profile_data, created_at)
+                    VALUES
+                    (:user_id, :profile_data, :created_at)
+                """),
+                {
+                    "user_id": user_id,
+                    "profile_data": profile_data,
+                    "created_at": datetime.utcnow()
+                }
+            )
+        
+        db.commit()
+        return {"message": "Notification settings updated successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating notification settings: {str(e)}")
+
+@router.put("/update-password/{user_id}")
+def update_password(
+    user_id: int, 
+    password_update: PasswordUpdate, 
+    db: Session = Depends(get_db), 
+    current_user: str = Depends(get_current_user)
+):
+    """Update user password"""
+    # Check permissions: only the user themselves can update their password
+    current_user_data = db.execute(
+        text("SELECT id, username, hashed_password FROM users WHERE username = :username"),
+        {"username": current_user}
+    ).first()
+    
+    if not current_user_data:
+        raise HTTPException(status_code=404, detail="Current user not found")
+    
+    current_user_id, username, hashed_password = current_user_data
+    if current_user_id != user_id:
+        raise HTTPException(status_code=403, detail="You can only update your own password")
+    
+    # Verify current password
+    if not bcrypt.checkpw(password_update.current_password.encode("utf-8"), hashed_password.encode("utf-8")):
+        raise HTTPException(status_code=401, detail="Current password is incorrect")
+    
+    # Validate new password
+    if len(password_update.new_password) < 8:
+        raise HTTPException(status_code=400, detail="New password must be at least 8 characters long")
+    
+    try:
+        # Hash new password
+        new_hashed_password = bcrypt.hashpw(password_update.new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        
+        # Update password
+        db.execute(
+            text("UPDATE users SET hashed_password = :hashed_password WHERE id = :user_id"),
+            {"hashed_password": new_hashed_password, "user_id": user_id}
+        )
+        
+        db.commit()
+        return {"message": "Password updated successfully"}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating password: {str(e)}")
+
+@router.get("/notification-settings/{user_id}")
+def get_notification_settings(
+    user_id: int, 
+    db: Session = Depends(get_db), 
+    current_user: str = Depends(get_current_user)
+):
+    """Get user notification settings"""
+    # Check permissions
+    current_user_data = db.execute(
+        text("SELECT id, role FROM users WHERE username = :username"),
+        {"username": current_user}
+    ).first()
+    
+    if not current_user_data:
+        raise HTTPException(status_code=404, detail="Current user not found")
+    
+    current_user_id, role = current_user_data
+    if current_user_id != user_id and role != "admin":
+        raise HTTPException(status_code=403, detail="You don't have permission to view this user's notification settings")
+    
+    # Get metadata
+    metadata = db.execute(
+        text("SELECT profile_data FROM user_metadata WHERE user_id = :user_id"),
+        {"user_id": user_id}
+    ).first()
+    
+    # Default notification settings
+    default_settings = {
+        "email_notifications": True,
+        "push_notifications": True,
+        "transaction_alerts": True,
+        "marketing_emails": False,
+        "login_alerts": True,
+        "security_alerts": True
+    }
+    
+    if metadata and metadata[0] and 'notification_settings' in metadata[0]:
+        settings = metadata[0]['notification_settings']
+        
+        # Ensure all expected keys are present
+        for key in default_settings:
+            if key not in settings:
+                settings[key] = default_settings[key]
+                
+        return settings
+    
+    return default_settings
+
+# Add avatar upload endpoint
+class AvatarResponse(BaseModel):
+    avatar_url: str
+
+@router.post("/upload-avatar/{user_id}", response_model=AvatarResponse)
+async def upload_avatar(
+    user_id: int, 
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    current_user: str = Depends(get_current_user)
+):
+    """Upload a profile avatar image"""
+    # Check permissions
+    current_user_data = db.execute(
+        text("SELECT id, role FROM users WHERE username = :username"),
+        {"username": current_user}
+    ).first()
+    
+    if not current_user_data:
+        raise HTTPException(status_code=404, detail="Current user not found")
+    
+    current_user_id, role = current_user_data
+    if current_user_id != user_id and role != "admin":
+        raise HTTPException(status_code=403, detail="You don't have permission to update this user's avatar")
+    
+    # Validate file type
+    allowed_types = ["image/jpeg", "image/png", "image/gif"]
+    content_type = file.content_type
+    
+    if content_type not in allowed_types:
+        raise HTTPException(
+            status_code=400, 
+            detail="Only JPEG, PNG, and GIF images are allowed"
+        )
+    
+    # Create avatars directory if it doesn't exist
+    upload_dir = "static/avatars"
+    if not os.path.exists(upload_dir):
+        os.makedirs(upload_dir)
+    
+    # Generate unique filename to prevent overwriting
+    file_extension = os.path.splitext(file.filename)[1]
+    unique_filename = f"{user_id}_{uuid.uuid4()}{file_extension}"
+    file_path = os.path.join(upload_dir, unique_filename)
+    
+    # Save the file
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Error saving file: {str(e)}"
+        )
+    finally:
+        file.file.close()
+    
+    # Generate URL for the avatar
+    avatar_url = f"/static/avatars/{unique_filename}"
+    
+    # Update user metadata with the new avatar URL
+    try:
+        # Check if metadata already exists
+        existing = db.execute(
+            text("SELECT id FROM user_metadata WHERE user_id = :user_id"),
+            {"user_id": user_id}
+        ).first()
+        
+        # Get existing profile data
+        if existing:
+            profile_data_result = db.execute(
+                text("SELECT profile_data FROM user_metadata WHERE user_id = :user_id"),
+                {"user_id": user_id}
+            ).first()
+            
+            profile_data = profile_data_result[0] if profile_data_result and profile_data_result[0] else {}
+        else:
+            profile_data = {}
+        
+        # Update avatar URL in profile_data
+        if not profile_data:
+            profile_data = {"avatar_url": avatar_url}
+        else:
+            profile_data["avatar_url"] = avatar_url
+        
+        # Update or insert metadata record
+        if existing:
+            db.execute(
+                text("""
+                    UPDATE user_metadata SET
+                    profile_data = :profile_data,
+                    updated_at = :updated_at
+                    WHERE user_id = :user_id
+                """),
+                {
+                    "user_id": user_id,
+                    "profile_data": profile_data,
+                    "updated_at": datetime.utcnow()
+                }
+            )
+        else:
+            db.execute(
+                text("""
+                    INSERT INTO user_metadata
+                    (user_id, profile_data, created_at)
+                    VALUES
+                    (:user_id, :profile_data, :created_at)
+                """),
+                {
+                    "user_id": user_id,
+                    "profile_data": profile_data,
+                    "created_at": datetime.utcnow()
+                }
+            )
+        
+        db.commit()
+        return {"avatar_url": avatar_url}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Error updating user metadata: {str(e)}")

@@ -43,14 +43,14 @@ def check_transactions_to_user(username="testuser2"):
         # First get the user ID for testuser2
         cur.execute("SELECT id FROM users WHERE username = %s", (username,))
         user_result = cur.fetchone()
-        
-        if not user_result:
+    
+    if not user_result:
             print(f"User {username} not found in the database.")
             return
-        
-        user_id = user_result[0]
+    
+    user_id = user_result[0]
         print(f"Found user {username} with ID {user_id}")
-        
+    
         # Query transactions where this user is the recipient
         cur.execute("""
             SELECT 
@@ -78,8 +78,8 @@ def check_transactions_to_user(username="testuser2"):
         """, (user_id,))
         
         transactions = cur.fetchall()
-        
-        if not transactions:
+    
+    if not transactions:
             print(f"No transactions found where {username} is the recipient.")
         else:
             print(f"\nFound {len(transactions)} transactions where {username} is the recipient:")
@@ -288,7 +288,7 @@ def fix_self_stripe_payments():
         conn.commit()
         print("\nFix completed! Your wallet balance should now be correct.")
         
-    except Exception as e:
+except Exception as e:
         conn.rollback()
         print(f"Error during fix: {str(e)}")
     finally:

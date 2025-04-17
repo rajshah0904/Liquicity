@@ -226,6 +226,39 @@ export const AuthProvider = ({ children }) => {
     }
   }, [token]); // Only depends on token, not getCurrentUser
 
+  // Refresh user data from the server
+  const refreshUser = async () => {
+    if (!token) {
+      return false;
+    }
+    
+    setLoading(true);
+    
+    try {
+      const response = await api.get('/user/user/', {
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      
+      if (response.data) {
+        setCurrentUser(response.data);
+        localStorage.setItem('current_user', JSON.stringify(response.data));
+        setIsAuthenticated(true);
+        return true;
+      }
+      return false;
+    } catch (err) {
+      console.error('Failed to refresh user data:', err);
+      if (err.response && err.response.status === 401) {
+        logout();
+      }
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Value object to be provided by the context
   const value = {
     currentUser,

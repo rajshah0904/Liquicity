@@ -1,10 +1,21 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+import os
 from app.routers import user, trade, transaction, wallet, blockchain, compliance, payment, deployment, stripe
+
+# Create static directory for avatars if it doesn't exist
+static_dir = "static"
+avatars_dir = os.path.join(static_dir, "avatars")
+if not os.path.exists(avatars_dir):
+    os.makedirs(avatars_dir, exist_ok=True)
 
 app = FastAPI(title="TerraFlow", 
               description="A cross-currency payment system using stablecoins",
               version="1.0.0")
+
+# Mount static files directory
+app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Configure CORS properly for frontend communication
 app.add_middleware(
