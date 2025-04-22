@@ -14,7 +14,7 @@ import {
   listBankAccounts, 
   linkBankAccount, 
   initiateDirectDeposit 
-} from '../utils/stripeUtils';
+} from '../utils/paymentUtils';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
 

@@ -44,12 +44,9 @@ import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
+import { processDirectPayment, getPaymentMethods } from '../utils/paymentUtils';
 import { SlideUpBox } from '../components/animations/AnimatedComponents';
-import { 
-  createDepositCheckout, 
-  getPaymentMethods,
-  processDirectPayment
-} from '../utils/stripeUtils';
+
 
 const SendMoney = () => {
   const navigate = useNavigate();
@@ -709,18 +706,21 @@ const SendMoney = () => {
         
         localStorage.setItem('pendingTransaction', JSON.stringify(transactionData));
         
-        createDepositCheckout(
+        // Calculate total amount including fee
+        const totalAmount = parseFloat(formData.amount) + estimatedFee;
+        console.log(`Creating checkout for payment to recipient ${recipientInfo.id}, amount: ${totalAmount}`);
+        
+        #DepositCheckout(
           Math.round(totalAmount * 100),
           formData.currency.toLowerCase(),
           currentUser,
           true, // Set to true for a payment
           {
-            is_payment: true,
-            recipient_id: recipientInfo.id,
-            stripe_payment: true,
+            is_payment: 'true',
+            recipient_id: recipientInfo.id.toString(), // Ensure recipient_id is passed as string
             payment_source: paymentSource,
-            transfer_type: 'direct_payment',
-            skip_sender_deduction: true // Ensure no wallet deduction
+            skip_sender_deduction: 'true', // Ensure no wallet deduction
+            description: `Payment to ${getRecipientDisplayName(recipientInfo)}`
           }
         )
         .then(checkoutUrl => {
@@ -772,7 +772,7 @@ const SendMoney = () => {
   const handleSend = () => {
     if (activeStep === 2) {
       handleSubmit();
-    }
+    }create
   };
 
   const handleBack = () => {

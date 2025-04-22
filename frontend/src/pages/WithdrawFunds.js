@@ -134,6 +134,9 @@ const WithdrawFunds = () => {
         
         // Update wallet balance
         setWalletBalance(prev => prev - parseFloat(amount));
+      } else if (result.url) {
+        // If backend returned a Stripe URL, redirect to it
+        window.location.href = result.url;
       } else {
         setError('Failed to process withdrawal. Please try again later.');
       }

@@ -1,8 +1,20 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends, Request, HTTPException, status
+from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from app.routers import user, trade, transaction, wallet, blockchain, compliance, payment, deployment
+from app.database import engine, Base, get_db
+from app.dependencies.auth import get_current_user
+from sqlalchemy import text
+import logging
 import os
-from app.routers import user, trade, transaction, wallet, blockchain, compliance, payment, deployment, stripe
+
+# Setup logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+# Create the database tables
+Base.metadata.create_all(bind=engine)
 
 # Create static directory for avatars if it doesn't exist
 static_dir = "static"
@@ -10,52 +22,53 @@ avatars_dir = os.path.join(static_dir, "avatars")
 if not os.path.exists(avatars_dir):
     os.makedirs(avatars_dir, exist_ok=True)
 
-app = FastAPI(title="TerraFlow", 
-              description="A cross-currency payment system using stablecoins",
-              version="1.0.0")
+app = FastAPI(title="TerraFlow API", version="0.1.0")
 
 # Mount static files directory
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
-# Configure CORS properly for frontend communication
+# Configure CORS
+origins = [
+    "http://localhost",
+    "http://localhost:3000",
+    "*"
+]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
-    expose_headers=["*"]
 )
 
-# Include the routers with appropriate prefixes and tags.
-app.include_router(user.router, prefix="/user", tags=["user"])
-app.include_router(trade.router, prefix="/trade", tags=["trade"])
-app.include_router(transaction.router, prefix="/transaction", tags=["transaction"])
-app.include_router(wallet.router, prefix="/wallet", tags=["wallet"])
+# Include routers
+app.include_router(user.router, prefix="/user", tags=["users"])
+app.include_router(wallet.router, prefix="/wallet", tags=["wallets"])
+app.include_router(transaction.router, prefix="/transaction", tags=["transactions"])
 app.include_router(blockchain.router, prefix="/blockchain", tags=["blockchain"])
 app.include_router(compliance.router, prefix="/compliance", tags=["compliance"])
-app.include_router(payment.router, prefix="/payment", tags=["payment"])
-app.include_router(deployment.router, prefix="/deployment", tags=["deployment"])
-app.include_router(stripe.router, prefix="/stripe", tags=["stripe"])
+app.include_router(payment.router, prefix="/payment", tags=["payments"])
+app.include_router(deployment.router, prefix="/deployment", tags=["deployments"])
+app.include_router(trade.router, prefix="/trade", tags=["trading"])
 
-# Temporarily commented out AI router
-# app.include_router(ai.router, prefix="/ai", tags=["ai"])
+@app.get("/", tags=["status"])
+async def root():
+    """API root endpoint"""
+    return {"message": "Welcome to TerraFlow API", "status": "online"}
 
-@app.get("/")
-def read_root():
+@app.get("/health", tags=["status"])
+async def health_check(db=Depends(get_db)):
+    """Check API and database health"""
+    try:
+        # Try to execute a simple query
+        db.execute(text("SELECT 1"))
+        db_status = "connected"
+    except Exception as e:
+        db_status = f"error: {str(e)}"
+    
     return {
-        "message": "Welcome to TerraFlow!",
-        "description": "A cross-currency payment system using stablecoins as an intermediary",
-        "endpoints": {
-            "user": "/user - User management endpoints",
-            "wallet": "/wallet - Wallet management endpoints",
-            "transaction": "/transaction - Process cross-currency transactions",
-            "trade": "/trade - Legacy trade endpoints",
-            "blockchain": "/blockchain - Blockchain wallet endpoints",
-            "compliance": "/compliance - KYC and AML compliance endpoints",
-            "payment": "/payment - Deposit, withdrawal, and transfer endpoints",
-            "deployment": "/deployment - Smart contract deployment endpoints",
-            # Temporarily commented out
-            # "ai": "/ai - AI agent endpoints"
-        }
+        "status": "healthy",
+        "database": db_status,
+        "version": "0.1.0"
     }
