@@ -10,6 +10,7 @@ from typing import Dict, Any, Optional
 
 from .payment_service import receive_fiat, send_fiat
 from ..providers.bridge_adapter import get_bridge_provider
+from ..providers.factory import get_provider
 
 logger = logging.getLogger(__name__)
 
@@ -22,7 +23,8 @@ async def transfer_cross_border(
     src_chain: str = "1", # Ethereum Mainnet chain ID
     dst_chain: str = "137", # Polygon chain ID
     recipient: str = None,
-    metadata: Optional[Dict[str, Any]] = None
+    metadata: Optional[Dict[str, Any]] = None,
+    dst_currency: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     Execute a cross-border transfer using cross-chain bridges as an intermediary.
@@ -47,6 +49,7 @@ async def transfer_cross_border(
         dst_chain: Destination blockchain chain ID (default: "137" for Polygon)
         recipient: Recipient wallet address on destination chain
         metadata: Optional additional data for the transaction
+        dst_currency: Optional destination currency
         
     Returns:
         A dictionary with the results of each step
@@ -66,7 +69,7 @@ async def transfer_cross_border(
     try:
         # Step 1: Pull local fiat from user's payment source
         logger.info(f"Initiating fiat debit for user {user_id}, amount {amount} {currency}")
-        result["debit"] = await receive_fiat(user_id, amount, currency)
+        result["debit"] = await receive_fiat(user_id, amount, currency, country_code=src_cc)
         
         # Step 2: On-ramp via Stargate (unified liquidity pools across chains)
         logger.info(f"Bridging {amount} {currency} from chain {src_chain} to {dst_chain}")
@@ -82,11 +85,11 @@ async def transfer_cross_border(
         result["bridge_offramp"] = await bridge.offramp(amount, currency, dst_chain, bank_account_id or user_id)
         
         # Step 5: Pay out to the recipient
-        logger.info(f"Sending fiat payout of {amount} {currency} to {dst_cc}")
+        logger.info(f"Sending fiat payout of {amount} {dst_currency or currency} to {dst_cc}")
         result["payout"] = await send_fiat(
             user_id=user_id, 
             amount=amount, 
-            currency=currency, 
+            currency=dst_currency or currency, 
             country_code=dst_cc,
             metadata=metadata
         )
@@ -161,3 +164,103 @@ async def _handle_transfer_fallback(
         result["status"] = "offramp_complete_payout_failed"
         
     # Add additional logic for other failure scenarios if needed 
+
+async def transfer_domestic(
+    user_id: str,
+    amount: float,
+    country_code: str,
+    currency: str,
+    preferred_rail: Optional[str] = None,
+    metadata: Optional[Dict[str, Any]] = None
+) -> Dict[str, Any]:
+    """
+    Execute a domestic transfer within the same country.
+    
+    This optimized flow skips the blockchain bridge for same-country transfers,
+    directly connecting the source and destination using the appropriate
+    payment provider for the given country.
+    
+    Args:
+        user_id: ID of the user initiating the transfer
+        amount: Amount to transfer
+        country_code: Country code for both source and destination
+        currency: Currency to use (e.g., "USD")
+        preferred_rail: Optional preferred payment rail/method
+        metadata: Optional additional data for the transaction
+        
+    Returns:
+        A dictionary with the results of the transfer
+        
+    Raises:
+        ValueError: If the transfer fails
+    """
+    result = {
+        "debit": None,
+        "payout": None,
+        "status": "pending",
+        "errors": []
+    }
+    
+    try:
+        # Country code to uppercase
+        country = country_code.upper()
+        
+        # Get the appropriate provider for this country
+        provider = get_provider(country)
+        
+        # Prepare metadata
+        transfer_metadata = {
+            "user_id": user_id,
+            "transfer_type": "domestic",
+            "country": country,
+        }
+        
+        if metadata:
+            transfer_metadata.update(metadata)
+        
+        logger.info(f"Initiating domestic transfer for user {user_id}, amount {amount} {currency} in {country}")
+        
+        # Step 1: Pull funds from source account
+        result["debit"] = await receive_fiat(user_id, amount, currency, country_code=country)
+        
+        logger.info(f"Debit completed with transaction ID: {result['debit'].transaction_id}")
+        
+        # Step 2: Pay out to destination account in the same country
+        logger.info(f"Sending domestic payout of {amount} {currency} in {country}")
+        result["payout"] = await send_fiat(
+            user_id=user_id, 
+            amount=amount, 
+            currency=currency, 
+            country_code=country,
+            preferred_rail=preferred_rail,
+            metadata=transfer_metadata
+        )
+        
+        logger.info(f"Payout completed with transaction ID: {result['payout'].transaction_id}")
+        
+        result["status"] = "completed"
+        return result
+        
+    except Exception as e:
+        logger.error(f"Error during domestic transfer: {str(e)}")
+        result["status"] = "failed"
+        result["errors"].append(str(e))
+        
+        # Attempt fallback and recovery if debit succeeded but payout failed
+        if result["debit"] and not result["payout"]:
+            try:
+                logger.info(f"Initiating refund for user {user_id} of {amount} {currency}")
+                await send_fiat(
+                    user_id=user_id, 
+                    amount=amount, 
+                    currency=currency, 
+                    country_code=country,
+                    refund=True
+                )
+                result["status"] = "refunded"
+            except Exception as fallback_error:
+                logger.error(f"Refund failed: {str(fallback_error)}")
+                result["errors"].append(f"Refund error: {str(fallback_error)}")
+                result["status"] = "debit_succeeded_payout_failed_refund_failed"
+        
+        return result 

@@ -40,7 +40,7 @@ async def run_tests():
 
     # Create a bank account object for Harry Potter using details from the image
     destination_account = USBankAccount(
-        routing_number="121141822",  # Harry's Bank of America routing number
+        routing_number="021000021",  # Valid JP Morgan Chase routing number that passes checksum
         account_number="123456789",  # Harry's account number
         account_type="checking"      # Harry's account type
     )

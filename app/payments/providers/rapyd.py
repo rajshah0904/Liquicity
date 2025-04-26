@@ -380,7 +380,8 @@ class RapydProvider(PaymentProvider):
         amount: float,
         currency: str,
         account: BankAccount,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        preferred_rail: Optional[str] = None  # Added to match interface, even if unused
     ) -> TransactionResult:
         """
         Pull funds from an international bank account
@@ -485,7 +486,8 @@ class RapydProvider(PaymentProvider):
         amount: float,
         currency: str,
         account: BankAccount,
-        metadata: Optional[Dict[str, Any]] = None
+        metadata: Optional[Dict[str, Any]] = None,
+        preferred_rail: Optional[str] = None  # Added to match interface, even if unused
     ) -> TransactionResult:
         """
         Push funds to an international bank account
