@@ -9,7 +9,6 @@ from app.payments.providers.modern_treasury import ModernTreasuryProvider, USBan
 from app.payments.providers.rapyd import RapydProvider, InternationalBankAccount, SupportedCountries
 from app.payments.providers.factory import get_provider
 from app.payments.providers.stablecoin_base import StablecoinResult, StablecoinProvider
-from app.payments.providers.circle_provider import CircleProvider, CircleStablecoinResult
 
 __all__ = [
     'BankAccount',
@@ -24,6 +23,4 @@ __all__ = [
     'get_provider',
     'StablecoinResult',
     'StablecoinProvider',
-    'CircleProvider',
-    'CircleStablecoinResult',
 ] 

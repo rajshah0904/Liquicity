@@ -38,3 +38,9 @@ pytest==7.4.2
 stripe==5.37.0
 
 # Run with: pip install -r requirements.txt
+
+# Node.js dependencies (installed via npm)
+# @stargate-xyz/sdk - Cross-chain bridging SDK
+# bignumber.js - Precise number handling for crypto
+# Note: Run the following commands to install the Node.js dependencies:
+# npm install @stargate-xyz/sdk bignumber.js

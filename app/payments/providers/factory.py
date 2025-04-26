@@ -3,8 +3,6 @@ from typing import Dict, Optional, Type, Union, cast
 from .modern_treasury import ModernTreasuryProvider
 from .rapyd import RapydProvider
 from .base import PaymentProvider
-from .circle_provider import CircleProvider
-from .stablecoin_base import StablecoinProvider
 
 # Map of country codes to provider classes
 COUNTRY_PROVIDER_MAP: Dict[str, Type[PaymentProvider]] = {
@@ -16,7 +14,6 @@ COUNTRY_PROVIDER_MAP: Dict[str, Type[PaymentProvider]] = {
 
 # Provider instances cache
 _provider_instances: Dict[str, PaymentProvider] = {}
-_stablecoin_provider_instance: Optional[CircleProvider] = None
 
 def get_provider(country_code: str) -> PaymentProvider:
     """
@@ -62,16 +59,5 @@ def get_provider(country_code: str) -> PaymentProvider:
     
     return provider
 
-def get_stablecoin_provider() -> StablecoinProvider:
-    """
-    Get the stablecoin provider instance.
-    
-    Returns:
-        An instance of StablecoinProvider (currently only CircleProvider is supported)
-    """
-    global _stablecoin_provider_instance
-    
-    if _stablecoin_provider_instance is None:
-        _stablecoin_provider_instance = CircleProvider()
-        
-    return _stablecoin_provider_instance 
+# Note: Bridge provider functionality has been moved to TypeScript
+# and is available in factory.ts as getBridgeProvider() 
