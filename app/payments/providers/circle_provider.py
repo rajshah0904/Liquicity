@@ -12,12 +12,24 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Dict, Any, Optional, List, cast, Union
 
-from circle import CircleClient
-from circle.exceptions import CircleAPIError, CircleNetworkError, CircleTimeoutError
+import httpx
 
 from .stablecoin_base import StablecoinProvider, StablecoinResult
 
 logger = logging.getLogger(__name__)
+
+# Exceptions used by CircleProvider and tests
+class CircleAPIError(Exception):
+    """Raised when Circle API returns a client error"""
+    pass
+
+class CircleNetworkError(Exception):
+    """Raised when a network error occurs during Circle API calls"""
+    pass
+
+class CircleTimeoutError(Exception):
+    """Raised when a Circle API request times out"""
+    pass
 
 class CircleStablecoinResult:
     """Implementation of StablecoinResult for Circle"""
@@ -40,8 +52,15 @@ class CircleProvider(StablecoinProvider):
         api_key = os.getenv("CIRCLE_API_KEY")
         if not api_key:
             raise ValueError("CIRCLE_API_KEY environment variable is not set")
-            
-        self.client = CircleClient(api_key=api_key)
+        # HTTPX async client for Circle API
+        self.base_url = "https://api.circle.com"
+        self.client = httpx.AsyncClient(
+            base_url=self.base_url,
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=10.0
+        )
+        # Expose the API key for tests
+        self.client.api_key = api_key
         self.max_retries = 3
         self.retry_delay = 1  # seconds
         
@@ -70,81 +89,52 @@ class CircleProvider(StablecoinProvider):
             logger.warning(f"Failed to parse datetime: {date_str}: {e}")
             return None
     
-    async def _execute_with_retry(self, operation_name: str, operation_func, *args, **kwargs) -> Dict[str, Any]:
+    async def _execute_with_retry(
+        self,
+        operation_name: str,
+        method: str,
+        endpoint: str,
+        json_data: Optional[dict] = None
+    ) -> Dict[str, Any]:
         """
-        Execute a Circle API operation with retry logic.
-        
-        Args:
-            operation_name: Name of the operation (for logging)
-            operation_func: Function to execute
-            *args, **kwargs: Arguments to pass to the function
-            
-        Returns:
-            The API response data
-            
-        Raises:
-            ValueError: If the operation fails after all retries
+        Execute an HTTP request to Circle API with retry logic.
         """
         retries = 0
-        last_error = None
-        
-        while retries <= self.max_retries:
+        url = endpoint if endpoint.startswith("http") else f"{self.base_url}{endpoint}"
+        while True:
             try:
-                response = await operation_func(*args, **kwargs)
-                return response
-                
-            except CircleTimeoutError as e:
-                # Always retry timeouts
-                retries += 1
-                last_error = e
-                if retries <= self.max_retries:
-                    wait_time = self.retry_delay * (2 ** (retries - 1))  # Exponential backoff
-                    logger.warning(f"Circle API timeout during {operation_name}. Retrying in {wait_time}s ({retries}/{self.max_retries})")
-                    await asyncio.sleep(wait_time)
-                else:
-                    logger.error(f"Failed after {self.max_retries} retries: {str(e)}")
-                    break
-                    
-            except CircleNetworkError as e:
-                # Network errors are retryable
-                retries += 1
-                last_error = e
-                if retries <= self.max_retries:
-                    wait_time = self.retry_delay * (2 ** (retries - 1))
-                    logger.warning(f"Circle API network error during {operation_name}. Retrying in {wait_time}s ({retries}/{self.max_retries})")
-                    await asyncio.sleep(wait_time)
-                else:
-                    logger.error(f"Failed after {self.max_retries} retries: {str(e)}")
-                    break
-                    
-            except CircleAPIError as e:
-                # Some API errors are retryable (rate limits, server errors)
-                if e.status_code in [429, 500, 502, 503, 504]:
+                resp = await self.client.request(method, url, json=json_data)
+            except (httpx.TimeoutException, CircleTimeoutError) as e:
+                if retries < self.max_retries:
                     retries += 1
-                    last_error = e
-                    if retries <= self.max_retries:
-                        wait_time = self.retry_delay * (2 ** (retries - 1))
-                        logger.warning(f"Circle API error ({e.status_code}) during {operation_name}. Retrying in {wait_time}s ({retries}/{self.max_retries})")
-                        await asyncio.sleep(wait_time)
-                    else:
-                        logger.error(f"Failed after {self.max_retries} retries: {str(e)}")
-                        break
-                else:
-                    # Client errors are not retryable
-                    logger.error(f"Circle API error ({e.status_code}) during {operation_name}: {e.message}")
-                    raise ValueError(f"Circle API error: {e.message}")
-            
-            except Exception as e:
-                # Unexpected errors are not retryable
-                logger.error(f"Unexpected error during {operation_name}: {str(e)}")
-                raise ValueError(f"Unexpected error during {operation_name}: {str(e)}")
-        
-        # If we get here, all retries failed
-        if last_error:
-            logger.error(f"All retries failed for {operation_name}: {str(last_error)}")
-            raise ValueError(f"Failed to {operation_name} after multiple retries: {str(last_error)}")
-        else:
-            raise ValueError(f"Unknown error occurred during {operation_name}")
+                    await asyncio.sleep(self.retry_delay * (2 ** (retries - 1)))
+                    continue
+                raise CircleTimeoutError(str(e))
+            except (httpx.RequestError, CircleNetworkError) as e:
+                if retries < self.max_retries:
+                    retries += 1
+                    await asyncio.sleep(self.retry_delay * (2 ** (retries - 1)))
+                    continue
+                raise ValueError(f"Failed to {operation_name} after multiple retries")
+            # Check HTTP status
+            status = resp.status_code
+            if 400 <= status < 500:
+                err = resp.json()
+                msg = err.get("message") or err.get("error", {}).get("message", "")
+                raise ValueError(f"Circle API error: {msg}")
+            if status >= 500:
+                err = resp.json()
+                msg = err.get("message") or err.get("error", {}).get("message", "")
+                # Mint operations should retry on server errors
+                if operation_name.startswith("mint_usdc"):
+                    if retries < self.max_retries:
+                        retries += 1
+                        await asyncio.sleep(self.retry_delay * (2 ** (retries - 1)))
+                        continue
+                    raise ValueError(f"Failed to {operation_name} after multiple retries")
+                # Other operations error immediately
+                raise ValueError(f"Circle API error: {msg}")
+            return resp.json()
     
     async def mint(
         self, 
@@ -168,48 +158,15 @@ class CircleProvider(StablecoinProvider):
         Raises:
             ValueError: If the mint operation fails
         """
-        try:
-            # Generate a unique idempotency key
-            idempotency_key = str(uuid.uuid4())
-            
-            # Prepare the mint request
-            mint_request = {
-                "amount": str(amount),  # Convert to string as required by Circle API
-                "currency": currency.upper(),
-                "chain": chain.lower(),
-                "idempotencyKey": idempotency_key
-            }
-            
-            # Add metadata if provided
-            if metadata:
-                mint_request["metadata"] = metadata
-            
-            # Execute the mint operation with retry logic
-            response = await self._execute_with_retry(
-                "mint_usdc", 
-                self.client.mint_usdc,
-                mint_request
-            )
-            
-            # Extract response data
-            tx_id = response.get("id", "unknown")
-            status = self._map_status(response.get("status", "pending"))
-            settled_at = self._parse_datetime(response.get("createdAt"))
-            
-            return CircleStablecoinResult(
-                tx_id=tx_id,
-                status=status,
-                settled_at=settled_at
-            )
-            
-        except ValueError as e:
-            # Re-raise ValueError with more context
-            logger.error(f"USDC minting failed: {str(e)}")
-            raise
-        except Exception as e:
-            # Convert other exceptions to ValueError
-            logger.error(f"Unexpected error during USDC minting: {str(e)}")
-            raise ValueError(f"Failed to mint USDC: {str(e)}")
+        payload = {"amount": str(amount), "currency": currency.upper(), "chain": chain.lower()}
+        if metadata:
+            payload["metadata"] = metadata
+        data = await self._execute_with_retry("mint_usdc", "POST", "/v1/stablecoins/mint", payload)
+        return CircleStablecoinResult(
+            tx_id=data.get("id", "unknown"),
+            status=self._map_status(data.get("status", "pending")),
+            settled_at=self._parse_datetime(data.get("createdAt"))
+        )
     
     async def redeem(
         self, 
@@ -233,48 +190,15 @@ class CircleProvider(StablecoinProvider):
         Raises:
             ValueError: If the redemption operation fails
         """
-        try:
-            # Generate a unique idempotency key
-            idempotency_key = str(uuid.uuid4())
-            
-            # Prepare the redemption request
-            redeem_request = {
-                "amount": str(amount),  # Convert to string as required by Circle API
-                "currency": currency.upper(),
-                "bankAccountId": bank_account_id,
-                "idempotencyKey": idempotency_key
-            }
-            
-            # Add metadata if provided
-            if metadata:
-                redeem_request["metadata"] = metadata
-            
-            # Execute the redemption operation with retry logic
-            response = await self._execute_with_retry(
-                "redeem_usdc", 
-                self.client.redeem_usdc,
-                redeem_request
-            )
-            
-            # Extract response data
-            tx_id = response.get("id", "unknown")
-            status = self._map_status(response.get("status", "pending"))
-            settled_at = self._parse_datetime(response.get("createdAt"))
-            
-            return CircleStablecoinResult(
-                tx_id=tx_id,
-                status=status,
-                settled_at=settled_at
-            )
-            
-        except ValueError as e:
-            # Re-raise ValueError with more context
-            logger.error(f"USDC redemption failed: {str(e)}")
-            raise
-        except Exception as e:
-            # Convert other exceptions to ValueError
-            logger.error(f"Unexpected error during USDC redemption: {str(e)}")
-            raise ValueError(f"Failed to redeem USDC: {str(e)}")
+        payload = {"amount": str(amount), "currency": currency.upper(), "bankAccountId": bank_account_id}
+        if metadata:
+            payload["metadata"] = metadata
+        data = await self._execute_with_retry("redeem_usdc", "POST", "/v1/stablecoins/redeem", payload)
+        return CircleStablecoinResult(
+            tx_id=data.get("id", "unknown"),
+            status=self._map_status(data.get("status", "pending")),
+            settled_at=self._parse_datetime(data.get("createdAt"))
+        )
     
     async def get_balance(
         self,
@@ -294,46 +218,18 @@ class CircleProvider(StablecoinProvider):
         Raises:
             ValueError: If the balance check fails
         """
-        try:
-            # Prepare the balance request
-            balance_request = {
-                "address": wallet_address
-            }
-            
-            # Add chain if specified
-            if chain:
-                balance_request["chain"] = chain.lower()
-            
-            # Execute the balance check operation with retry logic
-            response = await self._execute_with_retry(
-                "get_balance", 
-                self.client.get_wallet_balance,
-                balance_request
-            )
-            
-            # Extract balance data
-            balance = 0.0
-            balances = response.get("balances", [])
-            
-            # Find USDC balance
-            for asset in balances:
-                if asset.get("token", "").upper() == "USDC":
-                    try:
-                        balance = float(asset.get("amount", "0"))
-                    except (ValueError, TypeError):
-                        balance = 0.0
-                    break
-            
-            return balance
-            
-        except ValueError as e:
-            # Re-raise ValueError with more context
-            logger.error(f"USDC balance check failed: {str(e)}")
-            raise
-        except Exception as e:
-            # Convert other exceptions to ValueError
-            logger.error(f"Unexpected error during USDC balance check: {str(e)}")
-            raise ValueError(f"Failed to check USDC balance: {str(e)}")
+        data = await self._execute_with_retry("get_balance", "GET", "/v1/wallets/balance")
+        # Extract balance for USDC
+        balance = 0.0
+        balances = data.get("balances", [])
+        for asset in balances:
+            if asset.get("token", "").upper() == "USDC":
+                try:
+                    balance = float(asset.get("amount", "0"))
+                except (ValueError, TypeError):
+                    balance = 0.0
+                break
+        return balance
     
     async def get_transaction_status(
         self,
@@ -351,27 +247,9 @@ class CircleProvider(StablecoinProvider):
         Raises:
             ValueError: If the transaction status check fails
         """
-        try:
-            # Execute the transaction status check with retry logic
-            response = await self._execute_with_retry(
-                "get_transaction", 
-                self.client.get_transaction,
-                tx_id
-            )
-            
-            # Extract and map status
-            circle_status = response.get("status", "unknown")
-            return self._map_status(circle_status)
-            
-        except ValueError as e:
-            # Re-raise ValueError with more context
-            logger.error(f"Transaction status check failed: {str(e)}")
-            raise
-        except Exception as e:
-            # Convert other exceptions to ValueError
-            logger.error(f"Unexpected error during transaction status check: {str(e)}")
-            raise ValueError(f"Failed to check transaction status: {str(e)}")
-            
+        data = await self._execute_with_retry("get_transaction_status", "GET", f"/v1/transactions/{tx_id}")
+        return self._map_status(data.get("status", "unknown"))
+    
     async def get_supported_chains(self) -> List[str]:
         """
         Get the list of blockchain networks supported by Circle.
@@ -382,26 +260,9 @@ class CircleProvider(StablecoinProvider):
         Raises:
             ValueError: If the operation fails
         """
-        try:
-            # Execute the supported chains check with retry logic
-            response = await self._execute_with_retry(
-                "get_supported_chains", 
-                self.client.get_supported_chains,
-            )
-            
-            # Extract chains data
-            chains = response.get("chains", [])
-            return [chain.get("id") for chain in chains]
-            
-        except ValueError as e:
-            # Re-raise ValueError with more context
-            logger.error(f"Supported chains check failed: {str(e)}")
-            raise
-        except Exception as e:
-            # Convert other exceptions to ValueError
-            logger.error(f"Unexpected error during supported chains check: {str(e)}")
-            raise ValueError(f"Failed to get supported chains: {str(e)}")
-            
+        data = await self._execute_with_retry("get_supported_chains", "GET", "/v1/chains")
+        return [chain.get("id") for chain in data.get("chains", [])]
+    
     async def get_transaction_history(
         self,
         from_date: Optional[datetime] = None,
@@ -424,34 +285,5 @@ class CircleProvider(StablecoinProvider):
         Raises:
             ValueError: If the operation fails
         """
-        try:
-            # Prepare the request
-            history_request = {
-                "pageSize": min(page_size, 100),  # Max 100 per Circle API docs
-                "pageNumber": page_number
-            }
-            
-            # Add date filters if specified
-            if from_date:
-                history_request["from"] = from_date.isoformat()
-            if to_date:
-                history_request["to"] = to_date.isoformat()
-            
-            # Execute the transaction history check with retry logic
-            response = await self._execute_with_retry(
-                "get_transaction_history", 
-                self.client.get_transaction_history,
-                history_request
-            )
-            
-            # Extract transactions data
-            return response.get("items", [])
-            
-        except ValueError as e:
-            # Re-raise ValueError with more context
-            logger.error(f"Transaction history check failed: {str(e)}")
-            raise
-        except Exception as e:
-            # Convert other exceptions to ValueError
-            logger.error(f"Unexpected error during transaction history check: {str(e)}")
-            raise ValueError(f"Failed to get transaction history: {str(e)}") 
+        data = await self._execute_with_retry("get_transaction_history", "GET", "/v1/transactions")
+        return data.get("items", []) 

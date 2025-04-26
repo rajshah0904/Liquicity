@@ -1,0 +1,98 @@
+Metadata-Version: 2.1
+Name: circle-sdk
+Version: 0.1.0b14
+Summary: Python SDK for Circle APIs
+Home-page: 
+Author: Circle SDK Developers
+Author-email: sdk-developers+pypi@circle.com
+Keywords: circle,circle.com,usdc,euroc,stablecoins
+Requires-Python: >=3.7
+Description-Content-Type: text/markdown
+License-File: LICENSE
+Requires-Dist: certifi >=14.5.14
+Requires-Dist: frozendict ~=2.3.4
+Requires-Dist: python-dateutil ~=2.7.0
+Requires-Dist: setuptools >=21.0.0
+Requires-Dist: typing-extensions ~=4.3.0
+Requires-Dist: urllib3 ~=1.26.7
+
+# Circle APIs Python Library
+
+[![pypi](https://img.shields.io/pypi/v/circle-sdk)](https://pypi.org/project/circle-sdk)
+[![pypi](https://img.shields.io/pypi/dm/circle-sdk)](https://pypi.org/project/circle-sdk)
+
+The Circle Python library provides convenient access to the Circle API for
+applications written in Python. For the API reference, see the [Circle API docs](https://developers.circle.com/reference). Also see this project's [PyPI package page](https://pypi.org/project/circle-sdk/).
+
+## Requirements
+
+Python 3.7+ and Node 10+ (optional for contributing and development).
+
+## Installation
+
+The recommended way of installation is using the Python Package Index (PyPI): 
+```sh
+python3 -m pip install circle-sdk
+```
+
+The other option requires you to clone this repo and run
+```sh
+python3 -m pip install -e /Path/to/this/repo/root
+``` 
+
+## Python Typing
+We strongly recommended that you use this SDK with Python typing extensions: we recommend using the VS Code IDE, downloading the [Python IntelliSense extension](https://marketplace.visualstudio.com/items?itemName=ms-python.python), and enabling type checking for your workspace (see [this guide](https://www.emmanuelgautier.com/blog/enable-vscode-python-type-checking)).
+
+## Usage
+
+```python
+import circle
+from circle.apis.tags import subscriptions_api
+from circle.model.subscription_request import SubscriptionRequest
+from pprint import pprint
+
+# Configure global settings
+circle.base_url = circle.Environment.SANDBOX_BASE_URL
+circle.api_key = '<replace-me-with-your-api-key>'
+
+# Choose API driver
+api_instance = subscriptions_api.SubscriptionsApi()
+
+# Prepare request data
+body = SubscriptionRequest(
+    endpoint="https://example.org/py/notifications"
+)
+
+# Send request
+try:
+    api_response = api_instance.create_subscription(body=body)
+    pprint(api_response)
+except circle.ApiException as e:
+    print("Exception when calling SubscriptionsApi->create_subscription: %s\n" % e)
+
+```
+
+## Development
+Clone this repo and install development dependencies using 
+
+```sh
+# For codegen tools and git hook checks
+yarn install
+
+# For the Python SDK's dependencies
+python3 -m pip install -r requirements.txt
+```
+
+1. Run the codegen command to generate the source code for thi
+s SDK from the `.openapi-generator/sdk.json` OpenAPI specificat
+ion file:
+
+    ```sh
+    yarn gen-sdk
+    ```
+
+## Contributions
+
+Please follow the [Conventional Commits][convencomms] format for all commits when creating a contributing pull request for this repo.
+
+[convencomms]: https://www.conventionalcommits.org/en/v1.0.0/

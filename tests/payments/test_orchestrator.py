@@ -25,13 +25,9 @@ def mock_payment_service():
     with patch('app.payments.services.orchestrator.receive_fiat') as mock_receive, \
          patch('app.payments.services.orchestrator.send_fiat') as mock_send:
         
-        # Configure mocks
-        mock_receive.return_value = AsyncMock(
-            return_value=MockTransactionResult("debit_123", "completed", 100.0, "USD")
-        )()
-        mock_send.return_value = AsyncMock(
-            return_value=MockTransactionResult("payout_456", "completed", 100.0, "USD")
-        )()
+        # Configure mocks - don't return AsyncMock() that needs to be awaited again
+        mock_receive.return_value = MockTransactionResult("debit_123", "completed", 100.0, "USD")
+        mock_send.return_value = MockTransactionResult("payout_456", "completed", 100.0, "USD")
         
         yield (mock_receive, mock_send)
 

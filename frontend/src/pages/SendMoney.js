@@ -710,23 +710,25 @@ const SendMoney = () => {
         const totalAmount = parseFloat(formData.amount) + estimatedFee;
         console.log(`Creating checkout for payment to recipient ${recipientInfo.id}, amount: ${totalAmount}`);
         
-        #DepositCheckout(
+        createDepositCheckout(
           Math.round(totalAmount * 100),
           formData.currency.toLowerCase(),
           currentUser,
           true, // Set to true for a payment
           {
             is_payment: 'true',
-            recipient_id: recipientInfo.id.toString(), // Ensure recipient_id is passed as string
+            recipient_id: recipientInfo.id.toString(),
             payment_source: paymentSource,
-            skip_sender_deduction: 'true', // Ensure no wallet deduction
+            skip_sender_deduction: 'true',
             description: `Payment to ${getRecipientDisplayName(recipientInfo)}`
           }
         )
         .then(checkoutUrl => {
-          if (checkoutUrl) {
+          if (typeof checkoutUrl === 'string') {
             window.location.href = checkoutUrl;
-      } else {
+          } else if (checkoutUrl && checkoutUrl.url) {
+            window.location.href = checkoutUrl.url;
+          } else {
             throw new Error("No checkout URL returned");
           }
         })

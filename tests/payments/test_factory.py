@@ -21,8 +21,15 @@ def reset_caches():
 @pytest.mark.asyncio
 async def test_get_provider_us():
     """Test that get_provider returns a ModernTreasuryProvider for US"""
-    with patch('app.payments.providers.modern_treasury.os') as mock_os:
-        mock_os.getenv.return_value = "test_api_key"
+    with patch('app.payments.providers.modern_treasury.os') as mock_os, \
+         patch('app.payments.providers.modern_treasury.ModernTreasury') as mock_mt_client:
+        
+        # Configure the mock os module for tests
+        mock_os.getenv.side_effect = lambda key, default=None: {
+            "MODERN_TREASURY_API_KEY": "test_api_key",
+            "MODERN_TREASURY_ORG_ID": "test_org_id",
+            "TESTING": "1"  # Set test environment flag
+        }.get(key, default)
         
         provider = get_provider("US")
         
@@ -34,10 +41,10 @@ async def test_get_provider_us():
 async def test_get_provider_ca():
     """Test that get_provider returns a RapydProvider for CA"""
     with patch('app.payments.providers.rapyd.os') as mock_os:
-        mock_os.getenv.side_effect = lambda x: {
+        mock_os.getenv.side_effect = lambda key, default=None: {
             "RAPYD_ACCESS_KEY": "test_access_key",
             "RAPYD_SECRET_KEY": "test_secret_key",
-        }.get(x)
+        }.get(key, default)
         
         provider = get_provider("CA")
         
@@ -49,10 +56,10 @@ async def test_get_provider_ca():
 async def test_get_provider_mx():
     """Test that get_provider returns a RapydProvider for MX"""
     with patch('app.payments.providers.rapyd.os') as mock_os:
-        mock_os.getenv.side_effect = lambda x: {
+        mock_os.getenv.side_effect = lambda key, default=None: {
             "RAPYD_ACCESS_KEY": "test_access_key",
             "RAPYD_SECRET_KEY": "test_secret_key",
-        }.get(x)
+        }.get(key, default)
         
         provider = get_provider("MX")
         
@@ -69,8 +76,15 @@ async def test_get_provider_invalid_country():
 @pytest.mark.asyncio
 async def test_get_provider_case_insensitive():
     """Test that get_provider is case-insensitive for country codes"""
-    with patch('app.payments.providers.modern_treasury.os') as mock_os:
-        mock_os.getenv.return_value = "test_api_key"
+    with patch('app.payments.providers.modern_treasury.os') as mock_os, \
+         patch('app.payments.providers.modern_treasury.ModernTreasury') as mock_mt_client:
+        
+        # Configure the mock os module for tests
+        mock_os.getenv.side_effect = lambda key, default=None: {
+            "MODERN_TREASURY_API_KEY": "test_api_key",
+            "MODERN_TREASURY_ORG_ID": "test_org_id",
+            "TESTING": "1"  # Set test environment flag
+        }.get(key, default)
         
         provider_upper = get_provider("US")
         assert isinstance(provider_upper, ModernTreasuryProvider)
@@ -82,8 +96,15 @@ async def test_get_provider_case_insensitive():
 @pytest.mark.asyncio
 async def test_get_provider_caching():
     """Test that providers are properly cached"""
-    with patch('app.payments.providers.modern_treasury.os') as mock_os:
-        mock_os.getenv.return_value = "test_api_key"
+    with patch('app.payments.providers.modern_treasury.os') as mock_os, \
+         patch('app.payments.providers.modern_treasury.ModernTreasury') as mock_mt_client:
+        
+        # Configure the mock os module for tests
+        mock_os.getenv.side_effect = lambda key, default=None: {
+            "MODERN_TREASURY_API_KEY": "test_api_key",
+            "MODERN_TREASURY_ORG_ID": "test_org_id",
+            "TESTING": "1"  # Set test environment flag
+        }.get(key, default)
         
         # First call should create a new instance
         provider1 = get_provider("US")
@@ -102,11 +123,15 @@ async def test_get_stablecoin_provider():
     with patch('app.payments.providers.circle_provider.os') as mock_os:
         mock_os.getenv.return_value = "test_api_key"
         
+        # Clear the global instance first to ensure test isolation
+        import app.payments.providers.factory
+        app.payments.providers.factory._stablecoin_provider_instance = None
+        
         provider = get_stablecoin_provider()
         
         assert isinstance(provider, CircleProvider)
-        assert _stablecoin_provider_instance is not None
-        assert _stablecoin_provider_instance is provider
+        assert app.payments.providers.factory._stablecoin_provider_instance is not None
+        assert app.payments.providers.factory._stablecoin_provider_instance is provider
 
 @pytest.mark.asyncio
 async def test_get_stablecoin_provider_caching():
@@ -131,13 +156,21 @@ async def test_get_stablecoin_provider_caching():
 async def test_multiple_country_providers():
     """Test getting providers for multiple countries"""
     with patch('app.payments.providers.modern_treasury.os') as mt_mock_os, \
+         patch('app.payments.providers.modern_treasury.ModernTreasury') as mock_mt_client, \
          patch('app.payments.providers.rapyd.os') as rapyd_mock_os:
         
-        mt_mock_os.getenv.return_value = "test_mt_api_key"
-        rapyd_mock_os.getenv.side_effect = lambda x: {
+        # Configure Modern Treasury mock
+        mt_mock_os.getenv.side_effect = lambda key, default=None: {
+            "MODERN_TREASURY_API_KEY": "test_mt_api_key",
+            "MODERN_TREASURY_ORG_ID": "test_org_id",
+            "TESTING": "1"  # Set test environment flag
+        }.get(key, default)
+        
+        # Configure Rapyd mock
+        rapyd_mock_os.getenv.side_effect = lambda key, default=None: {
             "RAPYD_ACCESS_KEY": "test_access_key",
             "RAPYD_SECRET_KEY": "test_secret_key",
-        }.get(x)
+        }.get(key, default)
         
         # Get providers for different countries
         us_provider = get_provider("US")

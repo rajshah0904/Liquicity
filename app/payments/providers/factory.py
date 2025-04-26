@@ -16,7 +16,7 @@ COUNTRY_PROVIDER_MAP: Dict[str, Type[PaymentProvider]] = {
 
 # Provider instances cache
 _provider_instances: Dict[str, PaymentProvider] = {}
-_stablecoin_provider_instance: Optional[StablecoinProvider] = None
+_stablecoin_provider_instance: Optional[CircleProvider] = None
 
 def get_provider(country_code: str) -> PaymentProvider:
     """
@@ -38,17 +38,29 @@ def get_provider(country_code: str) -> PaymentProvider:
         return _provider_instances[c]
     
     # Create a new instance if needed
+    provider_class = None
+    
     if c == "US":
-        provider = ModernTreasuryProvider()
+        provider_class = ModernTreasuryProvider
     elif c in ("CA", "MX", "NG"):
-        provider = RapydProvider()
+        provider_class = RapydProvider
     else:
         raise ValueError(f"No payment provider available for country code: {country_code}")
+    
+    # Check if we already have an instance of this provider class
+    for instance in _provider_instances.values():
+        if isinstance(instance, provider_class):
+            # Cache this instance for the current country code too
+            _provider_instances[c] = instance
+            return instance
+    
+    # Create new instance if we don't have one
+    provider = provider_class()
     
     # Cache the instance for future use
     _provider_instances[c] = provider
     
-    return provider 
+    return provider
 
 def get_stablecoin_provider() -> StablecoinProvider:
     """
