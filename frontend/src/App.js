@@ -5,6 +5,9 @@ import { useAuth } from './context/AuthContext';
 
 // Pages
 import Login from './pages/Login';
+import SignUp from './pages/SignUp';
+import Register from './pages/Register';
+import VerifyEmail from './pages/VerifyEmail';
 import Dashboard from './pages/Dashboard';
 import ModernCardDemo from './pages/ModernCardDemo';
 import Wallet from './pages/Wallet';
@@ -41,6 +44,9 @@ function App() {
     <ThemeProvider>
       <Routes>
         <Route path="/login" element={<Login />} />
+        <Route path="/signup" element={<SignUp />} />
+        <Route path="/register" element={<Register />} />
+        <Route path="/verify-email" element={<VerifyEmail />} />
         <Route
           path="/"
           element={<Navigate to="/dashboard" replace />}

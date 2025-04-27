@@ -10,7 +10,6 @@ import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { API_URL } from '../utils/constants';
 import { 
-  createDepositCheckout, 
   listBankAccounts, 
   linkBankAccount, 
   initiateDirectDeposit 
@@ -29,7 +28,7 @@ const DepositFunds = () => {
   const [currency, setCurrency] = useState('USD');
   const [bankAccounts, setBankAccounts] = useState([]);
   const [selectedAccount, setSelectedAccount] = useState('');
-  const [depositMethod, setDepositMethod] = useState('card');
+  const [depositMethod, setDepositMethod] = useState('bank');
   const [depositToWallet, setDepositToWallet] = useState(true);
   
   // Check URL parameters for payment status
@@ -120,20 +119,23 @@ const DepositFunds = () => {
     setError(null);
     
     try {
-      // Convert amount to cents for Stripe
       const amountInCents = Math.round(parseFloat(amount) * 100);
       
       if (depositMethod === 'card') {
-        // Credit card deposit via Stripe Checkout
-        const checkoutUrl = await createDepositCheckout(
-          amountInCents, 
-          currency.toLowerCase(), 
-          currentUser,
-          depositToWallet // Pass whether to deposit to wallet or save for later
-        );
+        // Direct API call to handle card payment
+        const response = await api.post('/payment/deposit/card', {
+          amount: amountInCents,
+          currency: currency.toLowerCase(),
+          userId: currentUser.id,
+          depositToWallet
+        });
         
-        // Redirect to Stripe checkout
-        window.location.href = checkoutUrl;
+        if (response.data.success) {
+          setSuccess(`Card payment initiated successfully for ${getCurrencySymbol(currency)}${amount}.`);
+          setAmount('');
+        } else {
+          setError('Failed to process card payment. Please try again.');
+        }
       } else if (depositMethod === 'bank') {
         // ACH transfer from saved bank account
         if (!selectedAccount) {
@@ -148,7 +150,7 @@ const DepositFunds = () => {
           currency.toLowerCase(),
           selectedAccount,
           currentUser.id,
-          depositToWallet // Pass whether to deposit to wallet or save for later
+          depositToWallet
         );
         
         if (response.success) {
@@ -172,8 +174,7 @@ const DepositFunds = () => {
       setError(null);
       
       const linkUrl = await linkBankAccount(currentUser.id);
-      // For Stripe Financial Connections, we need to use their SDK
-      // For simplicity in this example, we'll just redirect
+      // Redirect to bank linking page
       window.location.href = linkUrl;
     } catch (err) {
       console.error('Error creating bank link:', err);

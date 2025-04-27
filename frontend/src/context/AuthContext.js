@@ -78,16 +78,15 @@ export const AuthProvider = ({ children }) => {
   }, [token, currentUser]);
 
   // Register a new user
-  const register = async (username, password, email, wallet_address, additionalData = {}) => {
+  const register = async (email, password, confirmEmail, wallet_address, additionalData = {}) => {
     setLoading(true);
     setError(null);
     
     try {
       // Step 1: Register the user with basic information
       const registerResponse = await api.post('/user/register/', {
-        username,
-        password,
         email,
+        password,
         wallet_address,
       });
       
@@ -123,6 +122,17 @@ export const AuthProvider = ({ children }) => {
         }
       }
       
+      // Step 4: Send verification email
+      try {
+        await api.post('/user/send-verification-email/', {
+          email,
+          user_id: userId
+        });
+      } catch (emailErr) {
+        console.error('Error sending verification email:', emailErr);
+        // Continue even if email sending fails
+      }
+      
       return true;
     } catch (err) {
       console.error('Registration error:', err);
@@ -134,14 +144,14 @@ export const AuthProvider = ({ children }) => {
   };
 
   // Login a user
-  const login = async (username, password) => {
+  const login = async (email, password) => {
     setLoading(true);
     setError(null);
     
     try {
-      console.log('Logging in user:', username);
+      console.log('Logging in user with email:', email);
       const response = await api.post('/user/login/', {
-        username,
+        email,
         password,
       });
       
@@ -259,6 +269,96 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  // Add Google Sign-in method
+  const loginWithGoogle = async () => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      // In a real implementation, this would use Google's OAuth API
+      // For now, we'll simulate a successful Google login response
+      const googleAuthResponse = await api.post('/user/google-login/');
+      
+      const { access_token } = googleAuthResponse.data;
+      
+      if (!access_token) {
+        throw new Error('No access token received from Google login');
+      }
+      
+      // Store token and configure API
+      localStorage.setItem('auth_token', access_token);
+      setToken(access_token);
+      api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+      
+      // Set authentication state
+      setIsAuthenticated(true);
+      
+      // Get current user data
+      await getCurrentUser();
+      
+      return true;
+    } catch (err) {
+      console.error('Google login error:', err);
+      setError(err.response?.data?.detail || 'Google login failed.');
+      setIsAuthenticated(false);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add email verification method for passwordless login
+  const sendEmailVerification = async (email) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      await api.post('/user/send-login-link/', { email });
+      return true;
+    } catch (err) {
+      console.error('Email verification error:', err);
+      setError(err.response?.data?.detail || 'Failed to send verification email.');
+      throw err;
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Add method to verify email link for passwordless login
+  const verifyEmailLink = async (token) => {
+    setLoading(true);
+    setError(null);
+    
+    try {
+      const response = await api.post('/user/verify-login-link/', { token });
+      const { access_token } = response.data;
+      
+      if (!access_token) {
+        throw new Error('No access token received from verification');
+      }
+      
+      // Store token and configure API
+      localStorage.setItem('auth_token', access_token);
+      setToken(access_token);
+      api.defaults.headers.common['Authorization'] = `Bearer ${access_token}`;
+      
+      // Set authentication state
+      setIsAuthenticated(true);
+      
+      // Get current user data
+      await getCurrentUser();
+      
+      return true;
+    } catch (err) {
+      console.error('Email verification error:', err);
+      setError(err.response?.data?.detail || 'Invalid or expired verification link.');
+      setIsAuthenticated(false);
+      return false;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // Value object to be provided by the context
   const value = {
     currentUser,
@@ -268,6 +368,9 @@ export const AuthProvider = ({ children }) => {
     register,
     login,
     logout,
+    loginWithGoogle,
+    sendEmailVerification,
+    verifyEmailLink,
     setError,
     refreshUser: getCurrentUser
   };

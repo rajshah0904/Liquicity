@@ -1,29 +1,29 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { 
   Container, 
   Box, 
   TextField, 
   Button, 
   Typography, 
-  Paper,
-  CircularProgress,
   Alert,
   InputAdornment,
-  Link
+  Link,
+  CircularProgress
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { authAPI } from '../utils/api';
 
 // Icons
 import GoogleIcon from '@mui/icons-material/Google';
 import EmailIcon from '@mui/icons-material/Email';
+import PersonIcon from '@mui/icons-material/Person';
 
 // Custom components
 import { AnimatedBackground } from '../components/ui/ModernUIComponents';
 
-const LoginContainer = styled(Container)(({ theme }) => ({
+const SignUpContainer = styled(Container)(({ theme }) => ({
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
@@ -33,7 +33,7 @@ const LoginContainer = styled(Container)(({ theme }) => ({
   zIndex: 1,
 }));
 
-const LoginCard = styled(Box)(({ theme }) => ({
+const SignUpCard = styled(Box)(({ theme }) => ({
   background: '#111111',
   borderRadius: theme.shape.borderRadius,
   padding: theme.spacing(4),
@@ -104,38 +104,15 @@ const DividerWithText = styled(Box)(({ theme }) => ({
   },
 }));
 
-// Add a styled Sign Up button
-const SignUpButton = styled(Button)(({ theme }) => ({
-  backgroundColor: 'transparent',
-  color: '#3B82F6',
-  padding: '12px 0',
-  textTransform: 'none',
-  fontWeight: 500,
-  marginTop: theme.spacing(2),
-  border: '1px solid rgba(59, 130, 246, 0.5)',
-  '&:hover': {
-    backgroundColor: 'rgba(59, 130, 246, 0.1)',
-    borderColor: '#3B82F6',
-  }
-}));
-
-const Login = () => {
+const SignUp = () => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [showVerification, setShowVerification] = useState(false);
   
   const navigate = useNavigate();
-  const location = useLocation();
   
-  // Check for message from register page
-  useEffect(() => {
-    if (location.state?.message) {
-      setError(location.state.message);
-    }
-  }, [location]);
-  
-  const handleEmailLogin = async (e) => {
+  const handleEmailSignUp = async (e) => {
     e.preventDefault();
     
     // Validate email
@@ -148,8 +125,8 @@ const Login = () => {
     setLoading(true);
     
     try {
-      // Send email verification link
-      await authAPI.sendLoginLink(email);
+      // Send email verification link for signup
+      await authAPI.sendSignupLink(email);
       setShowVerification(true);
     } catch (err) {
       setError('Failed to send verification email. Please try again.');
@@ -159,7 +136,7 @@ const Login = () => {
     }
   };
   
-  const handleGoogleLogin = async () => {
+  const handleGoogleSignUp = async () => {
     try {
       setLoading(true);
       setError('');
@@ -172,24 +149,22 @@ const Login = () => {
         // and handle the callback with a token
       }
       
-      // For demo purposes, we'll just simulate a successful login
+      // For demo purposes, we'll just simulate a successful signup
       setTimeout(() => {
         // This would be a real API call in production
-        // const response = await authAPI.googleLogin(token);
-        // localStorage.setItem('auth_token', response.data.access_token);
-        navigate('/dashboard');
+        navigate('/register', { state: { email: email, fromGoogle: true } });
       }, 1000);
       
     } catch (err) {
-      setError('Google login failed. Please try again.');
-      console.error('Google login error:', err);
+      setError('Google signup failed. Please try again.');
+      console.error('Google signup error:', err);
     } finally {
       setLoading(false);
     }
   };
   
-  const handleSignUp = () => {
-    navigate('/signup');
+  const handleLogin = () => {
+    navigate('/login');
   };
   
   // If showing verification screen
@@ -197,8 +172,8 @@ const Login = () => {
     return (
       <>
         <AnimatedBackground />
-        <LoginContainer maxWidth="sm">
-          <LoginCard>
+        <SignUpContainer maxWidth="sm">
+          <SignUpCard>
             <Typography variant="h5" align="center" gutterBottom>
               Check your email
             </Typography>
@@ -212,7 +187,7 @@ const Login = () => {
                 {email}
               </Typography>
               <Typography variant="body2" color="text.secondary">
-                Click the link in the email to sign in
+                Click the link in the email to create your account and continue to registration
               </Typography>
             </Box>
             
@@ -222,10 +197,10 @@ const Login = () => {
               onClick={() => setShowVerification(false)}
               sx={{ mt: 2 }}
             >
-              Back to Sign in
+              Back to Sign up
             </Button>
-          </LoginCard>
-        </LoginContainer>
+          </SignUpCard>
+        </SignUpContainer>
       </>
     );
   }
@@ -234,17 +209,17 @@ const Login = () => {
     <>
       <AnimatedBackground />
       
-      <LoginContainer maxWidth="sm">
+      <SignUpContainer maxWidth="sm">
         <Typography variant="h4" sx={{ color: 'white', mb: 4, fontWeight: 500 }}>
           TerraFlow
         </Typography>
         
-        <LoginCard>
+        <SignUpCard>
           <Typography variant="h5" gutterBottom sx={{ color: 'white', mb: 1 }}>
-            Sign in to your account
+            Create your account
           </Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 4 }}>
-            Use your email below to sign in or create a new account
+            Sign up with your email or Google account to get started
           </Typography>
           
           {error && (
@@ -256,17 +231,17 @@ const Login = () => {
           <GoogleButton 
             fullWidth 
             startIcon={<GoogleIcon />}
-            onClick={handleGoogleLogin}
+            onClick={handleGoogleSignUp}
             disabled={loading}
           >
-            Sign in with Google
+            Sign up with Google
           </GoogleButton>
           
           <DividerWithText>
             <span>OR</span>
           </DividerWithText>
           
-          <form onSubmit={handleEmailLogin}>
+          <form onSubmit={handleEmailSignUp}>
             <Box sx={{ mb: 3, position: 'relative' }}>
               <Typography 
                 variant="caption" 
@@ -303,17 +278,30 @@ const Login = () => {
               type="submit"
               disabled={loading}
             >
-              {loading ? <CircularProgress size={24} color="inherit" /> : 'Continue with Email'}
+              {loading ? <CircularProgress size={24} color="inherit" /> : 'Create Account'}
             </EmailButton>
             
-            {/* Add Sign Up button */}
-            <SignUpButton 
+            {/* Add Login button */}
+            <Button 
               fullWidth 
-              onClick={handleSignUp}
+              onClick={handleLogin}
               disabled={loading}
+              sx={{
+                backgroundColor: 'transparent',
+                color: '#3B82F6',
+                padding: '12px 0',
+                textTransform: 'none',
+                fontWeight: 500,
+                marginTop: 2,
+                border: '1px solid rgba(59, 130, 246, 0.5)',
+                '&:hover': {
+                  backgroundColor: 'rgba(59, 130, 246, 0.1)',
+                  borderColor: '#3B82F6',
+                }
+              }}
             >
-              Sign Up
-            </SignUpButton>
+              Sign In Instead
+            </Button>
           </form>
           
           <Box sx={{ mt: 3, textAlign: 'center' }}>
@@ -328,10 +316,10 @@ const Login = () => {
               </Link>
             </Typography>
           </Box>
-        </LoginCard>
-      </LoginContainer>
+        </SignUpCard>
+      </SignUpContainer>
     </>
   );
 };
 
-export default Login; 
+export default SignUp; 

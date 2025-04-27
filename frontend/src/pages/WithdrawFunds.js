@@ -6,7 +6,6 @@ import {
 } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import { initiateWithdrawal, listBankAccounts, linkBankAccount } from '../utils/stripeUtils';
 import api from '../utils/api';
 import { API_URL } from '../utils/constants';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
@@ -78,7 +77,9 @@ const WithdrawFunds = () => {
     
     try {
       setLoading(true);
-      const accounts = await listBankAccounts(currentUser.id);
+      const response = await api.get(`/payment/bank-accounts/${currentUser.id}`);
+      const accounts = response.data || [];
+      
       setBankAccounts(accounts);
       if (accounts.length > 0) {
         setSelectedAccount(accounts[0].id);
@@ -117,26 +118,22 @@ const WithdrawFunds = () => {
     setError(null);
     
     try {
-      // Convert amount to cents for Stripe
-      const amountInCents = Math.round(parseFloat(amount) * 100);
+      const amountDecimal = parseFloat(amount);
       
-      // Initiate withdrawal to bank account
-      const result = await initiateWithdrawal(
-        amountInCents,
-        currency.toLowerCase(),
-        selectedAccount,
-        currentUser.id
-      );
+      const result = await api.post('/payment/withdraw', {
+        amount: amountDecimal,
+        currency: currency,
+        bankAccountId: selectedAccount,
+        userId: currentUser.id
+      });
       
-      if (result.success) {
+      if (result.data.success) {
         setSuccess(`Withdrawal of ${formatCurrency(parseFloat(amount))} initiated successfully. Funds will be deposited into your bank account within 1-3 business days.`);
         setAmount('');
         
-        // Update wallet balance
         setWalletBalance(prev => prev - parseFloat(amount));
-      } else if (result.url) {
-        // If backend returned a Stripe URL, redirect to it
-        window.location.href = result.url;
+      } else if (result.data.redirectUrl) {
+        window.location.href = result.data.redirectUrl;
       } else {
         setError('Failed to process withdrawal. Please try again later.');
       }
@@ -153,10 +150,15 @@ const WithdrawFunds = () => {
       setLoading(true);
       setError(null);
       
-      const linkUrl = await linkBankAccount(currentUser.id);
-      // For Stripe Financial Connections, we need to use their SDK
-      // For simplicity in this example, we'll just redirect
-      window.location.href = linkUrl;
+      const response = await api.post('/payment/link-bank-account', {
+        userId: currentUser.id
+      });
+      
+      if (response.data && response.data.redirectUrl) {
+        window.location.href = response.data.redirectUrl;
+      } else {
+        throw new Error('Failed to get bank linking URL');
+      }
     } catch (err) {
       console.error('Error creating bank link:', err);
       setError('Unable to link bank account right now. Please try again later.');

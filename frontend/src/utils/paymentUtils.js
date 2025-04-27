@@ -1,6 +1,6 @@
 /**
  * Payment utility functions - PLACEHOLDER
- * These functions are empty placeholders to be implemented with your own Stripe integration
+ * Implement your payment integration here
  */
 
 import api from './api';
@@ -62,7 +62,7 @@ export const initiateDirectDeposit = async () => {
 };
 
 /**
- * Confirms a deposit using the session ID (placeholder)
+ * Confirms a deposit (placeholder)
  */
 export const confirmDeposit = async () => {
   console.log("confirmDeposit called - needs implementation");

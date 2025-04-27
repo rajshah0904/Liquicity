@@ -107,23 +107,13 @@ const Transactions = () => {
   };
 
   const determineTransactionType = (transaction) => {
-    if (!transaction) return 'UNKNOWN';
+    const source = transaction.payment_source?.toLowerCase();
     
-    // If transaction has a specific type, use it
-    if (transaction.type) return String(transaction.type).toUpperCase();
-    if (transaction.transaction_type) return String(transaction.transaction_type).toUpperCase();
-    
-    // Check for payment method specific transactions
-    if (transaction.payment_source) {
-      const source = transaction.payment_source.toLowerCase();
+    // Check if we have a specific payment source
+    if (source) {
       if (source === 'card') return 'CARD PAYMENT';
       if (source === 'bank') return 'BANK TRANSFER';
       if (source === 'wallet_partial') return 'WALLET + CARD';
-    }
-    
-    // If stripe_payment is true, it's a stripe payment
-    if (transaction.stripe_payment === true) {
-      return 'STRIPE PAYMENT';
     }
     
     // If we have the current user, determine if it's a send or receive

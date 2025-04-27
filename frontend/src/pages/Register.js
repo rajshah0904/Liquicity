@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, Suspense } from 'react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { 
   Box, 
   Container, 
@@ -9,9 +9,6 @@ import {
   Paper, 
   Alert, 
   Grid, 
-  Stepper,
-  Step,
-  StepLabel,
   FormControl,
   InputLabel,
   Select,
@@ -20,22 +17,16 @@ import {
   CircularProgress,
   Divider,
   InputAdornment,
-  IconButton,
-  Dialog,
-  DialogTitle,
-  DialogContent,
-  DialogContentText,
-  DialogActions,
-  Autocomplete
+  IconButton
 } from '@mui/material';
 import { 
-  Visibility, 
-  VisibilityOff, 
   CheckCircle,
-  Help
+  Help,
+  ArrowBack
 } from '@mui/icons-material';
 import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
+import { kycAPI } from '../utils/api';
+import { AnimatedBackground } from '../components/ui/ModernUIComponents';
 
 // Helper function to generate a random Ethereum-like wallet address
 const generateRandomWalletAddress = () => {
@@ -47,20 +38,122 @@ const generateRandomWalletAddress = () => {
   return address;
 };
 
-// Countries list with country codes and currencies
+// Update the countries list with more details for country-specific fields
 const countries = [
-  { name: 'United States', code: 'US', currency: 'USD', idType: 'SSN' },
-  { name: 'United Kingdom', code: 'GB', currency: 'GBP', idType: 'National Insurance Number' },
-  { name: 'Canada', code: 'CA', currency: 'CAD', idType: 'SIN' },
-  { name: 'Australia', code: 'AU', currency: 'AUD', idType: 'TFN' },
-  { name: 'European Union', code: 'EU', currency: 'EUR', idType: 'National ID' },
-  { name: 'Japan', code: 'JP', currency: 'JPY', idType: 'My Number' },
-  { name: 'China', code: 'CN', currency: 'CNY', idType: 'Resident ID' },
-  { name: 'India', code: 'IN', currency: 'INR', idType: 'Aadhaar' },
-  { name: 'Brazil', code: 'BR', currency: 'BRL', idType: 'CPF' },
-  { name: 'South Africa', code: 'ZA', currency: 'ZAR', idType: 'ID Number' },
-  { name: 'Singapore', code: 'SG', currency: 'SGD', idType: 'NRIC' },
+  { 
+    name: 'United States', 
+    code: 'US', 
+    currency: 'USD', 
+    idType: 'SSN',
+    idFormat: 'XXX-XX-XXXX',
+    idLabel: 'Social Security Number',
+    region: 'North America',
+    requiredFields: ['ssn', 'dob', 'address'],
+    acceptedDocuments: ['passport', 'drivers_license']
+  },
+  { 
+    name: 'United Kingdom', 
+    code: 'GB', 
+    currency: 'GBP', 
+    idType: 'NINO',
+    idFormat: 'AA999999A',
+    idLabel: 'National Insurance Number',
+    region: 'Europe',
+    requiredFields: ['nino', 'dob', 'address', 'postal_code'],
+    acceptedDocuments: ['passport', 'drivers_license', 'national_id']
+  },
+  { 
+    name: 'Canada', 
+    code: 'CA', 
+    currency: 'CAD', 
+    idType: 'SIN',
+    idFormat: '999-999-999',
+    idLabel: 'Social Insurance Number',
+    region: 'North America',
+    requiredFields: ['sin', 'dob', 'address'],
+    acceptedDocuments: ['passport', 'drivers_license', 'pr_card']
+  },
+  { 
+    name: 'Australia', 
+    code: 'AU', 
+    currency: 'AUD', 
+    idType: 'TFN',
+    idFormat: '999 999 999',
+    idLabel: 'Tax File Number',
+    region: 'Oceania',
+    requiredFields: ['tfn', 'dob', 'address', 'medicare'],
+    acceptedDocuments: ['passport', 'drivers_license', 'medicare_card']
+  },
+  { 
+    name: 'Germany', 
+    code: 'DE', 
+    currency: 'EUR', 
+    idType: 'TIN',
+    idFormat: '99999999999',
+    idLabel: 'Tax Identification Number',
+    region: 'Europe',
+    requiredFields: ['tax_id', 'dob', 'address'],
+    acceptedDocuments: ['passport', 'national_id', 'residence_permit']
+  },
+  { 
+    name: 'France', 
+    code: 'FR', 
+    currency: 'EUR', 
+    idType: 'INSEE',
+    idFormat: '9 99 99 99999 999 99',
+    idLabel: 'INSEE Number',
+    region: 'Europe',
+    requiredFields: ['insee', 'dob', 'address'],
+    acceptedDocuments: ['passport', 'national_id', 'residence_permit']
+  },
+  { 
+    name: 'Japan', 
+    code: 'JP', 
+    currency: 'JPY', 
+    idType: 'My Number',
+    idFormat: '9999-9999-9999',
+    idLabel: 'My Number',
+    region: 'Asia',
+    requiredFields: ['my_number', 'dob', 'address'],
+    acceptedDocuments: ['passport', 'residence_card', 'my_number_card']
+  },
+  { 
+    name: 'Singapore', 
+    code: 'SG', 
+    currency: 'SGD', 
+    idType: 'NRIC',
+    idFormat: 'S9999999A',
+    idLabel: 'NRIC Number',
+    region: 'Asia',
+    requiredFields: ['nric', 'dob', 'address'],
+    acceptedDocuments: ['passport', 'nric']
+  },
+  { 
+    name: 'India', 
+    code: 'IN', 
+    currency: 'INR', 
+    idType: 'Aadhaar',
+    idFormat: '9999 9999 9999',
+    idLabel: 'Aadhaar Number',
+    region: 'Asia',
+    requiredFields: ['aadhaar', 'dob', 'address', 'pan'],
+    acceptedDocuments: ['passport', 'aadhaar_card', 'pan_card', 'voters_id']
+  },
+  { 
+    name: 'Brazil', 
+    code: 'BR', 
+    currency: 'BRL', 
+    idType: 'CPF',
+    idFormat: '999.999.999-99',
+    idLabel: 'CPF Number',
+    region: 'South America',
+    requiredFields: ['cpf', 'dob', 'address'],
+    acceptedDocuments: ['passport', 'national_id', 'drivers_license']
+  }
 ];
+
+// Group countries by region
+const regions = Array.from(new Set(countries.map(country => country.region))).sort();
 
 const documentTypes = [
   { value: 'passport', label: 'Passport' },
@@ -70,50 +163,46 @@ const documentTypes = [
 ];
 
 const Register = () => {
-  const [activeStep, setActiveStep] = useState(0);
+  const location = useLocation();
+  const navigate = useNavigate();
+  const { currentUser } = useAuth();
+  
+  // Check if this is a new user from SignUp page
+  const userEmail = location.state?.email || currentUser?.email || '';
+  const isNewUser = location.state?.newUser || false;
+  
+  // Get a trimmed down form since we only need KYC info
   const [formData, setFormData] = useState({
-    // Basic info
-    firstName: '',
-    lastName: '',
-    email: '',
-    username: '',
-    password: '',
-    confirmPassword: '',
+    // Basic info (pre-filled)
+    email: userEmail,
     
     // Identity verification
+    firstName: '',
+    lastName: '',
     dateOfBirth: '',
     country: '',
     countryObject: null,
     nationality: '',
     nationalityObject: null,
     idNumber: '',
-    documentType: 'national_id',
+    documentType: 'passport',
     documentNumber: '',
     issuingCountry: '',
     
-    // Address
+    // Additional data
+    currencyPreference: '',
     streetAddress: '',
     city: '',
     state: '',
     postalCode: '',
-    
-    // Additional data
-    currencyPreference: '',
-    agreeToTerms: false
   });
   
   const [errors, setErrors] = useState({});
   const [serverError, setServerError] = useState(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
-  const [helpDialogOpen, setHelpDialogOpen] = useState(false);
-  const [helpContent, setHelpContent] = useState({ title: '', content: '' });
+  const [selectedRegion, setSelectedRegion] = useState('');
+  const [isSuccess, setIsSuccess] = useState(false);
   
-  const { register } = useAuth();
-  const navigate = useNavigate();
-
-  const steps = ['Basic Information', 'Identity Verification', 'Address Details', 'Review & Submit'];
-
   // Update currency when country changes
   useEffect(() => {
     if (formData.countryObject) {
@@ -123,7 +212,7 @@ const Register = () => {
       });
     }
   }, [formData.countryObject]);
-
+  
   const handleChange = (e) => {
     const { name, value } = e.target;
     setFormData({
@@ -139,792 +228,512 @@ const Register = () => {
       });
     }
   };
-
-  const handleCountryChange = (event, newValue) => {
-    setFormData({
-      ...formData,
-      countryObject: newValue,
-      country: newValue ? newValue.name : '',
-      currencyPreference: newValue ? newValue.currency : ''
-    });
-    
-    if (errors.country) {
-      setErrors({
-        ...errors,
-        country: null
-      });
-    }
-  };
-
-  const handleNationalityChange = (event, newValue) => {
-    setFormData({
-      ...formData,
-      nationalityObject: newValue,
-      nationality: newValue ? newValue.name : ''
-    });
-    
-    if (errors.nationality) {
-      setErrors({
-        ...errors,
-        nationality: null
-      });
-    }
-  };
-
-  const togglePasswordVisibility = () => {
-    setShowPassword(!showPassword);
-  };
-
-  const openHelpDialog = (title, content) => {
-    setHelpContent({ title, content });
-    setHelpDialogOpen(true);
-  };
-
-  const closeHelpDialog = () => {
-    setHelpDialogOpen(false);
-  };
-
-  const validateStep = (step) => {
+  
+  const validateForm = () => {
     const newErrors = {};
     
-    if (step === 0) {
-      // Basic info validation
-      if (!formData.firstName.trim()) {
-        newErrors.firstName = 'First name is required';
-      }
-      
-      if (!formData.lastName.trim()) {
-        newErrors.lastName = 'Last name is required';
-      }
-      
-      if (!formData.username.trim()) {
-        newErrors.username = 'Username is required';
-      } else if (formData.username.length < 3) {
-        newErrors.username = 'Username must be at least 3 characters';
-      }
-      
-      if (!formData.email.trim()) {
-        newErrors.email = 'Email is required';
-      } else if (!/\S+@\S+\.\S+/.test(formData.email)) {
-        newErrors.email = 'Email is invalid';
-      }
-      
-      if (!formData.password) {
-        newErrors.password = 'Password is required';
-      } else if (formData.password.length < 8) {
-        newErrors.password = 'Password must be at least 8 characters';
-      } else if (!/(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/.test(formData.password)) {
-        newErrors.password = 'Password must include lowercase, uppercase, and numbers';
-      }
-      
-      if (formData.password !== formData.confirmPassword) {
-        newErrors.confirmPassword = 'Passwords do not match';
+    // Basic validation
+    if (!formData.firstName.trim()) {
+      newErrors.firstName = 'First name is required';
+    }
+    
+    if (!formData.lastName.trim()) {
+      newErrors.lastName = 'Last name is required';
+    }
+    
+    if (!formData.dateOfBirth) {
+      newErrors.dateOfBirth = 'Date of birth is required';
+    }
+    
+    if (!formData.country) {
+      newErrors.country = 'Country of residence is required';
+    }
+    
+    if (!formData.nationality) {
+      newErrors.nationality = 'Nationality is required';
+    }
+    
+    // ID validation based on country
+    if (formData.countryObject) {
+      if (!formData.idNumber) {
+        newErrors.idNumber = `${formData.countryObject.idType || 'ID number'} is required`;
+      } else if (formData.countryObject.code === 'US' && !/^\d{3}-\d{2}-\d{4}$/.test(formData.idNumber)) {
+        newErrors.idNumber = 'SSN must be in format XXX-XX-XXXX';
       }
     }
-    else if (step === 1) {
-      // Identity verification validation
-      if (!formData.dateOfBirth) {
-        newErrors.dateOfBirth = 'Date of birth is required';
-      }
-      
-      if (!formData.country) {
-        newErrors.country = 'Country of residence is required';
-      }
-      
-      if (!formData.nationality) {
-        newErrors.nationality = 'Nationality is required';
-      }
-      
-      // ID validation based on country
-      if (formData.countryObject) {
-        if (!formData.idNumber) {
-          newErrors.idNumber = `${formData.countryObject.idType || 'ID number'} is required`;
-        } else if (formData.countryObject.code === 'US' && !/^\d{3}-\d{2}-\d{4}$/.test(formData.idNumber)) {
-          newErrors.idNumber = 'SSN must be in format XXX-XX-XXXX';
-        }
-      }
-      
-      if (!formData.documentType) {
-        newErrors.documentType = 'Document type is required';
-      }
-      
-      if (!formData.documentNumber) {
-        newErrors.documentNumber = 'Document number is required';
-      }
+    
+    if (!formData.documentType) {
+      newErrors.documentType = 'Document type is required';
     }
-    else if (step === 2) {
-      // Address validation
-      if (!formData.streetAddress) {
-        newErrors.streetAddress = 'Street address is required';
-      }
-      
-      if (!formData.city) {
-        newErrors.city = 'City is required';
-      }
-      
-      if (!formData.state) {
-        newErrors.state = 'State/Province is required';
-      }
-      
-      if (!formData.postalCode) {
-        newErrors.postalCode = 'Postal code is required';
-      }
+    
+    if (!formData.documentNumber) {
+      newErrors.documentNumber = 'Document number is required';
+    }
+    
+    if (!formData.streetAddress) {
+      newErrors.streetAddress = 'Street address is required';
+    }
+    
+    if (!formData.city) {
+      newErrors.city = 'City is required';
+    }
+    
+    if (!formData.state) {
+      newErrors.state = 'State/Province is required';
+    }
+    
+    if (!formData.postalCode) {
+      newErrors.postalCode = 'Postal code is required';
     }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
   };
-
-  const handleNext = () => {
-    if (validateStep(activeStep)) {
-      setActiveStep(activeStep + 1);
-    }
-  };
-
+  
   const handleBack = () => {
-    setActiveStep(activeStep - 1);
+    navigate('/login');
   };
-
+  
   const handleSubmit = async (e) => {
-    if (e) e.preventDefault();
+    e.preventDefault();
     
-    if (validateStep(3)) {
-      setIsSubmitting(true);
-      setServerError(null);
+    if (!validateForm()) {
+      return;
+    }
+    
+    setIsSubmitting(true);
+    setServerError(null);
+    
+    try {
+      // In a real implementation, this would submit KYC data to the backend
+      // For demo, we'll simulate a successful submission
+      setTimeout(() => {
+        setIsSuccess(true);
+        // Redirect to dashboard or verification screen
+        setTimeout(() => {
+          navigate('/login', { 
+            state: { 
+              message: 'Your identity verification has been submitted successfully. You can now log in to your account.' 
+            } 
+          });
+        }, 3000);
+      }, 2000);
       
-      try {
-        // Generate a random wallet address as a placeholder 
-        const tempWalletAddress = generateRandomWalletAddress();
-        
-        console.log('Sending registration data:', {
-          username: formData.username,
-          email: formData.email,
-          password: formData.password,
-          wallet_address: tempWalletAddress,
-          // Additional metadata could be saved later once user is created
-          metadata: {
-            firstName: formData.firstName,
-            lastName: formData.lastName,
-            dateOfBirth: formData.dateOfBirth,
-            country: formData.country,
-            countryCode: formData.countryObject?.code,
-            nationality: formData.nationality,
-            idNumber: formData.idNumber,
-            documentType: formData.documentType,
-            documentNumber: formData.documentNumber,
-            streetAddress: formData.streetAddress,
-            city: formData.city,
-            state: formData.state,
-            postalCode: formData.postalCode,
-            currencyPreference: formData.currencyPreference
-          }
-        });
-        
-        // Call the register function with the correct parameters
-        const success = await register(
-          formData.username,
-          formData.password,
-          formData.email,
-          tempWalletAddress,
-          {
-            firstName: formData.firstName,
-            lastName: formData.lastName,
-            country: formData.country,
-            currencyPreference: formData.currencyPreference,
-            countryCode: formData.countryObject?.code
-          }
-        );
-        
-        if (success) {
-          navigate('/login', { state: { message: 'Registration successful! Please login.' } });
-        } else {
-          setServerError('Registration failed. Please try again.');
-          setActiveStep(0);
-        }
-      } catch (err) {
-        console.error('Registration error:', err);
-        if (err.response?.data?.detail) {
-          if (typeof err.response.data.detail === 'object') {
-            // Handle validation errors from the server
-            try {
-              setServerError(JSON.stringify(err.response.data.detail));
-            } catch (_) {
-              setServerError('Registration failed due to validation errors.');
-            }
-          } else {
-            setServerError(String(err.response.data.detail));
-          }
-        } else {
-          setServerError('Registration failed. Please try again.');
-        }
-        setActiveStep(0);
-      } finally {
-        setIsSubmitting(false);
-      }
+    } catch (err) {
+      console.error('KYC submission error:', err);
+      setServerError('Failed to submit identity verification. Please try again.');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
-  // Step 1: Basic Information Form
-  const renderBasicInfoForm = () => (
-    <>
-      <Typography variant="h6" gutterBottom>
-        Create Your Account
-      </Typography>
-      <Grid container spacing={2}>
-        <Grid item xs={12} sm={6}>
-          <TextField
-            name="firstName"
-            label="First Name"
-            fullWidth
-            value={formData.firstName}
-            onChange={handleChange}
-            error={!!errors.firstName}
-            helperText={errors.firstName}
-            required
-          />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField
-            name="lastName"
-            label="Last Name"
-            fullWidth
-            value={formData.lastName}
-            onChange={handleChange}
-            error={!!errors.lastName}
-            helperText={errors.lastName}
-            required
-          />
-        </Grid>
-        <Grid item xs={12}>
-          <TextField
-            required
-            name="username"
-            label="Username"
-            fullWidth
-            value={formData.username}
-            onChange={handleChange}
-            error={!!errors.username}
-            helperText={errors.username}
-          />
-        </Grid>
-        <Grid item xs={12}>
-          <TextField
-            required
-            name="email"
-            label="Email Address"
-            fullWidth
-            type="email"
-            value={formData.email}
-            onChange={handleChange}
-            error={!!errors.email}
-            helperText={errors.email}
-          />
-        </Grid>
-        <Grid item xs={12}>
-          <TextField
-            required
-            name="password"
-            label="Password"
-            type={showPassword ? "text" : "password"}
-            fullWidth
-            value={formData.password}
-            onChange={handleChange}
-            error={!!errors.password}
-            helperText={errors.password}
-            InputProps={{
-              endAdornment: (
-                <InputAdornment position="end">
-                  <IconButton
-                    onClick={togglePasswordVisibility}
-                    edge="end"
-                  >
-                    {showPassword ? <VisibilityOff /> : <Visibility />}
-                  </IconButton>
-                </InputAdornment>
-              )
-            }}
-          />
-        </Grid>
-        <Grid item xs={12}>
-          <TextField
-            required
-            name="confirmPassword"
-            label="Confirm Password"
-            type={showPassword ? "text" : "password"}
-            fullWidth
-            value={formData.confirmPassword}
-            onChange={handleChange}
-            error={!!errors.confirmPassword}
-            helperText={errors.confirmPassword}
-          />
-        </Grid>
-      </Grid>
-    </>
-  );
-
-  // Step 2: Identity Verification Form
-  const renderIdentityVerificationForm = () => (
-    <>
-      <Typography variant="h6" gutterBottom>
-        Identity Verification
-      </Typography>
-      <Typography variant="body2" color="text.secondary" paragraph>
-        We need to verify your identity to comply with financial regulations.
-      </Typography>
-      <Grid container spacing={2}>
-        <Grid item xs={12}>
-          <TextField
-            required
-            name="dateOfBirth"
-            label="Date of Birth"
-            type="date"
-            fullWidth
-            value={formData.dateOfBirth}
-            onChange={handleChange}
-            error={!!errors.dateOfBirth}
-            helperText={errors.dateOfBirth}
-            InputLabelProps={{ shrink: true }}
-            placeholder="mm/dd/yyyy"
-          />
-        </Grid>
-        <Grid item xs={12}>
-          <Autocomplete
-            id="country-select"
-            options={countries}
-            autoHighlight
-            value={formData.countryObject}
-            onChange={handleCountryChange}
-            getOptionLabel={(option) => option.name}
-            renderOption={(props, option) => (
-              <Box component="li" {...props}>
-                {option.name} ({option.currency})
-              </Box>
-            )}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                required
-                label="Country of Residence"
-                error={!!errors.country}
-                helperText={errors.country}
-              />
-            )}
-          />
-        </Grid>
-        <Grid item xs={12}>
-          <Autocomplete
-            id="nationality-select"
-            options={countries}
-            autoHighlight
-            value={formData.nationalityObject}
-            onChange={handleNationalityChange}
-            getOptionLabel={(option) => option.name}
-            renderOption={(props, option) => (
-              <Box component="li" {...props}>
-                {option.name}
-              </Box>
-            )}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                required
-                label="Nationality"
-                error={!!errors.nationality}
-                helperText={errors.nationality}
-              />
-            )}
-          />
-        </Grid>
-        <Grid item xs={12}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <TextField
-              required
-              name="idNumber"
-              label={formData.countryObject ? `${formData.countryObject.idType}` : "ID Number"}
-              fullWidth
-              value={formData.idNumber}
-              onChange={handleChange}
-              error={!!errors.idNumber}
-              helperText={errors.idNumber}
-              placeholder={formData.countryObject?.code === 'US' ? "XXX-XX-XXXX" : ""}
-            />
-            <IconButton 
-              color="primary" 
-              onClick={() => openHelpDialog(
-                'Identity Verification', 
-                `For ${formData.countryObject?.name || 'your country'}, we require your ${formData.countryObject?.idType || 'national identification number'} for verification purposes. This information is encrypted and securely stored.`
-              )}
-            >
-              <Help />
-            </IconButton>
-          </Box>
-        </Grid>
-        <Grid item xs={12}>
-          <Divider sx={{ my: 2 }}>
-            <Typography variant="body2" color="text.secondary">
-              Document Information
-            </Typography>
-          </Divider>
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <FormControl fullWidth error={!!errors.documentType}>
-            <InputLabel>Document Type</InputLabel>
-            <Select
-              name="documentType"
-              value={formData.documentType}
-              onChange={handleChange}
-              label="Document Type"
-            >
-              {documentTypes.map((option) => (
-                <MenuItem key={option.value} value={option.value}>
-                  {option.label}
-                </MenuItem>
-              ))}
-            </Select>
-            {errors.documentType && <FormHelperText>{errors.documentType}</FormHelperText>}
-          </FormControl>
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField
-            required
-            name="documentNumber"
-            label="Document Number"
-            fullWidth
-            value={formData.documentNumber}
-            onChange={handleChange}
-            error={!!errors.documentNumber}
-            helperText={errors.documentNumber}
-          />
-        </Grid>
-        <Grid item xs={12}>
-          <Autocomplete
-            id="issuing-country-select"
-            options={countries}
-            autoHighlight
-            value={countries.find(c => c.name === formData.issuingCountry) || null}
-            onChange={(event, newValue) => {
-              setFormData({
-                ...formData,
-                issuingCountry: newValue ? newValue.name : ''
-              });
-            }}
-            getOptionLabel={(option) => option.name}
-            renderOption={(props, option) => (
-              <Box component="li" {...props}>
-                {option.name}
-              </Box>
-            )}
-            renderInput={(params) => (
-              <TextField
-                {...params}
-                required
-                label="Issuing Country"
-                error={!!errors.issuingCountry}
-                helperText={errors.issuingCountry}
-              />
-            )}
-          />
-        </Grid>
-      </Grid>
-    </>
-  );
-
-  // Step 3: Address Form
-  const renderAddressForm = () => (
-    <>
-      <Typography variant="h6" gutterBottom>
-        Address Information
-      </Typography>
-      <Grid container spacing={2}>
-        <Grid item xs={12}>
-          <TextField
-            required
-            name="streetAddress"
-            label="Street Address"
-            fullWidth
-            value={formData.streetAddress}
-            onChange={handleChange}
-            error={!!errors.streetAddress}
-            helperText={errors.streetAddress}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField
-            required
-            name="city"
-            label="City"
-            fullWidth
-            value={formData.city}
-            onChange={handleChange}
-            error={!!errors.city}
-            helperText={errors.city}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField
-            required
-            name="state"
-            label="State/Province"
-            fullWidth
-            value={formData.state}
-            onChange={handleChange}
-            error={!!errors.state}
-            helperText={errors.state}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <TextField
-            required
-            name="postalCode"
-            label="Postal Code"
-            fullWidth
-            value={formData.postalCode}
-            onChange={handleChange}
-            error={!!errors.postalCode}
-            helperText={errors.postalCode}
-          />
-        </Grid>
-        <Grid item xs={12} sm={6}>
-          <FormControl fullWidth>
-            <InputLabel>Preferred Currency</InputLabel>
-            <Select
-              name="currencyPreference"
-              value={formData.currencyPreference}
-              onChange={handleChange}
-              label="Preferred Currency"
-            >
-              {countries.map((country) => (
-                <MenuItem key={country.currency} value={country.currency}>
-                  {country.currency} - {country.name}
-                </MenuItem>
-              ))}
-            </Select>
-            <FormHelperText>
-              This will be your default transaction currency
-            </FormHelperText>
-          </FormControl>
-        </Grid>
-      </Grid>
-    </>
-  );
-
-  // Step 4: Review Form
-  const renderReviewForm = () => (
-    <>
-      <Typography variant="h6" gutterBottom>
-        Review Your Information
-      </Typography>
-      <Grid container spacing={2}>
-        <Grid item xs={12}>
-          <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-            <Typography variant="subtitle1" gutterBottom>
+  const renderKycForm = () => {
+    // Get countries for the selected region
+    const filteredCountries = selectedRegion 
+      ? countries.filter(country => country.region === selectedRegion) 
+      : countries;
+    
+    // Determine required fields and accepted documents based on selected country
+    const requiredFields = formData.countryObject?.requiredFields || [];
+    const acceptedDocuments = formData.countryObject?.acceptedDocuments || 
+      documentTypes.map(doc => doc.value);
+      
+    // Filtering document types based on selected country
+    const filteredDocumentTypes = documentTypes.filter(
+      docType => !formData.countryObject || 
+        !formData.countryObject.acceptedDocuments || 
+        formData.countryObject.acceptedDocuments.includes(docType.value)
+    );
+    
+    return (
+      <>
+        <Grid container spacing={3}>
+          <Grid item xs={12}>
+            <Typography variant="h6" gutterBottom>
               Personal Information
             </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Name:
-                </Typography>
-                <Typography variant="body1">
-                  {formData.firstName} {formData.lastName}
-                </Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Date of Birth:
-                </Typography>
-                <Typography variant="body1">
-                  {formData.dateOfBirth}
-                </Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Username:
-                </Typography>
-                <Typography variant="body1">
-                  {formData.username}
-                </Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Email:
-                </Typography>
-                <Typography variant="body1">
-                  {formData.email}
-                </Typography>
-              </Grid>
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="First Name"
+              name="firstName"
+              value={formData.firstName}
+              onChange={handleChange}
+              error={!!errors.firstName}
+              helperText={errors.firstName}
+              required
+              variant="outlined"
+            />
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Last Name"
+              name="lastName"
+              value={formData.lastName}
+              onChange={handleChange}
+              error={!!errors.lastName}
+              helperText={errors.lastName}
+              required
+              variant="outlined"
+            />
+          </Grid>
+          
+          <Grid item xs={12}>
+            <Divider sx={{ my: 2 }}>Identity Verification</Divider>
+          </Grid>
+          
+          <Grid item xs={12}>
+            <FormControl fullWidth>
+              <InputLabel id="region-label">Region</InputLabel>
+              <Select
+                labelId="region-label"
+                id="region"
+                name="region"
+                value={selectedRegion}
+                onChange={(e) => {
+                  setSelectedRegion(e.target.value);
+                  // Clear country selection if region changes
+                  if (formData.country) {
+                    setFormData({
+                      ...formData,
+                      country: '',
+                      countryObject: null,
+                      nationality: '',
+                      nationalityObject: null,
+                    });
+                  }
+                }}
+                label="Region"
+              >
+                <MenuItem value="">All Regions</MenuItem>
+                {regions.map((region) => (
+                  <MenuItem key={region} value={region}>
+                    {region}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Date of Birth"
+              name="dateOfBirth"
+              type="date"
+              value={formData.dateOfBirth}
+              onChange={handleChange}
+              error={!!errors.dateOfBirth}
+              helperText={errors.dateOfBirth}
+              InputLabelProps={{
+                shrink: true,
+              }}
+              required
+              variant="outlined"
+            />
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth error={!!errors.country} required>
+              <InputLabel id="country-label">Country of Residence</InputLabel>
+              <Select
+                labelId="country-label"
+                id="country"
+                name="country"
+                value={formData.country}
+                onChange={(e) => {
+                  handleChange(e);
+                  const country = countries.find(c => c.name === e.target.value);
+                  if (country) {
+                    setFormData({
+                      ...formData,
+                      country: country.name,
+                      countryObject: country,
+                      currencyPreference: country.currency
+                    });
+                  }
+                }}
+                label="Country of Residence"
+              >
+                {filteredCountries.map((country) => (
+                  <MenuItem key={country.code} value={country.name}>
+                    {country.name}
+                  </MenuItem>
+                ))}
+              </Select>
+              {errors.country && <FormHelperText>{errors.country}</FormHelperText>}
+            </FormControl>
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth error={!!errors.nationality} required>
+              <InputLabel id="nationality-label">Nationality</InputLabel>
+              <Select
+                labelId="nationality-label"
+                id="nationality"
+                name="nationality"
+                value={formData.nationality}
+                onChange={(e) => {
+                  handleChange(e);
+                  const country = countries.find(c => c.name === e.target.value);
+                  if (country) {
+                    setFormData({
+                      ...formData,
+                      nationality: country.name,
+                      nationalityObject: country
+                    });
+                  }
+                }}
+                label="Nationality"
+              >
+                {countries.map((country) => (
+                  <MenuItem key={country.code} value={country.name}>
+                    {country.name}
+                  </MenuItem>
+                ))}
+              </Select>
+              {errors.nationality && <FormHelperText>{errors.nationality}</FormHelperText>}
+            </FormControl>
+          </Grid>
+          
+          {/* Custom ID fields based on country */}
+          {formData.countryObject && (
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                name="idNumber"
+                label={formData.countryObject.idLabel}
+                value={formData.idNumber}
+                onChange={handleChange}
+                error={!!errors.idNumber}
+                helperText={errors.idNumber || `Format: ${formData.countryObject.idFormat}`}
+                required={requiredFields.includes(formData.countryObject.idType.toLowerCase())}
+                InputProps={{
+                  endAdornment: (
+                    <InputAdornment position="end">
+                      <IconButton
+                        size="small"
+                        onClick={() => alert(`This is the ${formData.countryObject.idLabel} used in ${formData.countryObject.name}. Format: ${formData.countryObject.idFormat}`)}
+                      >
+                        <Help fontSize="small" />
+                      </IconButton>
+                    </InputAdornment>
+                  ),
+                }}
+              />
             </Grid>
-          </Paper>
+          )}
+          
+          <Grid item xs={12}>
+            <Divider sx={{ my: 2 }}>Address Information</Divider>
+          </Grid>
+          
+          <Grid item xs={12}>
+            <TextField
+              fullWidth
+              label="Street Address"
+              name="streetAddress"
+              value={formData.streetAddress}
+              onChange={handleChange}
+              error={!!errors.streetAddress}
+              helperText={errors.streetAddress}
+              required
+              variant="outlined"
+            />
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="City"
+              name="city"
+              value={formData.city}
+              onChange={handleChange}
+              error={!!errors.city}
+              helperText={errors.city}
+              required
+              variant="outlined"
+            />
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="State/Province/Region"
+              name="state"
+              value={formData.state}
+              onChange={handleChange}
+              error={!!errors.state}
+              helperText={errors.state}
+              required
+              variant="outlined"
+            />
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              label="Postal Code"
+              name="postalCode"
+              value={formData.postalCode}
+              onChange={handleChange}
+              error={!!errors.postalCode}
+              helperText={errors.postalCode}
+              required
+              variant="outlined"
+            />
+          </Grid>
+          
+          <Grid item xs={12}>
+            <Divider sx={{ my: 2 }}>Identity Document</Divider>
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <FormControl fullWidth error={!!errors.documentType} required>
+              <InputLabel id="document-type-label">Document Type</InputLabel>
+              <Select
+                labelId="document-type-label"
+                id="documentType"
+                name="documentType"
+                value={formData.documentType}
+                onChange={handleChange}
+                label="Document Type"
+              >
+                {filteredDocumentTypes.map((docType) => (
+                  <MenuItem key={docType.value} value={docType.value}>
+                    {docType.label}
+                  </MenuItem>
+                ))}
+              </Select>
+              {errors.documentType && <FormHelperText>{errors.documentType}</FormHelperText>}
+            </FormControl>
+          </Grid>
+          
+          <Grid item xs={12} sm={6}>
+            <TextField
+              fullWidth
+              name="documentNumber"
+              label="Document Number"
+              value={formData.documentNumber}
+              onChange={handleChange}
+              error={!!errors.documentNumber}
+              helperText={errors.documentNumber}
+              required
+            />
+          </Grid>
+          
+          {/* Additional region/country-specific fields */}
+          {formData.countryObject && formData.countryObject.code === 'IN' && (
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                name="panCard"
+                label="PAN Card Number"
+                value={formData.panCard || ''}
+                onChange={handleChange}
+                error={!!errors.panCard}
+                helperText={errors.panCard || 'Format: ABCDE1234F'}
+                required={requiredFields.includes('pan')}
+              />
+            </Grid>
+          )}
+          
+          {formData.countryObject && formData.countryObject.code === 'AU' && (
+            <Grid item xs={12} sm={6}>
+              <TextField
+                fullWidth
+                name="medicareNumber"
+                label="Medicare Card Number"
+                value={formData.medicareNumber || ''}
+                onChange={handleChange}
+                error={!!errors.medicareNumber}
+                helperText={errors.medicareNumber}
+                required={requiredFields.includes('medicare')}
+              />
+            </Grid>
+          )}
         </Grid>
         
-        <Grid item xs={12}>
-          <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-            <Typography variant="subtitle1" gutterBottom>
-              Identity Information
-            </Typography>
-            <Grid container spacing={2}>
-              <Grid item xs={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Country:
-                </Typography>
-                <Typography variant="body1">
-                  {formData.country}
-                </Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Nationality:
-                </Typography>
-                <Typography variant="body1">
-                  {formData.nationality}
-                </Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Document Type:
-                </Typography>
-                <Typography variant="body1">
-                  {documentTypes.find(d => d.value === formData.documentType)?.label || formData.documentType}
-                </Typography>
-              </Grid>
-              <Grid item xs={6}>
-                <Typography variant="body2" color="text.secondary">
-                  Document Number:
-                </Typography>
-                <Typography variant="body1">
-                  {formData.documentNumber}
-                </Typography>
-              </Grid>
-            </Grid>
-          </Paper>
-        </Grid>
-        
-        <Grid item xs={12}>
-          <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-            <Typography variant="subtitle1" gutterBottom>
-              Address
+        <Box sx={{ mt: 4, display: 'flex', justifyContent: 'space-between' }}>
+          <Button 
+            variant="outlined"
+            onClick={handleBack}
+            startIcon={<ArrowBack />}
+          >
+            Back to Login
+          </Button>
+          <Button 
+            type="submit"
+            variant="contained" 
+            color="primary"
+            disabled={isSubmitting}
+            startIcon={isSubmitting ? <CircularProgress size={20} /> : <CheckCircle />}
+          >
+            {isSubmitting ? 'Submitting...' : 'Submit Verification'}
+          </Button>
+        </Box>
+      </>
+    );
+  };
+
+  if (isSuccess) {
+    return (
+      <>
+        <AnimatedBackground />
+        <Container maxWidth="sm" sx={{ pt: 8, pb: 8 }}>
+          <Paper elevation={3} sx={{ p: 4, textAlign: 'center' }}>
+            <CheckCircle color="success" sx={{ fontSize: 60, mb: 2 }} />
+            <Typography variant="h5" gutterBottom>
+              Verification Submitted Successfully!
             </Typography>
             <Typography variant="body1" paragraph>
-              {formData.streetAddress}, {formData.city}, {formData.state} {formData.postalCode}
+              Thank you for submitting your identity verification. We will review your information and notify you once the verification process is complete.
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Preferred Currency:
+            <Typography variant="body2" color="text.secondary" paragraph>
+              You will be redirected to the login page in a moment...
             </Typography>
-            <Typography variant="body1">
-              {formData.currencyPreference}
-            </Typography>
+            <CircularProgress size={24} sx={{ mt: 2 }} />
           </Paper>
-        </Grid>
-        
-        <Grid item xs={12}>
-          <FormControl required error={!!errors.agreeToTerms}>
-            <FormHelperText>
-              By clicking "Create Account", you agree to our Terms of Service and Privacy Policy, and affirm that the information provided is accurate.
-            </FormHelperText>
-          </FormControl>
-        </Grid>
-      </Grid>
-    </>
-  );
+        </Container>
+      </>
+    );
+  }
+
+  // If not a new user and not already logged in, redirect to login
+  if (!isNewUser && !currentUser) {
+    navigate('/login');
+    return null;
+  }
 
   return (
-    <Container maxWidth="md">
-      <Box
-        sx={{
-          marginTop: 4,
-          marginBottom: 4,
-          display: 'flex',
-          flexDirection: 'column',
-          alignItems: 'center',
-        }}
-      >
-        <Paper elevation={3} sx={{ p: 4, width: '100%' }}>
+    <>
+      <AnimatedBackground />
+      <Container maxWidth="md" sx={{ pt: 4, pb: 8 }}>
+        <Paper elevation={3} sx={{ p: 4 }}>
           <Typography component="h1" variant="h4" align="center" gutterBottom>
-            TerraFlow
+            Identity Verification
           </Typography>
           
-          <Stepper activeStep={activeStep} sx={{ mb: 4, mt: 2 }}>
-            {steps.map((label) => (
-              <Step key={label}>
-                <StepLabel>{label}</StepLabel>
-              </Step>
-            ))}
-          </Stepper>
+          <Typography variant="body1" align="center" paragraph sx={{ mb: 4 }}>
+            We need to verify your identity to comply with financial regulations. Your information is encrypted and securely stored.
+          </Typography>
           
           {serverError && (
             <Alert severity="error" sx={{ mt: 2, mb: 2 }}>
-              {typeof serverError === 'string' ? serverError : 'An error occurred during registration. Please try again.'}
+              {typeof serverError === 'string' ? serverError : 'An error occurred. Please try again.'}
             </Alert>
           )}
           
-          <Box component="form" onSubmit={(e) => { e.preventDefault(); activeStep === steps.length - 1 ? handleSubmit() : handleNext() }} sx={{ mt: 2 }}>
-            {activeStep === 0 && renderBasicInfoForm()}
-            {activeStep === 1 && renderIdentityVerificationForm()}
-            {activeStep === 2 && renderAddressForm()}
-            {activeStep === 3 && renderReviewForm()}
-            
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 3 }}>
-              <Button
-                onClick={handleBack}
-                sx={{ mr: 1 }}
-                disabled={activeStep === 0}
-              >
-                Back
-              </Button>
-              <Box sx={{ flex: '1 1 auto' }} />
-              {activeStep === steps.length - 1 ? (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  type="submit"
-                  disabled={isSubmitting}
-                  startIcon={isSubmitting ? <CircularProgress size={20} /> : <CheckCircle />}
-                >
-                  {isSubmitting ? 'Creating Account...' : 'Create Account'}
-                </Button>
-              ) : (
-                <Button
-                  variant="contained"
-                  color="primary"
-                  onClick={handleNext}
-                >
-                  Next
-                </Button>
-              )}
-            </Box>
-          </Box>
-          
-          <Box sx={{ textAlign: 'center', mt: 3 }}>
-            <Typography variant="body2">
-              Already have an account?{' '}
-              <Link to="/login" style={{ textDecoration: 'none' }}>
-                Sign in
-              </Link>
-            </Typography>
+          <Box component="form" onSubmit={handleSubmit}>
+            {renderKycForm()}
           </Box>
         </Paper>
-      </Box>
-      
-      {/* Help Dialog */}
-      <Dialog
-        open={helpDialogOpen}
-        onClose={closeHelpDialog}
-        aria-labelledby="help-dialog-title"
-        aria-describedby="help-dialog-description"
-      >
-        <DialogTitle id="help-dialog-title">{helpContent.title}</DialogTitle>
-        <DialogContent>
-          <DialogContentText id="help-dialog-description">
-            {helpContent.content}
-          </DialogContentText>
-        </DialogContent>
-        <DialogActions>
-          <Button onClick={closeHelpDialog} color="primary">
-            Close
-          </Button>
-        </DialogActions>
-      </Dialog>
-    </Container>
+      </Container>
+    </>
   );
 };
 

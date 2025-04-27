@@ -1,83 +1,130 @@
 import axios from 'axios';
-import { API_URL } from './constants';
 
-// Create a base axios instance with default configuration
+// Create axios instance with a base URL
 const api = axios.create({
-  baseURL: API_URL, // Backend API URL from constants
-  timeout: 30000, // 30 second timeout
+  baseURL: process.env.REACT_APP_API_URL || '/api',
   headers: {
-    'Content-Type': 'application/json',
-  },
-  withCredentials: true, // Add this line to ensure cookies and auth headers are properly sent
+    'Content-Type': 'application/json'
+  }
 });
 
-// Request interceptor for adding auth token
-api.interceptors.request.use(
-  (config) => {
-    // Get token from localStorage
-    const token = localStorage.getItem('auth_token');
-    
-    // If token exists, add it to the request headers
-    if (token) {
-      config.headers.Authorization = `Bearer ${token}`;
-    }
-    
-    return config;
-  },
-  (error) => {
-    console.error('API Request Error:', error);
-    return Promise.reject(error);
+// Add authentication token if it exists
+api.interceptors.request.use(config => {
+  const token = localStorage.getItem('auth_token');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
   }
-);
+  return config;
+}, error => {
+  return Promise.reject(error);
+});
 
-// Response interceptor for handling errors
+// Add response interceptor for handling common errors
 api.interceptors.response.use(
-  (response) => {
-    // Return successful responses directly
-    return response;
-  },
-  (error) => {
-    // Handle error responses
-    if (error.response) {
-      // Server responded with an error status code
-      console.error('API Error:', {
-        url: error.config.url,
-        status: error.response.status,
-      });
+  response => response,
+  error => {
+    // Handle 401 unauthorized errors by redirecting to login
+    if (error.response && error.response.status === 401) {
+      // Clear local storage
+      localStorage.removeItem('auth_token');
+      localStorage.removeItem('current_user');
       
-      // Handle authentication errors (401)
-      if (error.response.status === 401) {
-        // Clear local storage if token is invalid or expired
-        localStorage.removeItem('auth_token');
-        localStorage.removeItem('current_user');
-        
-        // Redirect to login page if not already there
-        if (!window.location.pathname.includes('/login')) {
-          window.location.href = '/login';
-        }
+      // Redirect to login page if not already there
+      if (!window.location.pathname.includes('/login') && 
+          !window.location.pathname.includes('/register') &&
+          !window.location.pathname.includes('/verify-email')) {
+        window.location.href = '/login';
       }
-    } else if (error.request) {
-      // Request was made but no response received
-      console.error('API Request Error (No Response):', error.request);
-    } else {
-      // Error setting up the request
-      console.error('API Setup Error:', error.message);
     }
     
-    // Return the rejected promise
     return Promise.reject(error);
   }
 );
 
-// Get saved payment methods for a user
-export const getPaymentMethods = async (userId) => {
-  try {
-    const response = await api.get(`/api/payment-methods/${userId}`);
-    return response.data; // Ensure the API returns a list of payment methods
-  } catch (error) {
-    console.error('Error fetching payment methods:', error);
-    throw new Error('Failed to fetch payment methods');
+// Export API endpoints for authentication
+export const authAPI = {
+  // Register new user with email
+  register: (userData) => api.post('/user/register/', userData),
+  
+  // Login with email and password
+  login: (email, password) => api.post('/user/login/', { email, password }),
+  
+  // Google OAuth login
+  googleLogin: (token) => api.post('/user/google-login/', { token }),
+  
+  // Request email verification link
+  sendVerificationEmail: (email) => api.post('/user/send-verification-email/', { email }),
+  
+  // Verify email with token
+  verifyEmail: (token) => api.post('/user/verify-email/', { token }),
+  
+  // Request passwordless login link
+  sendLoginLink: (email) => api.post('/user/send-login-link/', { email }),
+  
+  // Verify login link
+  verifyLoginLink: (token) => api.post('/user/verify-login-link/', { token }),
+  
+  // Logout user
+  logout: () => api.post('/user/logout/'),
+  
+  // Get current user profile
+  getCurrentUser: () => api.get('/user/user/'),
+  
+  // Update user profile
+  updateProfile: (userId, profileData) => api.put(`/user/update-profile/${userId}`, profileData),
+  
+  // Update user metadata (KYC info)
+  updateMetadata: (userId, metadata) => api.post(`/user/${userId}/metadata`, metadata)
+};
+
+// Export API endpoints for wallet operations
+export const walletAPI = {
+  // Get user wallets
+  getUserWallets: (userId) => api.get(`/wallet/user/${userId}`),
+  
+  // Update wallet
+  updateWallet: (userId, walletData) => api.put(`/wallet/update/${userId}`, walletData),
+  
+  // Get wallet transactions
+  getTransactions: (walletId) => api.get(`/wallet/${walletId}/transactions`)
+};
+
+// Export API endpoints for payment operations
+export const paymentAPI = {
+  // Create payment
+  createPayment: (paymentData) => api.post('/payment/create', paymentData),
+  
+  // Get payment status
+  getPaymentStatus: (paymentId) => api.get(`/payment/${paymentId}/status`),
+  
+  // Process deposit
+  processDeposit: (depositData) => api.post('/payment/deposit', depositData),
+  
+  // Process withdrawal
+  processWithdrawal: (withdrawalData) => api.post('/payment/withdraw', withdrawalData)
+};
+
+// Export API endpoints for KYC operations
+export const kycAPI = {
+  // Submit KYC data
+  submitKycData: (userId, kycData) => api.post(`/kyc/${userId}/submit`, kycData),
+  
+  // Get KYC status
+  getKycStatus: (userId) => api.get(`/kyc/${userId}/status`),
+  
+  // Upload identity documents
+  uploadDocument: (userId, documentType, file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('documentType', documentType);
+    
+    return api.post(`/kyc/${userId}/upload-document`, formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data'
+      }
+    });
   }
 };
 
+// Export the base API instance as default
 export default api; 

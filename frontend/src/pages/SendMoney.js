@@ -200,18 +200,16 @@ const SendMoney = () => {
               amount: parseFloat(formDataToUse.amount),
               source_currency: formDataToUse.currency,
               target_currency: formDataToUse.currency,
-              stripe_payment: true,
               payment_source: savedTransaction.paymentSource || 'card',
               transaction_type: savedTransaction.paymentSource ? 
                 `${savedTransaction.paymentSource.toUpperCase()}_PAYMENT` : 'CARD_PAYMENT',
-              skip_sender_deduction: true, // This prevents double deduction since Stripe already took the money
               use_stablecoin: formDataToUse.useStablecoinBridge || false,
-              description: formDataToUse.description || "Payment via Stripe"
+              description: formDataToUse.description || "Payment"
             })
             .then(response => {
               // Show success screen
               setSuccess(true);
-              setTransactionId(response.data.transaction_id || 'stripe-' + Date.now());
+              setTransactionId(response.data.transaction_id || Date.now().toString());
               setSendingFunds(false);
             })
             .catch(err => {
@@ -661,7 +659,7 @@ const SendMoney = () => {
       
       if (paymentSource === 'wallet') {
         // Directly process wallet payment
-      const response = await api.post('/payment/transfer', {
+        const response = await api.post('/payment/transfer', {
           sender_id: currentUser.id,
           recipient_id: recipientInfo.id,
           amount: totalAmount, // Include fees in the amount
@@ -669,17 +667,16 @@ const SendMoney = () => {
           target_currency: formData.currency,
           use_stablecoin: formData.useStablecoinBridge && 
                          (selectedWallet.base_currency || selectedWallet.currency) !== formData.currency,
-          stripe_payment: false,
           payment_source: paymentSource,
           skip_sender_deduction: false
-      });
+        });
 
-      if (response.status === 200) {
-        setSuccess(true);
+        if (response.status === 200) {
+          setSuccess(true);
           setTransactionId(response.data.transaction_id);
         }
       } else if (paymentSource === 'card' || paymentSource === 'bank') {
-        // Store pending transaction before redirecting to Stripe
+        // Store transaction data
         const transactionData = {
           formData: {
             ...formData,
@@ -687,12 +684,11 @@ const SendMoney = () => {
           },
           activeStep,
           paymentSource,
-          recipientInfo: recipientInfo,
-          stripe_payment: true
+          recipientInfo: recipientInfo
         };
         
         // Debug log to verify data
-        console.log('Saving pending transaction data:', transactionData);
+        console.log('Processing direct payment data:', transactionData);
         
         // Ensure all required data is present
         if (!recipientInfo || !recipientInfo.id) {
@@ -704,48 +700,36 @@ const SendMoney = () => {
           throw new Error('Cannot send money to yourself using a card payment. Please select a different recipient.');
         }
         
-        localStorage.setItem('pendingTransaction', JSON.stringify(transactionData));
-        
         // Calculate total amount including fee
         const totalAmount = parseFloat(formData.amount) + estimatedFee;
-        console.log(`Creating checkout for payment to recipient ${recipientInfo.id}, amount: ${totalAmount}`);
+        console.log(`Processing payment to recipient ${recipientInfo.id}, amount: ${totalAmount}`);
         
-        createDepositCheckout(
-          Math.round(totalAmount * 100),
-          formData.currency.toLowerCase(),
-          currentUser,
-          true, // Set to true for a payment
-          {
-            is_payment: 'true',
-            recipient_id: recipientInfo.id.toString(),
-            payment_source: paymentSource,
-            skip_sender_deduction: 'true',
-            description: `Payment to ${getRecipientDisplayName(recipientInfo)}`
-          }
-        )
-        .then(checkoutUrl => {
-          if (typeof checkoutUrl === 'string') {
-            window.location.href = checkoutUrl;
-          } else if (checkoutUrl && checkoutUrl.url) {
-            window.location.href = checkoutUrl.url;
-          } else {
-            throw new Error("No checkout URL returned");
-          }
-        })
-        .catch(error => {
-          console.error("Failed to create Stripe session:", error);
-          setError(`Payment error: ${error.message}`);
-          setSendingFunds(false);
-          // Void pending transaction if Stripe session fails
-          localStorage.removeItem('pendingTransaction');
+        // Process payment directly through API
+        const response = await api.post('/payment/direct-payment', {
+          amount: Math.round(totalAmount * 100),
+          currency: formData.currency.toLowerCase(),
+          userId: currentUser.id,
+          recipientId: recipientInfo.id.toString(),
+          paymentSource: paymentSource,
+          description: `Payment to ${getRecipientDisplayName(recipientInfo)}`
         });
+        
+        if (response.data.success) {
+          setSuccess(true);
+          setTransactionId(response.data.transaction_id || Date.now().toString());
+        } else if (response.data.redirectUrl) {
+          // If the API returns a URL for completing the payment
+          window.location.href = response.data.redirectUrl;
+        } else {
+          throw new Error(response.data.message || "Failed to process payment");
+        }
       }
     } catch (err) {
       console.error('Error during transfer:', err);
       if (err.response && err.response.data && err.response.data.detail) {
         setError(`Failed to process transfer: ${err.response.data.detail}`);
       } else {
-        setError('Network error. Please try again later.');
+        setError(err.message || 'Network error. Please try again later.');
       }
     } finally {
       setSendingFunds(false);
@@ -774,7 +758,7 @@ const SendMoney = () => {
   const handleSend = () => {
     if (activeStep === 2) {
       handleSubmit();
-    }create
+    }
   };
 
   const handleBack = () => {
