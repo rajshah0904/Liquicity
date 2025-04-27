@@ -1,0 +1,47 @@
+version: '3.8'
+
+services:
+  app:
+    build: 
+      context: ..
+      dockerfile: .devcontainer/Dockerfile
+    volumes:
+      - ..:/workspace:cached
+    command: sleep infinity
+    network_mode: service:db
+    depends_on:
+      - db
+    environment:
+      # Pass environment variables to the container
+      - DATABASE_URL=postgresql://postgres:postgres@localhost:5432/terraflow
+      - PYTHONPATH=/workspace
+      - APP_URL=http://localhost:3000
+      # Add any other environment variables your app needs
+      - PLAID_CLIENT_ID=${PLAID_CLIENT_ID}
+      - PLAID_SECRET=${PLAID_SECRET}
+      - PLAID_ENV=${PLAID_ENV}
+      - STRIPE_API_KEY=${STRIPE_API_KEY}
+      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
+      # Modern Treasury API keys (can be placeholders in dev)
+      - MODERN_TREASURY_API_KEY=test_api_key
+      - MODERN_TREASURY_ORG_ID=test_org_id
+      # Rapyd API keys (can be placeholders in dev)
+      - RAPYD_ACCESS_KEY=test_access_key
+      - RAPYD_SECRET_KEY=test_secret_key
+      # Set testing flag
+      - TESTING=1
+
+  db:
+    image: postgres:14
+    restart: unless-stopped
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_USER=postgres
+      - POSTGRES_DB=terraflow
+    ports:
+      - "5432:5432"
+
+volumes:
+  postgres-data: 
