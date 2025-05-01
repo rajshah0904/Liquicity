@@ -4,7 +4,7 @@ from sqlalchemy import create_engine, text
 from sqlalchemy.orm import sessionmaker
 
 # Use hardcoded database URL since environment variable is not set
-database_url = "postgresql://raj:Rajshah11@localhost:5432/terraflow"
+database_url = "postgresql://raj:Rajshah11@localhost:5432/liquicity"
 print(f"Using database URL: {database_url}")
 
 # Create engine and session

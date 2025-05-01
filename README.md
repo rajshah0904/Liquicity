@@ -1,6 +1,6 @@
-# TerraFlow
+# Liquicity
 
-TerraFlow is an autonomous finance platform that leverages stablecoins for efficient transactions and currency conversion, minimizing fees and delays in financial operations.
+Liquicity is an autonomous finance platform that leverages stablecoins for efficient transactions and currency conversion, minimizing fees and delays in financial operations.
 
 ## Features
 
@@ -44,8 +44,8 @@ TerraFlow is an autonomous finance platform that leverages stablecoins for effic
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yourusername/terraflow.git
-cd terraflow
+git clone https://github.com/yourusername/liquicity.git
+cd liquicity
 ```
 
 2. Set up the backend:
@@ -84,7 +84,7 @@ npm start
 ## Project Structure
 
 ```
-terraflow/
+liquicity/
 ├── app/                 # Backend application
 │   ├── api/             # API endpoints
 │   ├── core/            # Core functionality and configuration

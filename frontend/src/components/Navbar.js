@@ -197,7 +197,7 @@ const Navbar = ({ onDrawerToggle, drawerOpen, showMenuIcon = false }) => {
             <Typography variant="body1" fontWeight={700}>TF</Typography>
           </LogoIcon>
           <GradientText variant="h6">
-            TerraFlow
+            Liquicity
           </GradientText>
         </Logo>
       </DrawerHeader>
@@ -314,7 +314,7 @@ const Navbar = ({ onDrawerToggle, drawerOpen, showMenuIcon = false }) => {
               TF
             </Box>
             <Typography variant="h6" noWrap component="div" sx={{ display: { xs: 'none', sm: 'block' } }}>
-              TerraFlow
+              Liquicity
             </Typography>
           </Box>
           

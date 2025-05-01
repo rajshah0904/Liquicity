@@ -3,7 +3,7 @@ set -e
 
 # Function to check if the database exists
 database_exists() {
-  psql -U postgres -lqt | cut -d \| -f 1 | grep -qw terraflow
+  psql -U postgres -lqt | cut -d \| -f 1 | grep -qw liquicity
 }
 
 # Function to create test users and initial data
@@ -29,12 +29,12 @@ done
 
 # Create database and user if they don't exist
 if database_exists; then
-  echo "Database 'terraflow' already exists."
+  echo "Database 'liquicity' already exists."
 else
-  echo "Creating database 'terraflow'..."
-  psql -U postgres -c "CREATE DATABASE terraflow;"
+  echo "Creating database 'liquicity'..."
+  psql -U postgres -c "CREATE DATABASE liquicity;"
   psql -U postgres -c "CREATE USER raj WITH ENCRYPTED PASSWORD 'Rajshah11';"
-  psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE terraflow TO raj;"
+  psql -U postgres -c "GRANT ALL PRIVILEGES ON DATABASE liquicity TO raj;"
   
   # Run migrations
   cd /workspace

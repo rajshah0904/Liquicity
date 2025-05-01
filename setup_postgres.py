@@ -6,13 +6,13 @@ import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import bcrypt
 
-print("TerraFlow PostgreSQL Setup Script")
+print("Liquicity PostgreSQL Setup Script")
 print("=================================")
 
 # Default credentials
 DEFAULT_USER = "raj"
 DEFAULT_PASSWORD = "Rajshah11"
-DEFAULT_DB = "terraflow"
+DEFAULT_DB = "liquicity"
 
 # Step 1: Check if PostgreSQL is installed
 try:
@@ -66,7 +66,7 @@ except Exception as e:
 # Step 3: Create tables and test user
 try:
     # Connect to our database
-    print("Connecting to TerraFlow database...")
+    print("Connecting to Liquicity database...")
     conn = psycopg2.connect(
         dbname=DEFAULT_DB,
         user=DEFAULT_USER,

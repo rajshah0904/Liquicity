@@ -13,7 +13,7 @@ services:
       - db
     environment:
       # Pass environment variables to the container
-      - DATABASE_URL=postgresql://postgres:postgres@localhost:5432/terraflow
+      - DATABASE_URL=postgresql://postgres:postgres@localhost:5432/liquicity
       - PYTHONPATH=/workspace
       - APP_URL=http://localhost:3000
       # Add any other environment variables your app needs
@@ -39,7 +39,7 @@ services:
     environment:
       - POSTGRES_PASSWORD=postgres
       - POSTGRES_USER=postgres
-      - POSTGRES_DB=terraflow
+      - POSTGRES_DB=liquicity
     ports:
       - "5432:5432"
 

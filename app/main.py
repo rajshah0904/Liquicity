@@ -22,7 +22,7 @@ avatars_dir = os.path.join(static_dir, "avatars")
 if not os.path.exists(avatars_dir):
     os.makedirs(avatars_dir, exist_ok=True)
 
-app = FastAPI(title="TerraFlow API", version="0.1.0")
+app = FastAPI(title="Liquicity API", version="0.1.0")
 
 # Mount static files directory
 app.mount("/static", StaticFiles(directory="static"), name="static")
@@ -55,7 +55,7 @@ app.include_router(trade.router, prefix="/trade", tags=["trading"])
 @app.get("/", tags=["status"])
 async def root():
     """API root endpoint"""
-    return {"message": "Welcome to TerraFlow API", "status": "online"}
+    return {"message": "Welcome to Liquicity API", "status": "online"}
 
 @app.get("/health", tags=["status"])
 async def health_check(db=Depends(get_db)):

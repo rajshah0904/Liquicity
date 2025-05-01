@@ -1,8 +1,9 @@
 {
-  "name": "terraflow-frontend",
+  "name": "liquicity-frontend",
   "version": "0.1.0",
   "private": true,
   "dependencies": {
+    "@auth0/auth0-react": "^2.3.0",
     "@emotion/react": "^11.11.1",
     "@emotion/styled": "^11.11.0",
     "@fontsource/inter": "^5.2.5",

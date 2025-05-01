@@ -1,37 +1,37 @@
-// Deployment script for TerraFlow Contracts
+// Deployment script for Liquicity Contracts
 // Run with: npx hardhat run scripts/deploy.js --network <network_name>
 
 const hre = require("hardhat");
 
 async function main() {
-  console.log("Deploying TerraFlow contracts...");
+  console.log("Deploying Liquicity contracts...");
   
   // Get the deployer's address
   const [deployer] = await ethers.getSigners();
   console.log(`Deploying contracts with the account: ${deployer.address}`);
   
   // Get contract factories
-  const TerraFlowToken = await ethers.getContractFactory("TerraFlowToken");
-  const TerraFlowPaymentProcessor = await ethers.getContractFactory("TerraFlowPaymentProcessor");
-  const TerraFlowSwap = await ethers.getContractFactory("TerraFlowSwap");
+  const LiquicityToken = await ethers.getContractFactory("LiquicityToken");
+  const LiquicityPaymentProcessor = await ethers.getContractFactory("LiquicityPaymentProcessor");
+  const LiquicitySwap = await ethers.getContractFactory("LiquicitySwap");
   
-  // Deploy TerraFlow Token
-  console.log("Deploying TerraFlow Token...");
-  const terraToken = await TerraFlowToken.deploy();
+  // Deploy Liquicity Token
+  console.log("Deploying Liquicity Token...");
+  const terraToken = await LiquicityToken.deploy();
   await terraToken.deployed();
-  console.log(`TerraFlow Token deployed to: ${terraToken.address}`);
+  console.log(`Liquicity Token deployed to: ${terraToken.address}`);
   
   // Deploy Payment Processor with fee collector as the deployer
-  console.log("Deploying TerraFlow Payment Processor...");
-  const paymentProcessor = await TerraFlowPaymentProcessor.deploy(deployer.address);
+  console.log("Deploying Liquicity Payment Processor...");
+  const paymentProcessor = await LiquicityPaymentProcessor.deploy(deployer.address);
   await paymentProcessor.deployed();
-  console.log(`TerraFlow Payment Processor deployed to: ${paymentProcessor.address}`);
+  console.log(`Liquicity Payment Processor deployed to: ${paymentProcessor.address}`);
   
   // Deploy Swap contract with fee collector as the deployer
-  console.log("Deploying TerraFlow Swap...");
-  const terraSwap = await TerraFlowSwap.deploy(deployer.address);
+  console.log("Deploying Liquicity Swap...");
+  const terraSwap = await LiquicitySwap.deploy(deployer.address);
   await terraSwap.deployed();
-  console.log(`TerraFlow Swap deployed to: ${terraSwap.address}`);
+  console.log(`Liquicity Swap deployed to: ${terraSwap.address}`);
   
   // Set up initial configuration
   
@@ -83,7 +83,7 @@ async function main() {
   // Print summary
   console.log("\nDeployment Summary:");
   console.log("====================");
-  console.log(`TerraFlow Token: ${terraToken.address}`);
+  console.log(`Liquicity Token: ${terraToken.address}`);
   console.log(`Payment Processor: ${paymentProcessor.address}`);
   console.log(`Swap Contract: ${terraSwap.address}`);
   console.log(`Fee Collector: ${deployer.address}`);

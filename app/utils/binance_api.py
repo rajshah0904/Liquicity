@@ -10,7 +10,7 @@ from app.config import config
 
 class BinanceAPI:
     """
-    Binance API wrapper for TerraFlow
+    Binance API wrapper for Liquicity
     Provides functionality for market data and trading operations
     """
     

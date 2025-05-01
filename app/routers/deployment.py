@@ -16,7 +16,7 @@ router = APIRouter()
 CONTRACTS_DIR = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "contracts")
 
 class DeployTokenRequest(BaseModel):
-    """Request model for deploying the TerraFlow token contract"""
+    """Request model for deploying the Liquicity token contract"""
     deployer_address: str
     private_key: str  # WARNING: Handle with extreme care
     network: str = "ethereum"  # ethereum, polygon, avalanche
@@ -30,7 +30,7 @@ class DeployTokenRequest(BaseModel):
         return v
 
 class DeployProcessorRequest(BaseModel):
-    """Request model for deploying the TerraFlow payment processor contract"""
+    """Request model for deploying the Liquicity payment processor contract"""
     deployer_address: str
     fee_recipient_address: str  # Address that will receive fees
     private_key: str  # WARNING: Handle with extreme care
@@ -87,7 +87,7 @@ async def deploy_token_contract(
     testnet: bool,
     gas_price_gwei: Optional[int]
 ):
-    """Background task to deploy the TerraFlow token contract"""
+    """Background task to deploy the Liquicity token contract"""
     try:
         # Update status to in progress
         deployment_statuses[deployment_id].status = "in_progress"
@@ -97,7 +97,7 @@ async def deploy_token_contract(
         
         # Get contract ABI and bytecode
         try:
-            token_artifact_path = os.path.join(CONTRACTS_DIR, "artifacts", "TerraFlowToken.json")
+            token_artifact_path = os.path.join(CONTRACTS_DIR, "artifacts", "LiquicityToken.json")
             with open(token_artifact_path, "r") as f:
                 artifact = json.load(f)
                 abi = artifact["abi"]
@@ -149,7 +149,7 @@ async def deploy_token_contract(
                 "transaction_hash": txn_hash.hex(),
                 "block_number": receipt.blockNumber,
                 "gas_used": receipt.gasUsed,
-                "contract_name": "TerraFlowToken",
+                "contract_name": "LiquicityToken",
                 "deployer": deployer_address,
                 "network": network,
                 "testnet": testnet
@@ -173,7 +173,7 @@ async def deploy_processor_contract(
     testnet: bool,
     gas_price_gwei: Optional[int]
 ):
-    """Background task to deploy the TerraFlow payment processor contract"""
+    """Background task to deploy the Liquicity payment processor contract"""
     try:
         # Update status to in progress
         deployment_statuses[deployment_id].status = "in_progress"
@@ -183,7 +183,7 @@ async def deploy_processor_contract(
         
         # Get contract ABI and bytecode
         try:
-            processor_artifact_path = os.path.join(CONTRACTS_DIR, "artifacts", "TerraFlowPaymentProcessor.json")
+            processor_artifact_path = os.path.join(CONTRACTS_DIR, "artifacts", "LiquicityPaymentProcessor.json")
             with open(processor_artifact_path, "r") as f:
                 artifact = json.load(f)
                 abi = artifact["abi"]
@@ -236,7 +236,7 @@ async def deploy_processor_contract(
                 "transaction_hash": txn_hash.hex(),
                 "block_number": receipt.blockNumber,
                 "gas_used": receipt.gasUsed,
-                "contract_name": "TerraFlowPaymentProcessor",
+                "contract_name": "LiquicityPaymentProcessor",
                 "deployer": deployer_address,
                 "fee_recipient": fee_recipient_address,
                 "network": network,
@@ -259,9 +259,9 @@ async def deploy_token(
     username: str = Depends(get_current_user)
 ):
     """
-    Deploy the TerraFlow token contract
+    Deploy the Liquicity token contract
     
-    Deploys the ERC20 token contract for the TerraFlow platform.
+    Deploys the ERC20 token contract for the Liquicity platform.
     This is a long-running operation that runs in the background.
     """
     # Generate deployment ID
@@ -270,7 +270,7 @@ async def deploy_token(
     # Create initial status
     deployment_statuses[deployment_id] = DeploymentStatus(
         deployment_id=deployment_id,
-        contract_name="TerraFlowToken",
+        contract_name="LiquicityToken",
         status="pending"
     )
     
@@ -298,7 +298,7 @@ async def deploy_payment_processor(
     username: str = Depends(get_current_user)
 ):
     """
-    Deploy the TerraFlow payment processor contract
+    Deploy the Liquicity payment processor contract
     
     Deploys the payment processor contract for handling payments.
     This is a long-running operation that runs in the background.
@@ -309,7 +309,7 @@ async def deploy_payment_processor(
     # Create initial status
     deployment_statuses[deployment_id] = DeploymentStatus(
         deployment_id=deployment_id,
-        contract_name="TerraFlowPaymentProcessor",
+        contract_name="LiquicityPaymentProcessor",
         status="pending"
     )
     

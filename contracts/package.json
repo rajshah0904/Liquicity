@@ -1,7 +1,7 @@
 {
-  "name": "terraflow-contracts",
+  "name": "liquicity-contracts",
   "version": "1.0.0",
-  "description": "Smart contracts for the TerraFlow payment system",
+  "description": "Smart contracts for the Liquicity payment system",
   "main": "index.js",
   "scripts": {
     "compile": "hardhat compile",
@@ -18,7 +18,7 @@
     "ethereum",
     "stablecoins"
   ],
-  "author": "TerraFlow Team",
+  "author": "Liquicity Team",
   "license": "MIT",
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox": "^2.0.0",

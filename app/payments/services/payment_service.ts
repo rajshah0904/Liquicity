@@ -1,5 +1,5 @@
 /**
- * Payment service for TerraFlow.
+ * Payment service for Liquicity.
  * 
  * This module provides basic payment operations for sending and
  * receiving fiat currency through payment providers.

@@ -6,7 +6,7 @@ from app.models import Base, User, Wallet
 import bcrypt
 
 # Database connection
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://raj:Rajshah11@localhost:5432/terraflow")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://raj:Rajshah11@localhost:5432/liquicity")
 engine = create_engine(DATABASE_URL)
 
 # Create a session

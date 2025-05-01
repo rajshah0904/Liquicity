@@ -115,7 +115,7 @@ const Layout = ({ children }) => {
     <div>
       <Toolbar>
         <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold' }}>
-          TerraFlow
+          Liquicity
         </Typography>
       </Toolbar>
       <Divider />
@@ -264,7 +264,7 @@ const Layout = ({ children }) => {
           </IconButton>
           <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
             {menuItems.find(item => item.path === location.pathname)?.text || 
-             'TerraFlow'}
+             'Liquicity'}
           </Typography>
           
           {currentUser ? (
@@ -299,7 +299,7 @@ const Layout = ({ children }) => {
                   <Typography variant="body2">Your invoice #INV-2023 was paid</Typography>
                 </MenuItem>
                 <MenuItem onClick={handleNotificationsClose}>
-                  <Typography variant="body2">Welcome to TerraFlow!</Typography>
+                  <Typography variant="body2">Welcome to Liquicity!</Typography>
                 </MenuItem>
                 <Divider />
                 <MenuItem onClick={() => {

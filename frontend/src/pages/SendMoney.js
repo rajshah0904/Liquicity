@@ -540,7 +540,7 @@ const SendMoney = () => {
     
     // Check for recipient info, which indicates a valid registered user
     if (!recipientInfo || !recipientInfo.id) {
-      errors.recipientAddress = 'Please select a valid registered TerraFlow user';
+      errors.recipientAddress = 'Please select a valid registered Liquicity user';
     } else if (recipientInfo.id === currentUser.id) {
       errors.recipientAddress = 'You cannot send money to yourself';
     }
@@ -1172,7 +1172,7 @@ const SendMoney = () => {
                         {...params}
                         label="Recipient"
                     error={!!formErrors.recipientAddress}
-                        helperText={formErrors.recipientAddress || "Enter username or email of any registered TerraFlow user"}
+                        helperText={formErrors.recipientAddress || "Enter username or email of any registered Liquicity user"}
                         onChange={handleRecipientInputChange}
                         onBlur={() => {
                           // If user manually typed something but didn't select from dropdown

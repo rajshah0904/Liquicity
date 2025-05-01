@@ -1,6 +1,6 @@
-# TerraFlow Collaborator Setup Guide
+# Liquicity Collaborator Setup Guide
 
-Welcome to the TerraFlow project! This guide will help you set up the necessary database and test users to start contributing to the project.
+Welcome to the Liquicity project! This guide will help you set up the necessary database and test users to start contributing to the project.
 
 ## Quick Setup (Recommended)
 
@@ -28,7 +28,7 @@ If you prefer to set up the database manually, follow the instructions below.
 
 ## Manual Database Setup
 
-TerraFlow uses PostgreSQL as its database. Follow these steps to set up the database:
+Liquicity uses PostgreSQL as its database. Follow these steps to set up the database:
 
 ### 1. Install PostgreSQL
 
@@ -55,9 +55,9 @@ sudo service postgresql start
 psql -U postgres
 
 # Inside psql, create the database
-CREATE DATABASE terraflow;
+CREATE DATABASE liquicity;
 CREATE USER raj WITH ENCRYPTED PASSWORD 'Rajshah11';
-GRANT ALL PRIVILEGES ON DATABASE terraflow TO raj;
+GRANT ALL PRIVILEGES ON DATABASE liquicity TO raj;
 \q
 ```
 
@@ -66,7 +66,7 @@ GRANT ALL PRIVILEGES ON DATABASE terraflow TO raj;
 Create or update the `.env` file in the project root:
 
 ```
-DATABASE_URL=postgresql://raj:Rajshah11@localhost:5432/terraflow
+DATABASE_URL=postgresql://raj:Rajshah11@localhost:5432/liquicity
 APP_URL=http://localhost:3000
 ```
 
@@ -100,7 +100,7 @@ python create_second_test_user.py
 If you prefer using SQLite for development (simpler setup), modify your `.env` file:
 
 ```
-DATABASE_URL=sqlite:///./terraflow.db
+DATABASE_URL=sqlite:///./liquicity.db
 ```
 
 Then run the setup scripts which will use SQLite instead of PostgreSQL.

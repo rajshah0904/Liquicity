@@ -99,8 +99,8 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
                 )
         
         # Hash the password
-    hashed_password = bcrypt.hashpw(user.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    
+        hashed_password = bcrypt.hashpw(user.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        
         # Insert the user
         result = db.execute(
             text("""
@@ -148,10 +148,9 @@ def create_user(user: UserCreate, db: Session = Depends(get_db)):
         # Generate and send email verification
         try:
             send_verification_email(user.email, generate_verification_token())
-    except Exception as e:
+        except Exception as e:
             logging.error(f"Failed to send verification email: {str(e)}")
             # Continue with user creation even if email sending fails
-            # We might want to log this or handle it differently
         
         return {
             "id": user_id,
@@ -623,13 +622,12 @@ def create_test_user(user: TestUserCreate, db: Session = Depends(get_db)):
     """Create a test user account - development purposes only"""
     try:
         # Check if user with email already exists
-    result = db.execute(text("SELECT id FROM users WHERE email = :email"), {"email": user.email}).first()
-    if result:
-        raise HTTPException(status_code=400, detail="Email already registered")
-    
+        result = db.execute(text("SELECT id FROM users WHERE email = :email"), {"email": user.email}).first()
+        if result:
+            raise HTTPException(status_code=400, detail="Email already registered")
         # Hash the password
-    hashed_password = bcrypt.hashpw(user.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
-    
+        hashed_password = bcrypt.hashpw(user.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
+        
         # Insert the new user
         result = db.execute(
             text("""
@@ -684,12 +682,11 @@ def get_user_profile(user_id: int, db: Session = Depends(get_db), current_user: 
         # Get the basic user info
         user = db.execute(
             text("SELECT id, email, wallet_address FROM users WHERE id = :user_id"),
-        {"user_id": user_id}
-    ).first()
-    
+            {"user_id": user_id}
+        ).first()
         if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
+            raise HTTPException(status_code=404, detail="User not found")
+        
         # Get user's metadata
         metadata = db.execute(
             text("""
@@ -801,114 +798,114 @@ def update_user_profile(
     try:
         # Check if user exists
         user = db.execute(text("SELECT id FROM users WHERE id = :user_id"), {"user_id": user_id}).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
         # Check permissions: only the user themselves or an admin can update profile
-    current_user_data = db.execute(
+        current_user_data = db.execute(
             text("SELECT id, role FROM users WHERE email = :email"),
             {"email": current_user}
-    ).first()
-    
-    if not current_user_data:
-        raise HTTPException(status_code=404, detail="Current user not found")
-    
-    current_user_id, role = current_user_data
-        
-        # Only allow users to update their own profile or admins to update any user's profile
-    if current_user_id != user_id and role != "admin":
-        raise HTTPException(status_code=403, detail="You don't have permission to update this user's profile")
-    
-    try:
-        # Update email address in users table if provided
-        if profile.email:
-            # Check if email is already in use by a different user
-            existing_email = db.execute(
-                text("SELECT id FROM users WHERE email = :email AND id != :user_id"),
-                {"email": profile.email, "user_id": user_id}
-            ).first()
-            
-            if existing_email:
-                raise HTTPException(status_code=400, detail="Email address is already in use")
-            
-            db.execute(
-                text("UPDATE users SET email = :email WHERE id = :user_id"),
-                {"email": profile.email, "user_id": user_id}
-            )
-        
-        # Check if metadata already exists
-        existing = db.execute(
-            text("SELECT id FROM user_metadata WHERE user_id = :user_id"),
-            {"user_id": user_id}
         ).first()
         
-        # Get existing profile data or create new if it doesn't exist
-        if existing:
-            current_profile_data = db.execute(
-                text("SELECT profile_data FROM user_metadata WHERE user_id = :user_id"),
+        if not current_user_data:
+            raise HTTPException(status_code=404, detail="Current user not found")
+        
+        current_user_id, role = current_user_data
+        
+        # Only allow users to update their own profile or admins to update any user's profile
+        if current_user_id != user_id and role != "admin":
+            raise HTTPException(status_code=403, detail="You don't have permission to update this user's profile")
+        
+        try:
+            # Update email address in users table if provided
+            if profile.email:
+                # Check if email is already in use by a different user
+                existing_email = db.execute(
+                    text("SELECT id FROM users WHERE email = :email AND id != :user_id"),
+                    {"email": profile.email, "user_id": user_id}
+                ).first()
+                
+                if existing_email:
+                    raise HTTPException(status_code=400, detail="Email address is already in use")
+                
+                db.execute(
+                    text("UPDATE users SET email = :email WHERE id = :user_id"),
+                    {"email": profile.email, "user_id": user_id}
+                )
+            
+            # Check if metadata already exists
+            existing = db.execute(
+                text("SELECT id FROM user_metadata WHERE user_id = :user_id"),
                 {"user_id": user_id}
             ).first()
-            profile_data = current_profile_data[0] if current_profile_data and current_profile_data[0] else {}
-        else:
-            profile_data = {}
-        
-        # Merge new profile values
-        profile_dict = {k: v for k, v in profile.dict().items() if v is not None}
-        if profile_dict:
-            if not profile_data:
-                profile_data = profile_dict
+            
+            # Get existing profile data or create new if it doesn't exist
+            if existing:
+                current_profile_data = db.execute(
+                    text("SELECT profile_data FROM user_metadata WHERE user_id = :user_id"),
+                    {"user_id": user_id}
+                ).first()
+                profile_data = current_profile_data[0] if current_profile_data and current_profile_data[0] else {}
             else:
-                profile_data.update(profile_dict)
-        
-        # Process database update
-        if existing:
-            # Update existing record
-            db.execute(
-                text("""
-                    UPDATE user_metadata SET 
-                    first_name = :first_name,
-                    last_name = :last_name,
-                    date_of_birth = :date_of_birth,
-                    country = :country,
-                    country_code = :country_code,
-                    profile_data = :profile_data,
-                    updated_at = :updated_at
-                    WHERE user_id = :user_id
-                """),
-                {
-                    "user_id": user_id,
-                    "first_name": profile.first_name,
-                    "last_name": profile.last_name,
-                    "date_of_birth": profile.date_of_birth,
-                    "country": profile.country,
-                    "country_code": profile.country_code,
-                    "profile_data": profile_data,
-                    "updated_at": datetime.utcnow()
-                }
-            )
-        else:
-            # Create new record
-            db.execute(
-                text("""
-                    INSERT INTO user_metadata 
-                    (user_id, first_name, last_name, date_of_birth, country, country_code, profile_data, created_at) 
-                    VALUES 
-                    (:user_id, :first_name, :last_name, :date_of_birth, :country, :country_code, :profile_data, :created_at)
-                """),
-                {
-                    "user_id": user_id,
-                    "first_name": profile.first_name,
-                    "last_name": profile.last_name,
-                    "date_of_birth": profile.date_of_birth,
-                    "country": profile.country,
-                    "country_code": profile.country_code,
-                    "profile_data": profile_data,
-                    "created_at": datetime.utcnow()
-                }
-            )
-        
-        db.commit()
-        return {"message": "Profile updated successfully"}
+                profile_data = {}
+            
+            # Merge new profile values
+            profile_dict = {k: v for k, v in profile.dict().items() if v is not None}
+            if profile_dict:
+                if not profile_data:
+                    profile_data = profile_dict
+                else:
+                    profile_data.update(profile_dict)
+            
+            # Process database update
+            if existing:
+                # Update existing record
+                db.execute(
+                    text("""
+                        UPDATE user_metadata SET 
+                        first_name = :first_name,
+                        last_name = :last_name,
+                        date_of_birth = :date_of_birth,
+                        country = :country,
+                        country_code = :country_code,
+                        profile_data = :profile_data,
+                        updated_at = :updated_at
+                        WHERE user_id = :user_id
+                    """),
+                    {
+                        "user_id": user_id,
+                        "first_name": profile.first_name,
+                        "last_name": profile.last_name,
+                        "date_of_birth": profile.date_of_birth,
+                        "country": profile.country,
+                        "country_code": profile.country_code,
+                        "profile_data": profile_data,
+                        "updated_at": datetime.utcnow()
+                    }
+                )
+            else:
+                # Create new record
+                db.execute(
+                    text("""
+                        INSERT INTO user_metadata 
+                        (user_id, first_name, last_name, date_of_birth, country, country_code, profile_data, created_at) 
+                        VALUES 
+                        (:user_id, :first_name, :last_name, :date_of_birth, :country, :country_code, :profile_data, :created_at)
+                    """),
+                    {
+                        "user_id": user_id,
+                        "first_name": profile.first_name,
+                        "last_name": profile.last_name,
+                        "date_of_birth": profile.date_of_birth,
+                        "country": profile.country,
+                        "country_code": profile.country_code,
+                        "profile_data": profile_data,
+                        "created_at": datetime.utcnow()
+                    }
+                )
+            
+            db.commit()
+            return {"message": "Profile updated successfully"}
         except Exception as e:
             db.rollback()
             raise HTTPException(status_code=500, detail=f"Error updating profile: {str(e)}")
@@ -928,24 +925,24 @@ def update_notification_settings(
     try:
         # Check if user exists
         user = db.execute(text("SELECT id FROM users WHERE id = :user_id"), {"user_id": user_id}).first()
-    if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        
         # Check permissions: only the user themselves or an admin can update notification settings
-    current_user_data = db.execute(
+        current_user_data = db.execute(
             text("SELECT id, role FROM users WHERE email = :email"),
             {"email": current_user}
-    ).first()
-    
-    if not current_user_data:
-        raise HTTPException(status_code=404, detail="Current user not found")
-    
-    current_user_id, role = current_user_data
+        ).first()
+        
+        if not current_user_data:
+            raise HTTPException(status_code=404, detail="Current user not found")
+        
+        current_user_id, role = current_user_data
         
         # Only allow users to update their own settings or admins to update any user's settings
-    if current_user_id != user_id and role != "admin":
-        raise HTTPException(status_code=403, detail="You don't have permission to update this user's notification settings")
-    
+        if current_user_id != user_id and role != "admin":
+            raise HTTPException(status_code=403, detail="You don't have permission to update this user's notification settings")
+        
         # Get existing metadata
         metadata = db.execute(
             text("SELECT id, profile_data FROM user_metadata WHERE user_id = :user_id"),
@@ -1015,25 +1012,24 @@ def update_password(
     """Update a user's password"""
     try:
         # Verify the current user is updating their own password or is an admin
-    current_user_data = db.execute(
+        current_user_data = db.execute(
             text("SELECT id, role, hashed_password FROM users WHERE email = :email"),
             {"email": current_user}
-    ).first()
-    
-    if not current_user_data:
-        raise HTTPException(status_code=404, detail="Current user not found")
-    
+        ).first()
+        
+        if not current_user_data:
+            raise HTTPException(status_code=404, detail="Current user not found")
+        
         current_user_id, role, hashed_password = current_user_data
         
         # Only allow users to update their own password, or admins to update any user
         if current_user_id != user_id and role != "admin":
             raise HTTPException(status_code=403, detail="You don't have permission to update this user's password")
-    
-    # Verify current password
-    if not bcrypt.checkpw(password_update.current_password.encode("utf-8"), hashed_password.encode("utf-8")):
+        
+        # Verify current password
+        if not bcrypt.checkpw(password_update.current_password.encode("utf-8"), hashed_password.encode("utf-8")):
             raise HTTPException(status_code=400, detail="Current password is incorrect")
         
-        # Update the password
         # Hash new password
         new_hashed_password = bcrypt.hashpw(password_update.new_password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
         
@@ -1061,47 +1057,47 @@ def get_notification_settings(
     """Get a user's notification settings"""
     try:
         # Check permissions: only the user themselves or admins can view notification settings
-    current_user_data = db.execute(
+        current_user_data = db.execute(
             text("SELECT id, role FROM users WHERE email = :email"),
             {"email": current_user}
-    ).first()
-    
-    if not current_user_data:
-        raise HTTPException(status_code=404, detail="Current user not found")
-    
-    current_user_id, role = current_user_data
+        ).first()
+        
+        if not current_user_data:
+            raise HTTPException(status_code=404, detail="Current user not found")
+        
+        current_user_id, role = current_user_data
         
         # Verify permissions - only allow users to view their own settings or admins to view any
-    if current_user_id != user_id and role != "admin":
+        if current_user_id != user_id and role != "admin":
             raise HTTPException(status_code=403, detail="You don't have permission to view these notification settings")
-    
-    # Get metadata
-    metadata = db.execute(
-        text("SELECT profile_data FROM user_metadata WHERE user_id = :user_id"),
-        {"user_id": user_id}
-    ).first()
-    
-    # Default notification settings
-    default_settings = {
-        "email_notifications": True,
-        "push_notifications": True,
-        "transaction_alerts": True,
-        "marketing_emails": False,
-        "login_alerts": True,
-        "security_alerts": True
-    }
-    
-    if metadata and metadata[0] and 'notification_settings' in metadata[0]:
-        settings = metadata[0]['notification_settings']
         
-        # Ensure all expected keys are present
-        for key in default_settings:
-            if key not in settings:
-                settings[key] = default_settings[key]
+        # Get metadata
+        metadata = db.execute(
+            text("SELECT profile_data FROM user_metadata WHERE user_id = :user_id"),
+            {"user_id": user_id}
+        ).first()
+        
+        # Default notification settings
+        default_settings = {
+            "email_notifications": True,
+            "push_notifications": True,
+            "transaction_alerts": True,
+            "marketing_emails": False,
+            "login_alerts": True,
+            "security_alerts": True
+        }
+        
+        if metadata and metadata[0] and 'notification_settings' in metadata[0]:
+            settings = metadata[0]['notification_settings']
+            
+            # Ensure all expected keys are present
+            for key in default_settings:
+                if key not in settings:
+                    settings[key] = default_settings[key]
                 
-        return settings
-    
-    return default_settings
+            return settings
+        
+        return default_settings
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting notification settings: {str(e)}")
 
@@ -1119,115 +1115,115 @@ async def upload_avatar(
     """Upload a user avatar image"""
     try:
         # Check permissions: only the user themselves or an admin can upload their avatar
-    current_user_data = db.execute(
+        current_user_data = db.execute(
             text("SELECT id, role FROM users WHERE email = :email"),
             {"email": current_user}
-    ).first()
-    
-    if not current_user_data:
-        raise HTTPException(status_code=404, detail="Current user not found")
-    
-    current_user_id, role = current_user_data
-        
-        # Only allow users to upload their own avatar or admins to upload any user's avatar
-    if current_user_id != user_id and role != "admin":
-            raise HTTPException(status_code=403, detail="You don't have permission to upload this user's avatar")
-    
-    # Validate file type
-    allowed_types = ["image/jpeg", "image/png", "image/gif"]
-    content_type = file.content_type
-    
-    if content_type not in allowed_types:
-        raise HTTPException(
-            status_code=400, 
-            detail="Only JPEG, PNG, and GIF images are allowed"
-        )
-    
-    # Create avatars directory if it doesn't exist
-    upload_dir = "static/avatars"
-    if not os.path.exists(upload_dir):
-        os.makedirs(upload_dir)
-    
-    # Generate unique filename to prevent overwriting
-    file_extension = os.path.splitext(file.filename)[1]
-    unique_filename = f"{user_id}_{uuid.uuid4()}{file_extension}"
-    file_path = os.path.join(upload_dir, unique_filename)
-    
-    # Save the file
-    try:
-        with open(file_path, "wb") as buffer:
-            shutil.copyfileobj(file.file, buffer)
-    except Exception as e:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Error saving file: {str(e)}"
-        )
-    finally:
-        file.file.close()
-    
-    # Generate URL for the avatar
-    avatar_url = f"/static/avatars/{unique_filename}"
-    
-    # Update user metadata with the new avatar URL
-    try:
-        # Check if metadata already exists
-        existing = db.execute(
-            text("SELECT id FROM user_metadata WHERE user_id = :user_id"),
-            {"user_id": user_id}
         ).first()
         
-        # Get existing profile data
-        if existing:
-            profile_data_result = db.execute(
-                text("SELECT profile_data FROM user_metadata WHERE user_id = :user_id"),
+        if not current_user_data:
+            raise HTTPException(status_code=404, detail="Current user not found")
+        
+        current_user_id, role = current_user_data
+        
+        # Only allow users to upload their own avatar or admins to upload any user's avatar
+        if current_user_id != user_id and role != "admin":
+            raise HTTPException(status_code=403, detail="You don't have permission to upload this user's avatar")
+        
+        # Validate file type
+        allowed_types = ["image/jpeg", "image/png", "image/gif"]
+        content_type = file.content_type
+        
+        if content_type not in allowed_types:
+            raise HTTPException(
+                status_code=400, 
+                detail="Only JPEG, PNG, and GIF images are allowed"
+            )
+        
+        # Create avatars directory if it doesn't exist
+        upload_dir = "static/avatars"
+        if not os.path.exists(upload_dir):
+            os.makedirs(upload_dir)
+        
+        # Generate unique filename to prevent overwriting
+        file_extension = os.path.splitext(file.filename)[1]
+        unique_filename = f"{user_id}_{uuid.uuid4()}{file_extension}"
+        file_path = os.path.join(upload_dir, unique_filename)
+        
+        # Save the file
+        try:
+            with open(file_path, "wb") as buffer:
+                shutil.copyfileobj(file.file, buffer)
+        except Exception as e:
+            raise HTTPException(
+                status_code=500,
+                detail=f"Error saving file: {str(e)}"
+            )
+        finally:
+            file.file.close()
+        
+        # Generate URL for the avatar
+        avatar_url = f"/static/avatars/{unique_filename}"
+        
+        # Update user metadata with the new avatar URL
+        try:
+            # Check if metadata already exists
+            existing = db.execute(
+                text("SELECT id FROM user_metadata WHERE user_id = :user_id"),
                 {"user_id": user_id}
             ).first()
             
-            profile_data = profile_data_result[0] if profile_data_result and profile_data_result[0] else {}
-        else:
-            profile_data = {}
-        
-        # Update avatar URL in profile_data
-        if not profile_data:
-            profile_data = {"avatar_url": avatar_url}
-        else:
-            profile_data["avatar_url"] = avatar_url
-        
-        # Update or insert metadata record
-        if existing:
-            db.execute(
-                text("""
-                    UPDATE user_metadata SET
-                    profile_data = :profile_data,
-                    updated_at = :updated_at
-                    WHERE user_id = :user_id
-                """),
-                {
-                    "user_id": user_id,
-                    "profile_data": profile_data,
-                    "updated_at": datetime.utcnow()
-                }
-            )
-        else:
-            db.execute(
-                text("""
-                    INSERT INTO user_metadata
-                    (user_id, profile_data, created_at)
-                    VALUES
-                    (:user_id, :profile_data, :created_at)
-                """),
-                {
-                    "user_id": user_id,
-                    "profile_data": profile_data,
-                    "created_at": datetime.utcnow()
-                }
-            )
-        
-        db.commit()
-        return {"avatar_url": avatar_url}
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=f"Error updating user metadata: {str(e)}")
+            # Get existing profile data
+            if existing:
+                profile_data_result = db.execute(
+                    text("SELECT profile_data FROM user_metadata WHERE user_id = :user_id"),
+                    {"user_id": user_id}
+                ).first()
+                
+                profile_data = profile_data_result[0] if profile_data_result and profile_data_result[0] else {}
+            else:
+                profile_data = {}
+            
+            # Update avatar URL in profile_data
+            if not profile_data:
+                profile_data = {"avatar_url": avatar_url}
+            else:
+                profile_data["avatar_url"] = avatar_url
+            
+            # Update or insert metadata record
+            if existing:
+                db.execute(
+                    text("""
+                        UPDATE user_metadata SET
+                        profile_data = :profile_data,
+                        updated_at = :updated_at
+                        WHERE user_id = :user_id
+                    """),
+                    {
+                        "user_id": user_id,
+                        "profile_data": profile_data,
+                        "updated_at": datetime.utcnow()
+                    }
+                )
+            else:
+                db.execute(
+                    text("""
+                        INSERT INTO user_metadata
+                        (user_id, profile_data, created_at)
+                        VALUES
+                        (:user_id, :profile_data, :created_at)
+                    """),
+                    {
+                        "user_id": user_id,
+                        "profile_data": profile_data,
+                        "created_at": datetime.utcnow()
+                    }
+                )
+            
+            db.commit()
+            return {"avatar_url": avatar_url}
+        except Exception as e:
+            db.rollback()
+            raise HTTPException(status_code=500, detail=f"Error updating user metadata: {str(e)}")
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error uploading avatar: {str(e)}")
@@ -1257,16 +1253,16 @@ async def send_email_verification(request: VerificationEmailRequest, db: Session
         print(f"Looking up user by email: {request.email}")
         
         # Check if user already exists
-            user = db.execute(
+        user = db.execute(
             text("SELECT id, email_verified FROM users WHERE email = :email"),
             {"email": request.email}
-            ).first()
+        ).first()
         
         # Generate verification token
         token = generate_verification_token()
         expires_at = get_token_expiry()
-            
-            if not user:
+        
+        if not user:
             # This is a new registration
             print(f"User with email {request.email} not found, creating a temporary record")
             
@@ -1281,7 +1277,7 @@ async def send_email_verification(request: VerificationEmailRequest, db: Session
             hashed_password = bcrypt.hashpw(request.password.encode("utf-8"), bcrypt.gensalt()).decode("utf-8")
             
             # Make sure pending_verifications table exists
-                db.execute(
+            db.execute(
                 text("""
                     CREATE TABLE IF NOT EXISTS pending_verifications (
                         id SERIAL PRIMARY KEY,
@@ -1295,8 +1291,8 @@ async def send_email_verification(request: VerificationEmailRequest, db: Session
                         username VARCHAR(255)
                     )
                 """)
-                )
-                db.commit()
+            )
+            db.commit()
             
             # Check if pending verification already exists
             existing = db.execute(
@@ -1341,37 +1337,37 @@ async def send_email_verification(request: VerificationEmailRequest, db: Session
             db.commit()
         else:
             # Existing user, update verification token
-                user_id, email_verified = user
+            user_id, email_verified = user
             print(f"User found/created with ID: {user_id}, Email: {request.email}, Verified: {email_verified}")
             
             # If already verified, just return success
-        if email_verified:
+            if email_verified:
                 return {"message": "Email already verified", "email": request.email}
             
             # Update verification token
-        db.execute(
-            text("""
-                UPDATE users 
-                SET verification_token = :token,
-                    verification_token_expires_at = :expires_at
-                WHERE id = :user_id
-            """),
-            {
-                "token": token,
-                "expires_at": expires_at,
-                "user_id": user_id
-            }
-        )
-        db.commit()
+            db.execute(
+                text("""
+                    UPDATE users 
+                    SET verification_token = :token,
+                        verification_token_expires_at = :expires_at
+                    WHERE id = :user_id
+                """),
+                {
+                    "token": token,
+                    "expires_at": expires_at,
+                    "user_id": user_id
+                }
+            )
+            db.commit()
             print(f"Generated verification token: {token[:10]}..., expires at {expires_at}")
-        print(f"Updated user record with verification token")
-        
+            print(f"Updated user record with verification token")
+            
             # Send verification email
             print(f"Sending verification email to {request.email}")
             sent = send_verification_email(request.email, token)
         
         if sent:
-                return {"message": "Verification email sent successfully", "email": request.email}
+            return {"message": "Verification email sent successfully", "email": request.email}
         else:
             raise HTTPException(
                 status_code=500, 
@@ -1565,7 +1561,7 @@ async def verify_email(request: VerifyEmailRequest, db: Session = Depends(get_db
         # Create access token for automatic login
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
         access_token = create_access_token(
-            data={'sub': email, 'user_id': user_id, 'role': role or 'user'},
+            data={'sub': email, 'user_id': user_id, 'role': role or 'user'}, 
             expires_delta=access_token_expires
         )
         
@@ -1629,7 +1625,7 @@ async def google_auth(request: GoogleAuthRequest, db: Session = Depends(get_db))
             
             # Generate access token
             access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-                access_token = create_access_token(
+            access_token = create_access_token(
                 data={"sub": str(user_id)}, expires_delta=access_token_expires
             )
             
@@ -1660,8 +1656,8 @@ async def google_auth(request: GoogleAuthRequest, db: Session = Depends(get_db))
                 "last_name": last_name,
                 "role": "user",
                 "is_active": True,
-                        "email_verified": True
-                    }
+                "email_verified": True
+            }
         )
         db.commit()
         
@@ -1754,9 +1750,9 @@ async def send_login_link(request: VerificationEmailRequest, db: Session = Depen
         if sent:
             print(f"Login email sent successfully to {email}")
             return {"message": "Login link sent successfully", "email": email}
-            else:
+        else:
             print(f"Failed to send login email to {email}")
-                raise HTTPException(
+            raise HTTPException(
                 status_code=500, 
                 detail="Failed to send login email. Please try again later."
             )
@@ -1853,11 +1849,11 @@ async def verify_login_link(request: VerifyEmailRequest, db: Session = Depends(g
         
         # Create access token
         access_token_expires = timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-            access_token = create_access_token(
+        access_token = create_access_token(
             data={'sub': email, 'user_id': user_id, 'role': role or 'user'}, 
-                expires_delta=access_token_expires
-            )
-            
+            expires_delta=access_token_expires
+        )
+        
         print(f"User {email} (ID: {user_id}) logged in successfully via email link")
         
         return {"access_token": access_token, "token_type": "bearer"}

@@ -14,7 +14,7 @@ import os
 import json
 
 # Use the same database URL as in the main application
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://raj:Rajshah11@localhost:5432/terraflow")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://raj:Rajshah11@localhost:5432/liquicity")
 
 def migrate_wallets():
     """Migrate the wallet table to the new schema"""

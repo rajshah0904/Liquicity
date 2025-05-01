@@ -190,7 +190,7 @@ const WithdrawFunds = () => {
         </Typography>
         
         <Typography variant="body1" paragraph align="center" color="text.secondary" sx={{ mb: 4 }}>
-          Transfer funds from your TerraFlow wallet to your bank account
+          Transfer funds from your Liquicity wallet to your bank account
         </Typography>
         
         {error && (
@@ -274,7 +274,7 @@ const WithdrawFunds = () => {
               
               <Typography variant="body2" color="text.secondary">
                 Bank withdrawals typically take 1-3 business days to process. 
-                Funds will be debited from your TerraFlow wallet immediately.
+                Funds will be debited from your Liquicity wallet immediately.
               </Typography>
             </Box>
           </Grid>

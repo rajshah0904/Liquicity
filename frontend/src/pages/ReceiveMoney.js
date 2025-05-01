@@ -105,7 +105,7 @@ const ReceiveMoney = () => {
     
     const url = canvas.toDataURL('image/png');
     const link = document.createElement('a');
-    link.download = 'terraflow-payment-qr.png';
+    link.download = 'liquicity-payment-qr.png';
     link.href = url;
     link.click();
   };

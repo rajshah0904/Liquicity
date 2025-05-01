@@ -257,11 +257,11 @@ const NaturalLanguage = () => {
     }
     
     if (normalizedMessage.includes('fee') || normalizedMessage.includes('transaction fee')) {
-      return 'Transaction fees vary based on the currencies and amount. TerraFlow uses stablecoins as an intermediary for cross-currency transfers, which helps reduce costs. Large transfers are usually more cost-effective.';
+      return 'Transaction fees vary based on the currencies and amount. Liquicity uses stablecoins as an intermediary for cross-currency transfers, which helps reduce costs. Large transfers are usually more cost-effective.';
     }
     
     if (normalizedMessage.includes('stablecoin')) {
-      return 'Stablecoins are cryptocurrencies designed to maintain a stable value, usually pegged to a fiat currency like USD. TerraFlow uses stablecoins as an intermediary for cross-currency transfers, which reduces volatility risks during the transfer process.';
+      return 'Stablecoins are cryptocurrencies designed to maintain a stable value, usually pegged to a fiat currency like USD. Liquicity uses stablecoins as an intermediary for cross-currency transfers, which reduces volatility risks during the transfer process.';
     }
     
     if (normalizedMessage.includes('wallet')) {
@@ -282,7 +282,7 @@ const NaturalLanguage = () => {
           Natural Language Interface
         </Typography>
         <Typography variant="body1" color="text.secondary" paragraph>
-          Chat with our AI assistant to manage your finances, make payments, or get help with TerraFlow.
+          Chat with our AI assistant to manage your finances, make payments, or get help with Liquicity.
         </Typography>
         
         {error && (

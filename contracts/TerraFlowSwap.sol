@@ -8,10 +8,10 @@ import "@openzeppelin/contracts/access/AccessControl.sol";
 import "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
 /**
- * @title TerraFlowSwap
+ * @title LiquicitySwap
  * @dev Contract for cross-currency stablecoin swaps with oracle-based rates
  */
-contract TerraFlowSwap is ReentrancyGuard, Pausable, AccessControl {
+contract LiquicitySwap is ReentrancyGuard, Pausable, AccessControl {
     bytes32 public constant ADMIN_ROLE = keccak256("ADMIN_ROLE");
     bytes32 public constant RATE_PROVIDER_ROLE = keccak256("RATE_PROVIDER_ROLE");
     

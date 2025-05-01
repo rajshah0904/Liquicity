@@ -203,7 +203,7 @@ def transfer_token(request: TokenTransferRequest, username: str = Depends(get_cu
 
 @router.post("/payment/process")
 def process_contract_payment(request: SmartContractPaymentRequest, username: str = Depends(get_current_user)):
-    """Process a payment through the TerraFlow payment processor smart contract"""
+    """Process a payment through the Liquicity payment processor smart contract"""
     try:
         # Get blockchain service for the specified network
         blockchain_service = get_blockchain_service(network=request.network, testnet=request.testnet)

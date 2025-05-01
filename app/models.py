@@ -19,6 +19,13 @@ class User(Base):
     hashed_password = Column(String)
     wallet_address = Column(String, nullable=True)
     email = Column(String, unique=True, index=True)
+    # OAuth and verification fields
+    google_id = Column(String, unique=True, nullable=True)
+    is_verified = Column(Boolean, default=False)
+    verification_token = Column(String, nullable=True)
+    verification_token_expires_at = Column(DateTime, nullable=True)
+    reset_password_token = Column(String, nullable=True)
+    reset_password_token_expires_at = Column(DateTime, nullable=True)
     role = Column(String, default="user")  # admin, user, etc.
     created_at = Column(DateTime, default=datetime.utcnow)
     is_active = Column(Boolean, default=True)

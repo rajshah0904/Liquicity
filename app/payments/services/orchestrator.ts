@@ -1,5 +1,5 @@
 /**
- * Payment orchestration service for TerraFlow.
+ * Payment orchestration service for Liquicity.
  * 
  * This module provides high-level orchestration of payment flows,
  * coordinating between different payment providers and cross-chain bridge operations.

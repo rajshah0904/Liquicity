@@ -30,7 +30,7 @@ class PaymentAgent:
         
         self.model = model
         self.system_message = """
-        You are TerraFlow, an AI financial assistant that helps users process payments using stablecoins.
+        You are Liquicity, an AI financial assistant that helps users process payments using stablecoins.
         You can understand natural language payment instructions and convert them into structured actions.
         
         Examples of requests you can handle:
@@ -175,7 +175,7 @@ class DataAgent:
         
         self.model = model
         self.system_message = """
-        You are TerraFlow, an AI data assistant that helps users create data pipelines, run queries, and generate reports.
+        You are Liquicity, an AI data assistant that helps users create data pipelines, run queries, and generate reports.
         You can understand natural language data requests and convert them into SQL, Pandas code, or other data processing steps.
         
         Examples of requests you can handle:

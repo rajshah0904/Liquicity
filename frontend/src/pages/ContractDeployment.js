@@ -298,7 +298,7 @@ const ContractDeployment = () => {
         </Typography>
         
         <Typography variant="body1" gutterBottom color="textSecondary">
-          Deploy and manage TerraFlow smart contracts.
+          Deploy and manage Liquicity smart contracts.
         </Typography>
         
         <Box sx={{ borderBottom: 1, borderColor: 'divider', mt: 4 }}>
@@ -316,11 +316,11 @@ const ContractDeployment = () => {
         
         <TabPanel value={tabValue} index={0}>
           <Typography variant="h6" gutterBottom>
-            Deploy TerraFlow Token Contract
+            Deploy Liquicity Token Contract
           </Typography>
           
           <Typography variant="body2" paragraph>
-            This will deploy the TerraFlow ERC20 token contract to the selected network.
+            This will deploy the Liquicity ERC20 token contract to the selected network.
           </Typography>
           
           {error && (
@@ -408,7 +408,7 @@ const ContractDeployment = () => {
           </Typography>
           
           <Typography variant="body2" paragraph>
-            This will deploy the TerraFlow payment processor contract to the selected network.
+            This will deploy the Liquicity payment processor contract to the selected network.
           </Typography>
           
           {error && (

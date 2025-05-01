@@ -200,7 +200,7 @@ const DepositFunds = () => {
         </Typography>
         
         <Typography variant="body1" paragraph align="center" color="text.secondary" sx={{ mb: 4 }}>
-          Add funds to your TerraFlow wallet in {currency}
+          Add funds to your Liquicity wallet in {currency}
         </Typography>
         
         {error && (

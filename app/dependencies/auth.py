@@ -1,29 +1,44 @@
 from fastapi import Depends, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer
+from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from app.config import AppConfig
 
-# Get configuration
-config = AppConfig()
-SECRET_KEY = config.auth.secret_key
-ALGORITHM = config.auth.algorithm
+# Auth0 configuration
+import os, requests
+AUTH0_DOMAIN = os.getenv('AUTH0_DOMAIN')
+API_AUDIENCE = os.getenv('API_AUDIENCE') or os.getenv('AUTH0_AUDIENCE')
+ALGORITHMS = ['RS256']
 
-# Fix the OAuth2 scheme to use the correct token URL
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl='/user/login/')
+# Fetch JWKS from Auth0
+jwks = requests.get(f"https://{AUTH0_DOMAIN}/.well-known/jwks.json").json()
+# Use HTTPBearer for Auth0-issued JWTs
+security = HTTPBearer()
 
-def get_current_user(token: str = Depends(oauth2_scheme)):
-    credentials_exception = HTTPException(
-        status_code=status.HTTP_401_UNAUTHORIZED,
-        detail="Invalid authentication credentials",
-        headers={"WWW-Authenticate": "Bearer"},
-    )
-    
+def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
+    token = credentials.credentials
+    # Identify the signing key
     try:
-        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
-        username = payload.get("sub")
-        if username is None:
-            raise credentials_exception
-        return username
+        unverified_header = jwt.get_unverified_header(token)
     except JWTError:
-        raise credentials_exception
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token header")
+    rsa_key = {}
+    for key in jwks.get('keys', []):
+        if key['kid'] == unverified_header.get('kid'):
+            rsa_key = {k: key[k] for k in ('kty','kid','use','n','e')}
+            break
+    if not rsa_key:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Unable to find appropriate key")
+    # Decode and validate claims
+    try:
+        payload = jwt.decode(
+            token,
+            rsa_key,
+            algorithms=ALGORITHMS,
+            audience=API_AUDIENCE,
+            issuer=f"https://{AUTH0_DOMAIN}/"
+        )
+    except JWTError as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Token validation error: {str(e)}")
+    # At this point, 'payload' contains the user data
+    return payload
     

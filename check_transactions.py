@@ -6,7 +6,7 @@ import sqlite3
 # Database connection parameters from app config
 db_user = "raj"
 db_password = "Rajshah11"
-db_name = "terraflow"
+db_name = "liquicity"
 db_host = "localhost"
 db_port = "5432"
 
@@ -210,7 +210,7 @@ def fix_self_stripe_payments():
     print("Starting to check for self-payments via Stripe...")
     
     # Connect to database
-    conn = sqlite3.connect('terraflow.db')
+    conn = sqlite3.connect('liquicity.db')
     cursor = conn.cursor()
     
     try:

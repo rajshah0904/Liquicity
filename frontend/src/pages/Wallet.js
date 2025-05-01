@@ -269,7 +269,7 @@ const Wallet = () => {
             </Typography>
             
             <Typography variant="body2" sx={{ color: 'text.secondary', mb: 2 }}>
-              Send money to recipients using any currency. TerraFlow automatically converts your {currency} to the recipient's currency using stablecoins as an intermediary.
+              Send money to recipients using any currency. Liquicity automatically converts your {currency} to the recipient's currency using stablecoins as an intermediary.
             </Typography>
 
             <Box sx={{ 

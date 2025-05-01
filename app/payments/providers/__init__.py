@@ -1,5 +1,5 @@
 """
-Payment providers for TerraFlow.
+Payment providers for Liquicity.
 
 This submodule contains integrations with various payment providers.
 """

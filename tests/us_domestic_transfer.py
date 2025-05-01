@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 os.environ["TESTING"] = "0"  # Use real sandbox mode
 os.environ["MODERN_TREASURY_API_KEY"] = "test-Syoh2vUJS5H86XWTLYpNB5dCpRRuYYoFxGcB1wx2MNn3KTfkMgwsiJ4Z4Tf14mXt"
 os.environ["MODERN_TREASURY_ORGANIZATION_ID"] = "45a1f03f-952a-4bc3-83ff-503381d3e831"
-os.environ["MODERN_TREASURY_DEFAULT_ACCOUNT_ID"] = "26abae0c-04a4-4c7a-b147-5fcb2a12685e"  # Gringotts (TerraFlow) account ID
+os.environ["MODERN_TREASURY_DEFAULT_ACCOUNT_ID"] = "26abae0c-04a4-4c7a-b147-5fcb2a12685e"  # Gringotts (Liquicity) account ID
 
 # Add parent directory to path so we can import app modules
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))

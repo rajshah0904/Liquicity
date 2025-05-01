@@ -5,7 +5,7 @@ import bcrypt
 from datetime import datetime
 
 # Database connection
-db_url = "postgresql://raj:Rajshah11@localhost:5432/terraflow"
+db_url = "postgresql://raj:Rajshah11@localhost:5432/liquicity"
 
 try:
     print("Connecting to database...")

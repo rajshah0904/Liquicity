@@ -1,5 +1,5 @@
 {
-  "name": "TerraFlow Development Environment",
+  "name": "Liquicity Development Environment",
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
   "workspaceFolder": "/workspace",

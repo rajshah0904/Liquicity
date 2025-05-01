@@ -5,7 +5,7 @@ import './index.css';
 import App from './App';
 import reportWebVitals from './reportWebVitals';
 import { UserProvider } from './context/UserContext';
-import { AuthProvider } from './context/AuthContext';
+import { Auth0Provider } from '@auth0/auth0-react';
 import { CustomThemeProvider } from './context/ThemeContext';
 
 // Import the custom fonts
@@ -16,17 +16,27 @@ import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 
 const root = ReactDOM.createRoot(document.getElementById('root'));
+// Pull Auth0 values from environment
+const domain   = process.env.REACT_APP_AUTH0_DOMAIN;
+const clientId = process.env.REACT_APP_AUTH0_CLIENT_ID;
+const audience = process.env.REACT_APP_AUTH0_AUDIENCE;
 root.render(
   <React.StrictMode>
-    <BrowserRouter>
-      <CustomThemeProvider>
-        <UserProvider>
-          <AuthProvider>
+    <Auth0Provider
+      domain={domain}
+      clientId={clientId}
+      authorizationParams={{ redirect_uri: window.location.origin, audience }}
+      useRefreshTokens={true}
+      cacheLocation="localstorage"
+    >
+      <BrowserRouter>
+        <CustomThemeProvider>
+          <UserProvider>
             <App />
-          </AuthProvider>
-        </UserProvider>
-      </CustomThemeProvider>
-    </BrowserRouter>
+          </UserProvider>
+        </CustomThemeProvider>
+      </BrowserRouter>
+    </Auth0Provider>
   </React.StrictMode>
 );
 

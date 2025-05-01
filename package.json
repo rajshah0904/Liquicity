@@ -1,7 +1,7 @@
 {
-  "name": "terraflow",
+  "name": "liquicity",
   "version": "1.0.0",
-  "description": "TerraFlow Payment System",
+  "description": "Liquicity Payment System",
   "main": "index.js",
   "scripts": {
     "test": "jest",

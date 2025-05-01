@@ -1,6 +1,6 @@
-# TerraFlow Payment Services
+# Liquicity Payment Services
 
-This directory contains the payment services and providers for the TerraFlow platform, which enable cross-border transfers between multiple countries.
+This directory contains the payment services and providers for the Liquicity platform, which enable cross-border transfers between multiple countries.
 
 ## Architecture
 

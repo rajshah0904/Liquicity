@@ -1,6 +1,6 @@
-# TerraFlow GitHub Codespaces Setup Guide
+# Liquicity GitHub Codespaces Setup Guide
 
-This guide explains how to use GitHub Codespaces for developing the TerraFlow application.
+This guide explains how to use GitHub Codespaces for developing the Liquicity application.
 
 ## Getting Started with Codespaces
 
@@ -8,7 +8,7 @@ GitHub Codespaces provides a complete, configured development environment in the
 
 ### 1. Creating a Codespace
 
-1. Navigate to the [TerraFlow repository](https://github.com/yourusername/terraflow) on GitHub
+1. Navigate to the [Liquicity repository](https://github.com/yourusername/liquicity) on GitHub
 2. Click the "Code" button
 3. Select the "Codespaces" tab
 4. Click "Create codespace on main"
@@ -62,14 +62,14 @@ The PostgreSQL database is running in the Codespace and can be accessed:
 - **From VS Code:** Use the PostgreSQL extension (installed by default)
 - **From terminal:**
   ```bash
-  psql -U postgres -d terraflow
+  psql -U postgres -d liquicity
   ```
 - **Connection details:**
   - Host: localhost
   - Port: 5432
   - Username: postgres
   - Password: postgres
-  - Database: terraflow
+  - Database: liquicity
 
 ### 5. Managing Environment Variables
 

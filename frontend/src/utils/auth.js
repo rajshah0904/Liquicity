@@ -1,5 +1,5 @@
 /**
- * Authentication utilities for TerraFlow frontend
+ * Authentication utilities for Liquicity frontend
  */
 
 // Get authentication token from localStorage

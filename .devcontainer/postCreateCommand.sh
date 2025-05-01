@@ -3,7 +3,7 @@ set -e
 
 # Display banner
 echo "========================================================"
-echo "   Setting up TerraFlow development environment...   "
+echo "   Setting up Liquicity development environment...   "
 echo "========================================================"
 
 # Create .env file if it doesn't exist
@@ -30,7 +30,7 @@ cd /workspace/frontend
 npm install
 
 echo "========================================================"
-echo "   TerraFlow environment setup complete!   "
+echo "   Liquicity environment setup complete!   "
 echo ""
 echo "   To start the backend:   "
 echo "   $ cd /workspace && python -m app.main   "

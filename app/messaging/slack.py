@@ -23,7 +23,7 @@ signature_verifier = SignatureVerifier(config.messaging.slack_signing_secret)
 router = APIRouter()
 
 class SlackHandler:
-    """Handler for Slack interactions with TerraFlow."""
+    """Handler for Slack interactions with Liquicity."""
     
     def __init__(self, db: Session):
         self.db = db
@@ -123,7 +123,7 @@ class SlackHandler:
                 
             else:
                 # General help/conversation
-                response_text = """I'm TerraFlow, your payment and financial assistant. I can help you with:
+                response_text = """I'm Liquicity, your payment and financial assistant. I can help you with:
 
 1. **Payments**: "Pay 500 USDC to @john for design work"
 2. **Balance Checks**: "What's the balance of the Marketing wallet?"
@@ -354,13 +354,13 @@ async def slack_commands(
     elif command == "/tf-help":
         # Help command
         return {
-            "text": """*TerraFlow Commands*:
+            "text": """*Liquicity Commands*:
 
 /tf-pay [payment details] - Make a payment (e.g., `/tf-pay 500 USDC to @john for design work`)
 /tf-report [query] - Generate a report (e.g., `/tf-report transactions over 1000 USDC in May`)
 /tf-help - Show this help message
 
-You can also just chat with TerraFlow by mentioning @TerraFlow in a message."""
+You can also just chat with Liquicity by mentioning @Liquicity in a message."""
         }
     
     # Unknown command

@@ -7,7 +7,7 @@ from app.database import get_db
 import bcrypt
 
 # Database connection
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://raj:Rajshah11@localhost:5432/terraflow")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://raj:Rajshah11@localhost:5432/liquicity")
 engine = create_engine(DATABASE_URL)
 
 # Drop all tables and recreate them

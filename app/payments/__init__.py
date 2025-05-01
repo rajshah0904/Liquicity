@@ -1,7 +1,7 @@
 """
-TerraFlow payments module.
+Liquicity payments module.
 
-This module provides payment processing capabilities for the TerraFlow application.
+This module provides payment processing capabilities for the Liquicity application.
 """
 
 from app.payments.providers import *

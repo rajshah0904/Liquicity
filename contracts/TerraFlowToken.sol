@@ -7,10 +7,10 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/AccessControl.sol";
 
 /**
- * @title TerraFlowToken
- * @dev ERC20 token for the TerraFlow platform with roles and pausability
+ * @title LiquicityToken
+ * @dev ERC20 token for the Liquicity platform with roles and pausability
  */
-contract TerraFlowToken is ERC20, ERC20Burnable, Pausable, AccessControl {
+contract LiquicityToken is ERC20, ERC20Burnable, Pausable, AccessControl {
     bytes32 public constant PAUSER_ROLE = keccak256("PAUSER_ROLE");
     bytes32 public constant MINTER_ROLE = keccak256("MINTER_ROLE");
 
@@ -20,7 +20,7 @@ contract TerraFlowToken is ERC20, ERC20Burnable, Pausable, AccessControl {
     /**
      * @dev Constructor that gives the msg.sender all existing tokens.
      */
-    constructor() ERC20("TerraFlow Token", "TERRA") {
+    constructor() ERC20("Liquicity Token", "TERRA") {
         _setupRole(DEFAULT_ADMIN_ROLE, msg.sender);
         _setupRole(PAUSER_ROLE, msg.sender);
         _setupRole(MINTER_ROLE, msg.sender);

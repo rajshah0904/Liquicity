@@ -1,5 +1,5 @@
 """
-Transfer service for TerraFlow.
+Transfer service for Liquicity.
 
 This service provides a unified interface for all types of money transfers,
 automatically selecting the optimal transfer method based on source and destination.

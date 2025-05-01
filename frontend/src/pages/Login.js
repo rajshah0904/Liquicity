@@ -13,8 +13,7 @@ import {
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
-import { authAPI } from '../utils/api';
+import { useAuth0 } from '@auth0/auth0-react';
 
 // Icons
 import GoogleIcon from '@mui/icons-material/Google';
@@ -123,37 +122,29 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [showVerification, setShowVerification] = useState(false);
-  
+  const { loginWithPopup, isAuthenticated, getAccessTokenSilently } = useAuth0();
   const navigate = useNavigate();
-  const location = useLocation();
   
-  // Check for message from register page
+  // After login, get token and navigate
   useEffect(() => {
-    if (location.state?.message) {
-      setError(location.state.message);
+    if (isAuthenticated) {
+      getAccessTokenSilently().then(token => {
+        import('../utils/api').then(({ default: api }) => {
+          api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+          navigate('/dashboard');
+        });
+      });
     }
-  }, [location]);
+  }, [isAuthenticated, getAccessTokenSilently, navigate]);
   
-  const handleEmailLogin = async (e) => {
+  const handleEmailLogin = async e => {
     e.preventDefault();
-    
-    // Validate email
-    if (!email || !/\S+@\S+\.\S+/.test(email)) {
-      setError('Please enter a valid email address');
-      return;
-    }
-    
-    setError('');
-    setLoading(true);
-    
+    if (!email || !/\S+@\S+\.\S+/.test(email)) return setError('Please enter a valid email address');
+    setError(''); setLoading(true);
     try {
-      // Send email verification link
-      await authAPI.sendLoginLink(email);
-      setShowVerification(true);
+      await loginWithPopup({ authorizationParams: { screen_hint: 'login', login_hint: email } });
     } catch (err) {
-      setError('Failed to send verification email. Please try again.');
-      console.error('Email verification error:', err);
+      setError(err.message || 'Login failed.');
     } finally {
       setLoading(false);
     }
@@ -192,51 +183,13 @@ const Login = () => {
     navigate('/signup');
   };
   
-  // If showing verification screen
-  if (showVerification) {
-    return (
-      <>
-        <AnimatedBackground />
-        <LoginContainer maxWidth="sm">
-          <LoginCard>
-            <Typography variant="h5" align="center" gutterBottom>
-              Check your email
-            </Typography>
-            
-            <Box sx={{ textAlign: 'center', my: 4 }}>
-              <EmailIcon sx={{ fontSize: 60, color: '#3B82F6', mb: 2 }} />
-              <Typography variant="body1" paragraph>
-                We've sent a verification link to:
-              </Typography>
-              <Typography variant="body1" fontWeight="500" paragraph>
-                {email}
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Click the link in the email to sign in
-              </Typography>
-            </Box>
-            
-            <Button 
-              fullWidth 
-              variant="outlined" 
-              onClick={() => setShowVerification(false)}
-              sx={{ mt: 2 }}
-            >
-              Back to Sign in
-            </Button>
-          </LoginCard>
-        </LoginContainer>
-      </>
-    );
-  }
-  
   return (
     <>
       <AnimatedBackground />
       
       <LoginContainer maxWidth="sm">
         <Typography variant="h4" sx={{ color: 'white', mb: 4, fontWeight: 500 }}>
-          TerraFlow
+          Liquicity
         </Typography>
         
         <LoginCard>

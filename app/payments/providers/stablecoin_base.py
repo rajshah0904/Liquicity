@@ -1,5 +1,5 @@
 """
-Stablecoin provider interfaces for TerraFlow.
+Stablecoin provider interfaces for Liquicity.
 
 This module defines the base interfaces for stablecoin operations, including
 minting (converting fiat to stablecoin) and redemption (converting stablecoin to fiat).

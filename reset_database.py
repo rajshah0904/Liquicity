@@ -5,7 +5,7 @@ import json
 from datetime import datetime, timezone
 
 # Database connection
-db_url = "postgresql://raj:Rajshah11@localhost:5432/terraflow"
+db_url = "postgresql://raj:Rajshah11@localhost:5432/liquicity"
 
 try:
     print("Connecting to database...")
@@ -363,7 +363,7 @@ try:
         "San Francisco", "CA", "94105", "+1-555-123-4567",
         "verified", json.dumps({
             "occupation": "Software Engineer",
-            "employer": "TerraFlow Inc.",
+            "employer": "Liquicity Inc.",
             "income_range": "$100,000 - $150,000",
             "preferred_language": "English",
             "notification_preferences": {

@@ -7,7 +7,7 @@ from typing import Dict, List, Optional
 load_dotenv()
 
 class DatabaseConfig(BaseModel):
-    url: str = os.getenv("DATABASE_URL", "postgresql://raj:Rajshah11@localhost:5432/terraflow")
+    url: str = os.getenv("DATABASE_URL", "postgresql://raj:Rajshah11@localhost:5432/liquicity")
 
 class AuthConfig(BaseModel):
     secret_key: str = os.getenv("SECRET_KEY", "your_secret_key_here")

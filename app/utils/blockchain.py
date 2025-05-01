@@ -69,9 +69,9 @@ class BlockchainService:
         return self.web3.eth.contract(address=checksum_address, abi=erc20_abi)
     
     def get_payment_processor_contract(self, contract_address: str):
-        """Get TerraFlow payment processor contract instance"""
+        """Get Liquicity payment processor contract instance"""
         try:
-            with open(os.path.join(ABI_DIR, "TerraFlowPaymentProcessor.json"), "r") as f:
+            with open(os.path.join(ABI_DIR, "LiquicityPaymentProcessor.json"), "r") as f:
                 processor_abi = json.load(f)
             
             # Validate and checksum address
@@ -84,9 +84,9 @@ class BlockchainService:
             raise HTTPException(status_code=500, detail="Payment processor ABI not found")
     
     def get_swap_contract(self, contract_address: str):
-        """Get TerraFlow swap contract instance"""
+        """Get Liquicity swap contract instance"""
         try:
-            with open(os.path.join(ABI_DIR, "TerraFlowSwap.json"), "r") as f:
+            with open(os.path.join(ABI_DIR, "LiquicitySwap.json"), "r") as f:
                 swap_abi = json.load(f)
             
             # Validate and checksum address
@@ -241,7 +241,7 @@ class BlockchainService:
         gas_price_gwei: Optional[int] = None
     ) -> Dict[str, Any]:
         """
-        Process a payment through the TerraFlow payment processor
+        Process a payment through the Liquicity payment processor
         
         Args:
             processor_address: Payment processor contract address

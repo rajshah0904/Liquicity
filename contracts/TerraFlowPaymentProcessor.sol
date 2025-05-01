@@ -7,10 +7,10 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
 /**
- * @title TerraFlowPaymentProcessor
+ * @title LiquicityPaymentProcessor
  * @dev Contract for processing payments in various stablecoins
  */
-contract TerraFlowPaymentProcessor is ReentrancyGuard, Pausable, Ownable {
+contract LiquicityPaymentProcessor is ReentrancyGuard, Pausable, Ownable {
     // Fee configuration
     uint256 public processingFeePercentage = 50; // 0.5% (in basis points, 10000 = 100%)
     uint256 public constant MAX_FEE_PERCENTAGE = 500; // 5% maximum fee
