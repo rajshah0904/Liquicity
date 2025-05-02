@@ -2,18 +2,19 @@ version: '3.8'
 
 services:
   app:
-    build: 
+    build:
       context: ..
       dockerfile: .devcontainer/Dockerfile
     volumes:
       - ..:/workspace:cached
-    command: sleep infinity
-    network_mode: service:db
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    ports:
+      - "8000:8000"
     depends_on:
       - db
     environment:
-      # Pass environment variables to the container
-      - DATABASE_URL=postgresql://postgres:postgres@localhost:5432/liquicity
+      # Database connection using service name 'db'
+      - DATABASE_URL=postgresql://postgres:postgres@db:5432/liquicity
       - PYTHONPATH=/workspace
       - APP_URL=http://localhost:3000
       # Add any other environment variables your app needs

@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, Request, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.routers import user, trade, transaction, wallet, blockchain, compliance, payment, deployment
+from app.routers import user, wallet, payment
 from app.database import engine, Base, get_db
 from app.dependencies.auth import get_current_user
 from sqlalchemy import text
@@ -42,15 +42,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Include routers
-app.include_router(user.router, prefix="/user", tags=["users"])
-app.include_router(wallet.router, prefix="/wallet", tags=["wallets"])
-app.include_router(transaction.router, prefix="/transaction", tags=["transactions"])
-app.include_router(blockchain.router, prefix="/blockchain", tags=["blockchain"])
-app.include_router(compliance.router, prefix="/compliance", tags=["compliance"])
-app.include_router(payment.router, prefix="/payment", tags=["payments"])
-app.include_router(deployment.router, prefix="/deployment", tags=["deployments"])
-app.include_router(trade.router, prefix="/trade", tags=["trading"])
+# Include only the essential routers
+app.include_router(user, prefix="/user", tags=["users"])
+app.include_router(wallet, prefix="/wallet", tags=["wallets"])
+app.include_router(payment, prefix="/payment", tags=["payments"])
 
 @app.get("/", tags=["status"])
 async def root():

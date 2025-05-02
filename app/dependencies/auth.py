@@ -2,6 +2,10 @@ from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 from app.config import AppConfig
+from dotenv import load_dotenv
+
+# Load environment variables from .env
+load_dotenv()
 
 # Auth0 configuration
 import os, requests

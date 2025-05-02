@@ -1,10 +1,14 @@
 import os
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 
+# Load environment variables from .env file if present
+load_dotenv()
+
 # DATABASE_URL is now loaded from an environment variable for better security.
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://rajshah@localhost:5432/liquicity")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://raj:Rajshah11@localhost:5432/liquicity")
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

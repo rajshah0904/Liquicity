@@ -5,8 +5,6 @@ from app.dependencies.auth import get_current_user
 from app.models import User, Transaction, Wallet
 from pydantic import BaseModel, validator
 from typing import Optional, Dict, Any
-import re
-from datetime import datetime, timedelta
 from app.payments.services.orchestrator import transfer_cross_border
 from app.payments.services.payment_service import receive_fiat, send_fiat
 
@@ -72,49 +70,8 @@ class TransferCrossBorderRequest(BaseModel):
         
     @validator('src_cc', 'dst_cc')
     def validate_country_code(cls, v):
-        if not re.match(r'^[A-Z]{2}$', v):
+        if len(v) != 2 or not v.isalpha():
             raise ValueError('Country code must be a 2-letter ISO code')
-        return v
-
-class CryptoTransferRequest(BaseModel):
-    sender_id: int
-    recipient_id: int
-    amount: float
-    crypto_currency: str = "USDT"
-    description: str = ""
-    
-    @validator('amount')
-    def amount_must_be_positive(cls, v):
-        if v <= 0:
-            raise ValueError('Amount must be positive')
-        return v
-        
-    @validator('crypto_currency')
-    def must_be_supported_crypto(cls, v):
-        supported = ["USDT", "USDC", "BUSD", "DAI"]
-        if v not in supported:
-            raise ValueError(f"Unsupported cryptocurrency. Must be one of: {', '.join(supported)}")
-        return v
-
-class OnChainTransactionRequest(BaseModel):
-    user_id: int
-    blockchain_wallet_id: int
-    recipient_address: str
-    token_address: str
-    amount: float
-    private_key: str  # In production, never transmit private keys directly!
-    gas_price_gwei: Optional[int] = None
-    
-    @validator('recipient_address')
-    def validate_eth_address(cls, v):
-        if not re.match(r'^0x[a-fA-F0-9]{40}$', v):
-            raise ValueError('Invalid Ethereum address format')
-        return v
-        
-    @validator('token_address')
-    def validate_token_address(cls, v):
-        if not re.match(r'^0x[a-fA-F0-9]{40}$', v):
-            raise ValueError('Invalid token contract address format')
         return v
 
 @router.post("/deposit")
@@ -362,21 +319,3 @@ async def cross_border_transfer(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Cross-border transfer failed: {str(e)}")
-
-@router.post("/crypto/transfer")
-def process_crypto_transfer(
-    request: CryptoTransferRequest,
-    db: Session = Depends(get_db),
-    username: str = Depends(get_current_user)
-):
-    """Process a direct cryptocurrency transfer between users"""
-    raise HTTPException(status_code=501, detail="Crypto transfers temporarily unavailable")
-
-@router.post("/blockchain/transfer")
-def process_on_chain_transaction(
-    request: OnChainTransactionRequest,
-    db: Session = Depends(get_db),
-    username: str = Depends(get_current_user)
-):
-    """Process an on-chain token transfer (e.g., sending USDT on Ethereum)"""
-    raise HTTPException(status_code=501, detail="Blockchain transfers temporarily unavailable")
