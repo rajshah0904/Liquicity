@@ -1,16 +1,16 @@
 import React from 'react';
 import { Navigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth0 } from '@auth0/auth0-react';
 
 /**
  * ProtectedRoute component that checks if the user is authenticated
  * and redirects to login if not
  */
 const ProtectedRoute = ({ children }) => {
-  const { isAuthenticated, loading } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth0();
 
   // If authentication status is still loading, show nothing
-  if (loading) {
+  if (isLoading) {
     return null;
   }
 

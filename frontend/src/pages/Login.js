@@ -151,28 +151,20 @@ const Login = () => {
   };
   
   const handleGoogleLogin = async () => {
+    setLoading(true);
+    setError('');
     try {
-      setLoading(true);
-      setError('');
-      
-      // In a production environment, this would trigger the Google OAuth flow
-      const googleAuthWindow = window.open('', '_blank', 'width=500,height=600');
-      if (googleAuthWindow) {
-        googleAuthWindow.document.write('Loading Google authentication...');
-        // The actual implementation would redirect to Google OAuth
-        // and handle the callback with a token
-      }
-      
-      // For demo purposes, we'll just simulate a successful login
-      setTimeout(() => {
-        // This would be a real API call in production
-        // const response = await authAPI.googleLogin(token);
-        // localStorage.setItem('auth_token', response.data.access_token);
+      // Trigger Auth0 Google login popup
+      await loginWithPopup({ authorizationParams: { connection: 'google-oauth2' } });
+      // Acquire the access token
+      const token = await getAccessTokenSilently();
+      // Configure axios and navigate to dashboard
+      import('../utils/api').then(({ default: api }) => {
+        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
         navigate('/dashboard');
-      }, 1000);
-      
+      });
     } catch (err) {
-      setError('Google login failed. Please try again.');
+      setError(err.message || 'Google login failed. Please try again.');
       console.error('Google login error:', err);
     } finally {
       setLoading(false);

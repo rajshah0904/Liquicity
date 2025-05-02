@@ -7,6 +7,7 @@ import reportWebVitals from './reportWebVitals';
 import { UserProvider } from './context/UserContext';
 import { Auth0Provider } from '@auth0/auth0-react';
 import { CustomThemeProvider } from './context/ThemeContext';
+import { AuthProvider } from './context/AuthContext';
 
 // Import the custom fonts
 import '@fontsource/inter/300.css';
@@ -33,13 +34,15 @@ root.render(
       useRefreshTokens={true}
       cacheLocation="localstorage"
     >
-      <BrowserRouter>
-        <CustomThemeProvider>
-          <UserProvider>
-            <App />
-          </UserProvider>
-        </CustomThemeProvider>
-      </BrowserRouter>
+      <AuthProvider>
+        <BrowserRouter>
+          <CustomThemeProvider>
+            <UserProvider>
+              <App />
+            </UserProvider>
+          </CustomThemeProvider>
+        </BrowserRouter>
+      </AuthProvider>
     </Auth0Provider>
   </React.StrictMode>
 );

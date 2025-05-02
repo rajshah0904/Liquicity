@@ -2,7 +2,7 @@
   "name": "Liquicity Development Environment",
   "dockerComposeFile": "docker-compose.yml",
   "service": "app",
-  "workspaceFolder": "/workspace",
+  "workspaceFolder": "/workspace/liquicity",
   
   "features": {
     "ghcr.io/devcontainers/features/node:1": {

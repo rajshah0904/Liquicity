@@ -13,6 +13,11 @@ services:
     depends_on:
       - db
     environment:
+      # React environment variables for Auth0 and API
+      - REACT_APP_AUTH0_DOMAIN=${REACT_APP_AUTH0_DOMAIN}
+      - REACT_APP_AUTH0_CLIENT_ID=${REACT_APP_AUTH0_CLIENT_ID}
+      - REACT_APP_AUTH0_AUDIENCE=${REACT_APP_AUTH0_AUDIENCE}
+      - REACT_APP_API_URL=http://localhost:8000
       # Database connection using service name 'db'
       - DATABASE_URL=postgresql://postgres:postgres@db:5432/liquicity
       - PYTHONPATH=/workspace
