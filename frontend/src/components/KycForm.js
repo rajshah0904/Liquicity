@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
-import axios from 'axios';
+import api from '../utils/api';
 
 const KycForm = () => {
   const { getAccessTokenSilently } = useAuth0();
@@ -34,9 +34,9 @@ const KycForm = () => {
       // Get the Auth0 token
       const token = await getAccessTokenSilently();
 
-      // Submit to existing KYC endpoint
-      const response = await axios.post(
-        `/kyc/submit`, 
+      // Submit to proxy-setup `/api/*`
+      const response = await api.post(
+        `/user/kyc/submit`, 
         formData,
         {
           headers: {

@@ -13,6 +13,7 @@ from dotenv import load_dotenv
 from app.dependencies.auth import get_current_user  # Auth0 JWT validation
 from datetime import datetime
 import logging
+import bcrypt
 
 load_dotenv()
 
@@ -300,7 +301,7 @@ class TestUserCreate(BaseModel):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
 
-@router.post("/register-test/")
+@router.post("/register", tags=["auth"])
 def create_test_user(user: TestUserCreate, db: Session = Depends(get_db)):
     """Create a test user account - development purposes only"""
     try:
@@ -911,7 +912,7 @@ async def upload_avatar(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error uploading avatar: {str(e)}")
 
-@router.post("/kyc/submit/")
+@router.post("/kyc/submit", tags=["kyc"])
 async def submit_kyc(
     first_name: str = Form(...),
     last_name: str = Form(...),
@@ -923,45 +924,36 @@ async def submit_kyc(
     id_type: Optional[str] = Form(None),
     document_type: Optional[str] = Form(None),
     document_number: Optional[str] = Form(None),
-    skip_verification: Optional[bool] = Form(False),
+    skip_verification: Optional[bool] = Form(True),
     photo: UploadFile = File(None),
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
     """Submit KYC info and update user metadata"""
     try:
-        # Debug: log incoming form data with more details
-        print(f"🔍 KYC SUBMISSION START: {first_name} {last_name}, country={country_code}")
-        print(f"🔑 AUTH USER: {current_user}")
-        
-        # Get or create the current user's ID
+        # Create or fetch user_id
         user_row = db.execute(
             text("SELECT id FROM users WHERE email = :email"),
             {"email": current_user}
         ).first()
-        
-        if not user_row:
-            # Create the user if they don't exist yet
-            print(f"👤 Creating new user: {current_user}")
+        if user_row:
+            user_id = user_row[0]
+        else:
             result = db.execute(
                 text("INSERT INTO users (email) VALUES (:email) RETURNING id"),
                 {"email": current_user}
             )
             user_id = result.fetchone()[0]
             db.commit()
-            print(f"✅ User created with ID: {user_id}")
-        else:
-            user_id = user_row[0]
-            print(f"👤 Found existing user with ID: {user_id}")
 
-        # Update nationality if provided
+        # Update nationality
         if nationality:
             db.execute(
                 text("UPDATE users SET nationality = :nationality WHERE id = :user_id"),
                 {"nationality": nationality, "user_id": user_id}
             )
 
-        # Upsert into user_metadata
+        # Upsert metadata
         existing = db.execute(
             text("SELECT id FROM user_metadata WHERE user_id = :user_id"),
             {"user_id": user_id}
@@ -982,8 +974,7 @@ async def submit_kyc(
                         document_number = :document_number,
                         updated_at = :updated_at
                     WHERE user_id = :user_id
-                    """
-                ),
+                    """),
                 {
                     "user_id": user_id,
                     "first_name": first_name,
@@ -1009,8 +1000,7 @@ async def submit_kyc(
                         :user_id, :first_name, :last_name, :date_of_birth, :country, :country_code,
                         :id_number, :id_type, :document_type, :document_number, :created_at
                     )
-                    """
-                ),
+                    """),
                 {
                     "user_id": user_id,
                     "first_name": first_name,
@@ -1026,65 +1016,42 @@ async def submit_kyc(
                 }
             )
 
-        # For testing purposes: Auto-approve verification and set user as verified
-        try:
-            if skip_verification:
-                # Update user status to verified
-                db.execute(
-                    text("""
-                        UPDATE users SET 
-                            is_verified = TRUE,
-                            kyc_status = 'approved',
-                            kyc_verified_at = :verified_at,
-                            kyc_level = 2,
-                            updated_at = :updated_at
-                        WHERE id = :user_id
-                    """),
-                    {
-                        "user_id": user_id,
-                        "verified_at": datetime.utcnow(),
-                        "updated_at": datetime.utcnow()
-                    }
-                )
-                
-                # Create verification record
-                db.execute(
-                    text("""
-                        INSERT INTO kyc_verifications (
-                            user_id, status, verification_type, submitted_at, verified_at, notes
-                        ) VALUES (
-                            :user_id, 'approved', 'auto', :submitted_at, :verified_at, 'Auto-approved for testing'
-                        ) ON CONFLICT (user_id) DO UPDATE SET
-                            status = 'approved',
-                            verified_at = :verified_at,
-                            notes = 'Auto-approved for testing',
-                            updated_at = :updated_at
-                    """),
-                    {
-                        "user_id": user_id,
-                        "submitted_at": datetime.utcnow(),
-                        "verified_at": datetime.utcnow(),
-                        "updated_at": datetime.utcnow()
-                    }
-                )
-        except Exception as e:
-            logger.error(f"Error auto-approving verification: {str(e)}")
-            # Continue despite this error - not critical
-            
+        # Optionally auto-approve
+        if skip_verification:
+            # Mark user as verified
+            db.execute(
+                text(
+                    """
+                    UPDATE users
+                    SET is_verified = TRUE
+                    WHERE id = :user_id
+                    """
+                ),
+                {"user_id": user_id}
+            )
+            # Update metadata verification status
+            db.execute(
+                text(
+                    """
+                    UPDATE user_metadata
+                    SET verification_status = 'verified',
+                        verified_at = :verified_at,
+                        updated_at = :updated_at
+                    WHERE user_id = :user_id
+                    """
+                ),
+                {
+                    "user_id": user_id,
+                    "verified_at": datetime.utcnow(),
+                    "updated_at": datetime.utcnow()
+                }
+            )
+            db.commit()
+
         db.commit()
-        logger.info(f"KYC information submitted successfully for user {user_id}")
-        
-        return {
-            "message": "KYC information submitted successfully",
-            "auto_approved": skip_verification,
-            "user_id": user_id
-        }
-        
-    except HTTPException:
-        # Re-raise HTTP exceptions
-        raise
+        return {"message": "KYC submitted", "user_id": user_id}
+
     except Exception as e:
-        logger.error(f"Unexpected error in KYC submission: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error submitting KYC info: {str(e)}")
 
@@ -1124,3 +1091,11 @@ async def check_user_exists(current_user: dict = Depends(get_current_user), db: 
         }
     
     return {"exists": False, "kyc_complete": False}
+
+@router.get("/kyc/{user_id}/status", tags=["kyc"])
+async def get_kyc_status(user_id: int, db: Session = Depends(get_db), current_user: str = Depends(get_current_user)):
+    result = db.execute(
+        text("SELECT status FROM kyc_verifications WHERE user_id = :user_id"),
+        {"user_id": user_id}
+    ).first()
+    return {"status": result[0] if result else "pending"}

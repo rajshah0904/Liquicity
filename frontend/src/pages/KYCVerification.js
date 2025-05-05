@@ -581,12 +581,11 @@ const KYCVerification = () => {
       submitData.append('country', countryKycRequirements[selectedCountry].name);
       submitData.append('country_code', selectedCountry);
       
-      // Add other form fields
-      Object.keys(formData).forEach(key => {
-        // Skip fullName since we've already processed it
-        if (key !== 'fullName') {
-          submitData.append(key, formData[key]);
-        }
+      // Append all form fields, converting camelCase keys to snake_case
+      Object.entries(formData).forEach(([key, value]) => {
+        // React form uses camelCase, FastAPI expects snake_case
+        const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+        submitData.append(snakeKey, value);
       });
       
       // Add testing flag
@@ -594,13 +593,12 @@ const KYCVerification = () => {
       
       console.log('Submitting KYC data to backend...');
       
-      // Submit KYC data to backend with timeout - ensure full path is used
-      const response = await api.post('/kyc/submit', submitData, {
-        headers: {
-          'Content-Type': 'multipart/form-data'
-        },
-        timeout: 10000 // 10 second timeout
-      });
+      // Submit KYC data to backend
+      const response = await api.post(
+        '/user/kyc/submit',
+        submitData,
+        { headers: { 'Content-Type': 'multipart/form-data' } }
+      );
       
       console.log('KYC submission response:', response.data);
       setSubmitSuccess(true);

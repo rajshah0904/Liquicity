@@ -119,10 +119,10 @@ export const paymentAPI = {
 // Export API endpoints for KYC operations
 export const kycAPI = {
   // Submit KYC data
-  submitKycData: (userId, kycData) => api.post(`/kyc/submit`, kycData),
+  submitKycData: (userId, kycData) => api.post(`/user/kyc/submit`, kycData),
   
   // Get KYC status
-  getKycStatus: (userId) => api.get(`/kyc/${userId}/status`),
+  getKycStatus: (userId) => api.get(`/user/kyc/${userId}/status`),
   
   // Upload identity documents
   uploadDocument: (userId, documentType, file) => {
@@ -130,7 +130,7 @@ export const kycAPI = {
     formData.append('file', file);
     formData.append('documentType', documentType);
     
-    return api.post(`/kyc/${userId}/upload-document`, formData, {
+    return api.post(`/user/kyc/${userId}/upload-document`, formData, {
       headers: {
         'Content-Type': 'multipart/form-data'
       }

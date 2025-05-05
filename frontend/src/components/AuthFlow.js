@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useAuth0 } from '@auth0/auth0-react';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
+import api from '../utils/api';
 
 const AuthFlow = () => {
   const { user, isAuthenticated, isLoading, getAccessTokenSilently } = useAuth0();
@@ -17,11 +17,9 @@ const AuthFlow = () => {
         // Get token from Auth0
         const token = await getAccessTokenSilently();
         
-        // Check if user exists in our database
-        const checkResponse = await axios.get(`/user/check`, {
-          headers: {
-            Authorization: `Bearer ${token}`
-          }
+        // Check if user exists in our database via proxy (prefixed /api)
+        const checkResponse = await api.get(`/user/check`, {
+          headers: { Authorization: `Bearer ${token}` }
         });
         
         const { exists, kyc_complete } = checkResponse.data;
@@ -29,14 +27,12 @@ const AuthFlow = () => {
         if (!exists) {
           // Register the user in our database
           setStatus('registering');
-          await axios.post(`/user/register`, {
+          await api.post(`/user/register`, {
             email: user.email,
             name: user.name,
             auth0_id: user.sub
           }, {
-            headers: {
-              Authorization: `Bearer ${token}`
-            }
+            headers: { Authorization: `Bearer ${token}` }
           });
           
           // After registration, redirect to KYC
