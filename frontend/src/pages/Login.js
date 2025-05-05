@@ -122,7 +122,7 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { loginWithPopup, isAuthenticated, getAccessTokenSilently } = useAuth0();
+  const { loginWithRedirect, isAuthenticated, getAccessTokenSilently } = useAuth0();
   const navigate = useNavigate();
   
   // After login, get token and navigate
@@ -140,33 +140,45 @@ const Login = () => {
   const handleEmailLogin = async e => {
     e.preventDefault();
     if (!email || !/\S+@\S+\.\S+/.test(email)) return setError('Please enter a valid email address');
-    setError(''); setLoading(true);
+    // Make sure the signup flag is cleared for normal logins
+    localStorage.removeItem('isNewSignup');
+    setError(''); 
+    setLoading(true);
+    
     try {
-      await loginWithPopup({ authorizationParams: { screen_hint: 'login', login_hint: email } });
+      // Switch from popup to redirect for consistent behavior
+      await loginWithRedirect({ 
+        authorizationParams: { 
+          screen_hint: 'login', 
+          login_hint: email,
+          redirect_uri: `${window.location.origin}/callback`
+        },
+        appState: { returnTo: '/dashboard' }
+      });
     } catch (err) {
       setError(err.message || 'Login failed.');
-    } finally {
       setLoading(false);
     }
   };
   
   const handleGoogleLogin = async () => {
+    // Clear any signup flag in localStorage
+    localStorage.removeItem('isNewSignup');
     setLoading(true);
     setError('');
+    
     try {
-      // Trigger Auth0 Google login popup
-      await loginWithPopup({ authorizationParams: { connection: 'google-oauth2' } });
-      // Acquire the access token
-      const token = await getAccessTokenSilently();
-      // Configure axios and navigate to dashboard
-      import('../utils/api').then(({ default: api }) => {
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        navigate('/dashboard');
+      // Switch from popup to redirect for Google login
+      await loginWithRedirect({ 
+        authorizationParams: { 
+          connection: 'google-oauth2',
+          redirect_uri: `${window.location.origin}/callback`
+        },
+        appState: { returnTo: '/dashboard' }
       });
     } catch (err) {
       setError(err.message || 'Google login failed. Please try again.');
       console.error('Google login error:', err);
-    } finally {
       setLoading(false);
     }
   };

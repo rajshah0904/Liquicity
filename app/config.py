@@ -13,6 +13,12 @@ class AuthConfig(BaseModel):
     secret_key: str = os.getenv("SECRET_KEY", "your_secret_key_here")
     algorithm: str = os.getenv("ALGORITHM", "HS256")
     access_token_expire_minutes: int = int(os.getenv("ACCESS_TOKEN_EXPIRE_MINUTES", "30"))
+    # Auth0 configuration
+    auth0_domain: str = os.getenv("AUTH0_DOMAIN", "")
+    auth0_client_id: str = os.getenv("AUTH0_CLIENT_ID", "")
+    auth0_client_secret: str = os.getenv("AUTH0_CLIENT_SECRET", "")
+    auth0_audience: str = os.getenv("AUTH0_AUDIENCE", "https://api.liquicity.io")
+    auth0_callback_url: str = os.getenv("AUTH0_CALLBACK_URL", "http://localhost:8000/callback")
 
 class APIKeysConfig(BaseModel):
     exchange_rate_api_key: Optional[str] = os.getenv("EXCHANGE_RATE_API_KEY")

@@ -25,7 +25,6 @@ import {
   alpha,
   ListItemIcon
 } from '@mui/material';
-import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import SendIcon from '@mui/icons-material/Send';
@@ -50,6 +49,7 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import AddIcon from '@mui/icons-material/Add';
 import PaymentsIcon from '@mui/icons-material/Payments';
+import { useAuth0 } from '@auth0/auth0-react';
 
 // Import our custom UI components
 import {
@@ -79,7 +79,7 @@ import {
 } from '../components/animations/AnimatedComponents';
 
 const Dashboard = () => {
-  const { currentUser } = useAuth();
+  const { user, isAuthenticated } = useAuth0();
   const [wallets, setWallets] = useState([]);
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -101,7 +101,7 @@ const Dashboard = () => {
 
     const fetchData = async () => {
       try {
-        const userId = currentUser?.id || localStorage.getItem('userId') || 1;
+        const userId = user?.id || localStorage.getItem('userId') || 1;
         console.log("Dashboard: Fetching data for user ID:", userId);
         
         // Fetch wallet data
@@ -148,7 +148,7 @@ const Dashboard = () => {
     };
 
     fetchData();
-  }, [currentUser]);
+  }, [user]);
 
   // Format currency
   const formatCurrency = (amount, currency = 'USD') => {
@@ -300,7 +300,7 @@ const Dashboard = () => {
       <SlideUpBox>
         <Box sx={{ mb: 3 }}>
           <Typography variant="h4" component="h1" gutterBottom fontWeight="700">
-            Welcome back, <GradientText>{currentUser?.profile?.first_name || currentUser?.username || 'User'}</GradientText>
+            Welcome back, <GradientText>{user?.profile?.first_name || user?.username || 'User'}</GradientText>
           </Typography>
           <Typography variant="subtitle1" color="text.secondary">
             Here's an overview of your finances
@@ -603,7 +603,7 @@ const Dashboard = () => {
               <List sx={{ p: 0 }}>
                 {recentTransactions.map((transaction, index) => {
                   // Determine transaction type and direction for display
-                  const isIncoming = transaction.recipient_id === currentUser?.id;
+                  const isIncoming = transaction.recipient_id === user?.id;
                   const transactionType = transaction.transaction_type || 
                     (isIncoming ? 'RECEIVE' : 'SEND');
                   

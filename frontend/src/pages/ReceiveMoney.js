@@ -11,13 +11,13 @@ import {
   WhatsApp, Email, FileCopy, TextSnippet, Download
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { QRCodeCanvas } from 'qrcode.react';
 import { SlideUpBox } from '../components/animations/AnimatedComponents';
+import { useAuth0 } from '@auth0/auth0-react';
 
 const ReceiveMoney = () => {
-  const { currentUser } = useAuth();
+  const { user } = useAuth0();
   const navigate = useNavigate();
   const qrRef = useRef(null);
   
@@ -36,16 +36,16 @@ const ReceiveMoney = () => {
   const [shareDialogOpen, setShareDialogOpen] = useState(false);
   
   useEffect(() => {
-    if (currentUser) {
+    if (user) {
       fetchWallet();
     }
-  }, [currentUser]);
+  }, [user]);
   
   const fetchWallet = async () => {
     setLoading(true);
     try {
       // Fetch user's main wallet
-      const response = await api.get(`/wallet/${currentUser.id}`);
+      const response = await api.get(`/wallet/${user.id}`);
       if (response.status === 200) {
         setUserWallet(response.data);
         
@@ -71,7 +71,7 @@ const ReceiveMoney = () => {
       amount,
       currency,
       description: description || 'Payment request',
-      recipient: currentUser.username || currentUser.email || 'user'
+      recipient: user.username || user.email || 'user'
     };
     
     // Convert to base64 to include in URL

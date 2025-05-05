@@ -5,14 +5,14 @@ import {
   InputLabel, Select, MenuItem, Divider, Card, CardContent
 } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { API_URL } from '../utils/constants';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import MoneyOffIcon from '@mui/icons-material/MoneyOff';
+import { useAuth0 } from '@auth0/auth0-react';
 
 const WithdrawFunds = () => {
-  const { currentUser } = useAuth();
+  const { user } = useAuth0();
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(false);
@@ -51,13 +51,13 @@ const WithdrawFunds = () => {
   
   useEffect(() => {
     const fetchData = async () => {
-      if (currentUser?.id) {
+      if (user?.id) {
         try {
           // Fetch bank accounts
           fetchBankAccounts();
           
           // Fetch wallet balance
-          const walletResponse = await api.get(`/wallet/${currentUser.id}`);
+          const walletResponse = await api.get(`/wallet/${user.id}`);
           if (walletResponse.status === 200) {
             setWalletBalance(walletResponse.data.fiat_balance || 0);
             setCurrency(walletResponse.data.base_currency || 'USD');
@@ -70,14 +70,14 @@ const WithdrawFunds = () => {
     };
     
     fetchData();
-  }, [currentUser]);
+  }, [user]);
   
   const fetchBankAccounts = async () => {
-    if (!currentUser?.id) return;
+    if (!user?.id) return;
     
     try {
       setLoading(true);
-      const response = await api.get(`/payment/bank-accounts/${currentUser.id}`);
+      const response = await api.get(`/payment/bank-accounts/${user.id}`);
       const accounts = response.data || [];
       
       setBankAccounts(accounts);
@@ -124,7 +124,7 @@ const WithdrawFunds = () => {
         amount: amountDecimal,
         currency: currency,
         bankAccountId: selectedAccount,
-        userId: currentUser.id
+        userId: user.id
       });
       
       if (result.data.success) {
@@ -151,7 +151,7 @@ const WithdrawFunds = () => {
       setError(null);
       
       const response = await api.post('/payment/link-bank-account', {
-        userId: currentUser.id
+        userId: user.id
       });
       
       if (response.data && response.data.redirectUrl) {

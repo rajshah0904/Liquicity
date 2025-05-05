@@ -1,25 +1,53 @@
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
-from app.config import AppConfig
 from dotenv import load_dotenv
+import os
+import requests
+import logging
 
-# Load environment variables from .env
+# Set up logging
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
+
+# Load environment variables
 load_dotenv()
 
 # Auth0 configuration
-import os, requests
 AUTH0_DOMAIN = os.getenv('AUTH0_DOMAIN')
-API_AUDIENCE = os.getenv('API_AUDIENCE') or os.getenv('AUTH0_AUDIENCE')
+if not AUTH0_DOMAIN or AUTH0_DOMAIN == 'none':
+    AUTH0_DOMAIN = 'liquicity.us.auth0.com'  # Set a default domain if not provided
+API_AUDIENCE = os.getenv('API_AUDIENCE')  # Audience for your API, e.g. https://api.liquicity.com
 ALGORITHMS = ['RS256']
 
-# Fetch JWKS from Auth0
-jwks = requests.get(f"https://{AUTH0_DOMAIN}/.well-known/jwks.json").json()
+# Print configuration for debugging
+print(f"🔑 AUTH0_DOMAIN = {AUTH0_DOMAIN}")
+print(f"🎯 API_AUDIENCE = {API_AUDIENCE}")
+
+# JWKS cache
+_jwks_cache = None
+
+def get_jwks():
+    """Fetch JWKS from Auth0 with caching and error handling"""
+    global _jwks_cache
+    if _jwks_cache is None:
+        try:
+            jwks_url = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
+            logger.info(f"Fetching JWKS from {jwks_url}")
+            response = requests.get(jwks_url, timeout=5)
+            response.raise_for_status()
+            _jwks_cache = response.json()
+        except Exception as e:
+            logger.error(f"Error fetching JWKS: {e}")
+            _jwks_cache = {"keys": []}
+    return _jwks_cache
+
 # Use HTTPBearer for Auth0-issued JWTs
 security = HTTPBearer()
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)):
     token = credentials.credentials
+    jwks = get_jwks()
     # Identify the signing key
     try:
         unverified_header = jwt.get_unverified_header(token)
@@ -41,8 +69,11 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
             audience=API_AUDIENCE,
             issuer=f"https://{AUTH0_DOMAIN}/"
         )
+        logger.info(f"Successfully validated token for {payload.get('email', 'unknown user')}")
+        # For KYC operations, we need just the email
+        return payload.get('email', payload.get('sub'))
     except JWTError as e:
+        logger.error(f"Token validation error: {str(e)}")
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=f"Token validation error: {str(e)}")
-    # At this point, 'payload' contains the user data
-    return payload
+
     

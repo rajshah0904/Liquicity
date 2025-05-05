@@ -24,9 +24,9 @@ import {
   Help,
   ArrowBack
 } from '@mui/icons-material';
-import { useAuth } from '../context/AuthContext';
 import { kycAPI } from '../utils/api';
 import { AnimatedBackground } from '../components/ui/ModernUIComponents';
+import { useAuth0 } from '@auth0/auth0-react';
 
 // Helper function to generate a random Ethereum-like wallet address
 const generateRandomWalletAddress = () => {
@@ -165,10 +165,17 @@ const documentTypes = [
 const Register = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { user, isAuthenticated, loginWithRedirect } = useAuth0();
   
-  // Check if this is a new user from SignUp page
-  const userEmail = location.state?.email || currentUser?.email || '';
+  // Redirect to Auth0 login if user is not authenticated
+  useEffect(() => {
+    if (!isAuthenticated) {
+      loginWithRedirect({ appState: { returnTo: window.location.pathname } });
+    }
+  }, [isAuthenticated, loginWithRedirect]);
+  
+  // Determine the user's email, preferring state passed from signup
+  const userEmail = location.state?.email || user?.email || '';
   const isNewUser = location.state?.newUser || false;
   
   // Get a trimmed down form since we only need KYC info
@@ -704,7 +711,7 @@ const Register = () => {
   }
 
   // If not a new user and not already logged in, redirect to login
-  if (!isNewUser && !currentUser) {
+  if (!isNewUser && !loginWithRedirect()) {
     navigate('/login');
     return null;
   }

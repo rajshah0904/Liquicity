@@ -6,7 +6,6 @@ import {
   Switch, FormControlLabel
 } from '@mui/material';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { API_URL } from '../utils/constants';
 import { 
@@ -16,9 +15,10 @@ import {
 } from '../utils/paymentUtils';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import CreditCardIcon from '@mui/icons-material/CreditCard';
+import { useAuth0 } from '@auth0/auth0-react';
 
 const DepositFunds = () => {
-  const { currentUser } = useAuth();
+  const { user } = useAuth0();
   const navigate = useNavigate();
   const location = useLocation();
   const [loading, setLoading] = useState(false);
@@ -58,10 +58,10 @@ const DepositFunds = () => {
   
   useEffect(() => {
     const fetchData = async () => {
-      if (currentUser?.id) {
+      if (user?.id) {
         try {
           // Fetch user's wallet to get default currency
-          const walletResponse = await api.get(`/wallet/${currentUser.id}`);
+          const walletResponse = await api.get(`/wallet/${user.id}`);
           if (walletResponse.status === 200) {
             setCurrency(walletResponse.data.base_currency || 'USD');
           }
@@ -75,14 +75,14 @@ const DepositFunds = () => {
     };
     
     fetchData();
-  }, [currentUser]);
+  }, [user]);
   
   const fetchBankAccounts = async () => {
-    if (!currentUser?.id) return;
+    if (!user?.id) return;
     
     try {
       setLoading(true);
-      const accounts = await listBankAccounts(currentUser.id);
+      const accounts = await listBankAccounts(user.id);
       setBankAccounts(accounts);
       if (accounts.length > 0) {
         setSelectedAccount(accounts[0].id);
@@ -126,7 +126,7 @@ const DepositFunds = () => {
         const response = await api.post('/payment/deposit/card', {
           amount: amountInCents,
           currency: currency.toLowerCase(),
-          userId: currentUser.id,
+          userId: user.id,
           depositToWallet
         });
         
@@ -149,7 +149,7 @@ const DepositFunds = () => {
           amountInCents,
           currency.toLowerCase(),
           selectedAccount,
-          currentUser.id,
+          user.id,
           depositToWallet
         );
         
@@ -173,7 +173,7 @@ const DepositFunds = () => {
       setLoading(true);
       setError(null);
       
-      const linkUrl = await linkBankAccount(currentUser.id);
+      const linkUrl = await linkBankAccount(user.id);
       // Redirect to bank linking page
       window.location.href = linkUrl;
     } catch (err) {

@@ -42,16 +42,16 @@ import {
 } from '@mui/icons-material';
 import axios from 'axios';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { processDirectPayment, getPaymentMethods } from '../utils/paymentUtils';
 import { SlideUpBox } from '../components/animations/AnimatedComponents';
+import { useAuth0 } from '@auth0/auth0-react';
 
 
 const SendMoney = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { currentUser, isAuthenticated } = useAuth();
+  const { user } = useAuth0();
   const [activeStep, setActiveStep] = useState(0);
   const [wallets, setWallets] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -91,7 +91,7 @@ const SendMoney = () => {
   const steps = ['Select wallet', 'Enter recipient', 'Confirm transfer'];
 
   useEffect(() => {
-    if (!isAuthenticated) {
+    if (!user) {
       navigate('/login', { state: { from: '/send' } });
       return;
     }
@@ -106,7 +106,7 @@ const SendMoney = () => {
     }
     
     fetchWallets();
-  }, [isAuthenticated, navigate, location]);
+  }, [user, navigate, location]);
 
   useEffect(() => {
     if (formData.sourceWalletId && formData.currency) {
@@ -187,7 +187,7 @@ const SendMoney = () => {
             }
             
             // Prevent sending money to yourself with Stripe
-            if (currentUser.id === savedTransaction.recipientInfo.id) {
+            if (user.id === savedTransaction.recipientInfo.id) {
               setError('Cannot send money to yourself using a card payment. The payment was processed but no transfer was made. Please contact support for a refund.');
               setSendingFunds(false);
               return;
@@ -195,7 +195,7 @@ const SendMoney = () => {
             
             // Process the actual transfer to the recipient
             api.post('/payment/transfer', {
-              sender_id: currentUser.id,
+              sender_id: user.id,
               recipient_id: savedTransaction.recipientInfo.id,
               amount: parseFloat(formDataToUse.amount),
               source_currency: formDataToUse.currency,
@@ -263,14 +263,14 @@ const SendMoney = () => {
 
   useEffect(() => {
     fetchPaymentMethods();
-  }, [currentUser]);
+  }, [user]);
 
   const fetchPaymentMethods = async () => {
     try {
-      if (!currentUser?.id) return;
+      if (!user?.id) return;
       
       // Fetch the user's payment methods
-      const methods = await getPaymentMethods(currentUser.id);
+      const methods = await getPaymentMethods(user.id);
       
       if (methods && methods.length > 0) {
         setPaymentMethods(methods);
@@ -358,7 +358,7 @@ const SendMoney = () => {
   const fetchWallets = async () => {
     setLoading(true);
     try {
-      if (!currentUser || !currentUser.id) {
+      if (!user || !user.id) {
         console.error('Cannot fetch wallets: no current user ID');
         setError('User authentication error. Please log in again.');
         setWallets([]);
@@ -366,9 +366,9 @@ const SendMoney = () => {
         return;
       }
       
-      console.log('Fetching wallets for user:', currentUser.id);
+      console.log('Fetching wallets for user:', user.id);
       
-      const response = await api.get(`/wallet/${currentUser.id}`);
+      const response = await api.get(`/wallet/${user.id}`);
       
       if (response.data) {
         const walletsData = Array.isArray(response.data) ? response.data : [response.data];
@@ -377,10 +377,10 @@ const SendMoney = () => {
           if (!wallet) return false;
           if (wallet.id == null) return false;
           
-          return wallet.user_id === currentUser.id;
+          return wallet.user_id === user.id;
         });
         
-        console.log(`Found ${validWallets.length} valid wallets for user ${currentUser.id}`);
+        console.log(`Found ${validWallets.length} valid wallets for user ${user.id}`);
         
         setWallets(validWallets);
         
@@ -436,7 +436,7 @@ const SendMoney = () => {
       
       if (response.data && Array.isArray(response.data)) {
         // Filter out current user from results
-        const filteredResults = response.data.filter(user => user.id !== currentUser.id);
+        const filteredResults = response.data.filter(user => user.id !== user.id);
         setUserSearchResults(filteredResults);
       } else {
         setUserSearchResults([]);
@@ -541,7 +541,7 @@ const SendMoney = () => {
     // Check for recipient info, which indicates a valid registered user
     if (!recipientInfo || !recipientInfo.id) {
       errors.recipientAddress = 'Please select a valid registered Liquicity user';
-    } else if (recipientInfo.id === currentUser.id) {
+    } else if (recipientInfo.id === user.id) {
       errors.recipientAddress = 'You cannot send money to yourself';
     }
     
@@ -660,7 +660,7 @@ const SendMoney = () => {
       if (paymentSource === 'wallet') {
         // Directly process wallet payment
         const response = await api.post('/payment/transfer', {
-          sender_id: currentUser.id,
+          sender_id: user.id,
           recipient_id: recipientInfo.id,
           amount: totalAmount, // Include fees in the amount
           source_currency: selectedWallet.base_currency || selectedWallet.currency,
@@ -696,7 +696,7 @@ const SendMoney = () => {
         }
         
         // Don't allow sending money to yourself with a card payment
-        if (currentUser.id === recipientInfo.id) {
+        if (user.id === recipientInfo.id) {
           throw new Error('Cannot send money to yourself using a card payment. Please select a different recipient.');
         }
         
@@ -708,7 +708,7 @@ const SendMoney = () => {
         const response = await api.post('/payment/direct-payment', {
           amount: Math.round(totalAmount * 100),
           currency: formData.currency.toLowerCase(),
-          userId: currentUser.id,
+          userId: user.id,
           recipientId: recipientInfo.id.toString(),
           paymentSource: paymentSource,
           description: `Payment to ${getRecipientDisplayName(recipientInfo)}`
@@ -800,7 +800,7 @@ const SendMoney = () => {
   return (
       <Box>
         <Typography variant="body1" component="span" fontWeight="medium">
-          {currentUser.username}'s Wallet
+          {user.username}'s Wallet
         </Typography>
         <Typography variant="body2" component="div" color="text.secondary">
           {formatCurrency(wallet.fiat_balance, wallet.base_currency || wallet.currency)} • {wallet.base_currency || wallet.currency}
@@ -991,7 +991,7 @@ const SendMoney = () => {
         
         if (user) {
           // Check if user is sending to themselves
-          if (user.id === currentUser.id) {
+          if (user.id === user.id) {
             setFormErrors(prev => ({
               ...prev,
               recipientAddress: 'You cannot send money to yourself'
@@ -1094,7 +1094,7 @@ const SendMoney = () => {
     );
   }
 
-  if (!isAuthenticated) {
+  if (!user) {
     return (
       <Container maxWidth="md">
         <Paper sx={{ p: 4, mt: 4, textAlign: 'center' }}>

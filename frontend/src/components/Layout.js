@@ -42,7 +42,7 @@ import {
   Notifications,
   DarkMode
 } from '@mui/icons-material';
-import { useAuth } from '../context/AuthContext';
+import { useAuth0 } from '@auth0/auth0-react';
 
 const drawerWidth = 240;
 
@@ -55,7 +55,7 @@ const menuItems = [
 ];
 
 const Layout = ({ children }) => {
-  const { currentUser, logout } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth0();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -93,7 +93,6 @@ const Layout = ({ children }) => {
 
   const handleLogout = () => {
     handleMenuClose();
-    logout();
     navigate('/login');
   };
 
@@ -232,11 +231,11 @@ const Layout = ({ children }) => {
 
   // Use display names or initials for the avatar
   const getAvatarText = () => {
-    if (currentUser) {
-      if (currentUser.first_name && currentUser.last_name) {
-        return `${currentUser.first_name.charAt(0)}${currentUser.last_name.charAt(0)}`;
-      } else if (currentUser.username) {
-        return currentUser.username.charAt(0).toUpperCase();
+    if (isAuthenticated) {
+      if (isAuthenticated.first_name && isAuthenticated.last_name) {
+        return `${isAuthenticated.first_name.charAt(0)}${isAuthenticated.last_name.charAt(0)}`;
+      } else if (isAuthenticated.username) {
+        return isAuthenticated.username.charAt(0).toUpperCase();
       }
     }
     return 'U';
@@ -267,7 +266,7 @@ const Layout = ({ children }) => {
              'Liquicity'}
           </Typography>
           
-          {currentUser ? (
+          {isAuthenticated ? (
             <>
               <IconButton 
                 color="inherit"

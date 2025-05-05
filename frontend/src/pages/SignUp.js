@@ -13,6 +13,7 @@ import {
 import { styled } from '@mui/material/styles';
 import { useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
+import api from '../utils/api';
 
 // Icons
 import GoogleIcon from '@mui/icons-material/Google';
@@ -104,27 +105,11 @@ const DividerWithText = styled(Box)(({ theme }) => ({
 }));
 
 const SignUp = () => {
-  const [email, setEmail] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const { loginWithPopup, isAuthenticated, getAccessTokenSilently } = useAuth0();
+  const { loginWithPopup, getAccessTokenSilently } = useAuth0();
   const navigate = useNavigate();
-
-  // After successful auth, get token and redirect
-  useEffect(() => {
-    if (isAuthenticated) {
-      getAccessTokenSilently().then(token => {
-        // store token locally
-        localStorage.setItem('auth_token', token);
-        // set axios header
-        import('../utils/api').then(({ default: api }) => {
-          api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-          // Redirect new signups to the KYC form
-          navigate('/register', { state: { email, newUser: true } });
-        });
-      });
-    }
-  }, [isAuthenticated, getAccessTokenSilently, navigate]);
+  const [email, setEmail] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
   const handleEmailSignUp = async e => {
     e.preventDefault();
@@ -135,9 +120,13 @@ const SignUp = () => {
     setError('');
     setLoading(true);
     try {
-      await loginWithPopup({
-        authorizationParams: { screen_hint: 'signup', login_hint: email }
-      });
+      // Open Auth0 signup popup
+      await loginWithPopup({ authorizationParams: { screen_hint: 'signup', login_hint: email } });
+      // Get token and set API header
+      const token = await getAccessTokenSilently();
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      // Navigate to KYC page
+      navigate('/kyc-verification');
     } catch (err) {
       setError(err.message || 'Signup failed.');
     } finally {
@@ -149,7 +138,13 @@ const SignUp = () => {
     setError('');
     setLoading(true);
     try {
+      // Open Auth0 Google signup popup
       await loginWithPopup({ authorizationParams: { connection: 'google-oauth2' } });
+      // Get token and set API header
+      const token = await getAccessTokenSilently();
+      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+      // Navigate to KYC page
+      navigate('/kyc-verification');
     } catch (err) {
       setError(err.message || 'Google signup failed.');
     } finally {
@@ -175,12 +170,12 @@ const SignUp = () => {
               onChange={e => setEmail(e.target.value)}
               InputProps={{ startAdornment: (<InputAdornment position="start"><EmailIcon/></InputAdornment>) }}
             />
-            <EmailButton fullWidth type="submit" disabled={loading} sx={{ mt:2 }}>
-              {loading ? <CircularProgress size={24}/> : 'Sign up with Email'}
+            <EmailButton fullWidth type="submit" sx={{ mt:2 }}>
+              Sign up with Email
             </EmailButton>
           </Box>
           <DividerWithText><span>OR</span></DividerWithText>
-          <GoogleButton fullWidth onClick={handleGoogleSignUp} disabled={loading}>
+          <GoogleButton fullWidth onClick={handleGoogleSignUp}>
             <GoogleIcon sx={{ mr:1 }}/> Continue with Google
           </GoogleButton>
           <Box sx={{ mt:2 }}>Already have an account? <Link component="button" onClick={handleLogin}>Log in</Link></Box>
@@ -190,4 +185,4 @@ const SignUp = () => {
   );
 };
 
-export default SignUp; 
+export default SignUp;

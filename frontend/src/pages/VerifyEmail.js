@@ -9,19 +9,33 @@ import {
   Paper 
 } from '@mui/material';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import { AnimatedBackground } from '../components/ui/ModernUIComponents';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorOutlineIcon from '@mui/icons-material/ErrorOutline';
+import { useAuth0 } from '@auth0/auth0-react';
+import api from '../utils/api';
 
 const VerifyEmail = () => {
   const [verifying, setVerifying] = useState(true);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
   
-  const { verifyEmailLink } = useAuth();
+  const { user } = useAuth0();
   const navigate = useNavigate();
   const location = useLocation();
+  
+  // Email verification function using Auth0
+  const verifyEmailLink = async (token) => {
+    try {
+      // In a real implementation, you might call your backend API 
+      // that interacts with Auth0 to verify the email token
+      const response = await api.post('/auth/verify-email', { token });
+      return response.data.success;
+    } catch (err) {
+      console.error('Email verification error:', err);
+      return false;
+    }
+  };
   
   useEffect(() => {
     const verifyToken = async () => {
@@ -56,7 +70,7 @@ const VerifyEmail = () => {
     };
     
     verifyToken();
-  }, [verifyEmailLink, location, navigate]);
+  }, [location, navigate]);
   
   return (
     <>

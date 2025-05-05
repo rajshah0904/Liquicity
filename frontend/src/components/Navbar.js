@@ -19,8 +19,10 @@ import {
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import { motion } from 'framer-motion';
+import { useAuth0 } from '@auth0/auth0-react';
+import LoginButton, { SignupButton } from './auth/Login';
+import LogoutButton from './auth/Logout';
 
 // Icons
 import MenuIcon from '@mui/icons-material/Menu';
@@ -157,7 +159,7 @@ const Navbar = ({ onDrawerToggle, drawerOpen, showMenuIcon = false }) => {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
-  const { currentUser, logout } = useAuth();
+  const { isAuthenticated, user, isLoading, logout } = useAuth0();
 
   // Use either prop or local state depending on what's provided
   const isDrawerOpen = drawerOpen !== undefined ? drawerOpen : localDrawerOpen;
@@ -321,15 +323,29 @@ const Navbar = ({ onDrawerToggle, drawerOpen, showMenuIcon = false }) => {
           <Box sx={{ flexGrow: 1 }} />
           
           <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            {currentUser && (
-              <>
-                <Typography variant="body2" sx={{ mr: 2, display: { xs: 'none', md: 'block' } }}>
-                  {currentUser.username}
-                </Typography>
-                <IconButton color="inherit" onClick={handleLogout}>
-                  <ExitToAppIcon />
-                </IconButton>
-              </>
+            {isLoading ? (
+              <div className="auth-loading">Loading...</div>
+            ) : isAuthenticated ? (
+              <div className="auth-container">
+                <div className="user-info">
+                  {user?.picture && (
+                    <img 
+                      src={user.picture} 
+                      alt="Profile" 
+                      className="profile-pic"
+                      width="32"
+                      height="32"
+                    />
+                  )}
+                  <span className="welcome-text">Welcome, {user?.name || user?.email}</span>
+                </div>
+                <LogoutButton />
+              </div>
+            ) : (
+              <div className="auth-buttons">
+                <LoginButton />
+                <SignupButton />
+              </div>
             )}
           </Box>
         </Toolbar>

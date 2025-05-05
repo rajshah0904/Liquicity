@@ -13,15 +13,15 @@ import {
   AddCircleOutline, CurrencyBitcoin, AttachMoney, Add, Remove
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { StaggerContainer, StaggerItem } from '../components/animations/AnimatedComponents';
 import { useTheme } from '@mui/material/styles';
 import axios from 'axios';
 import { API_URL } from '../utils/constants';
+import { useAuth0 } from '@auth0/auth0-react';
 
 const Wallet = () => {
-  const { currentUser } = useAuth();
+  const { user } = useAuth0();
   const navigate = useNavigate();
   const theme = useTheme();
   const [walletData, setWalletData] = useState(null);
@@ -47,17 +47,17 @@ const Wallet = () => {
 
   useEffect(() => {
     // Fetch wallet data for the logged-in user
-    const userId = currentUser?.id || localStorage.getItem('userId') || 1;
+    const userId = user?.id || localStorage.getItem('userId') || 1;
     console.log("Fetching wallet data for user ID:", userId);
     
     fetchWalletData(userId);
     fetchRecentTransactions(userId);
-  }, [currentUser]);
+  }, [user]);
 
   const fetchWalletData = async (userId) => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/wallet/${userId}`);
+      const response = await axios.get(`/api/wallet/${userId}`);
       console.log("Wallet data response:", response.data);
       setWalletData(response.data);
       setCurrency(response.data.base_currency || 'USD');
@@ -71,7 +71,7 @@ const Wallet = () => {
 
   const fetchRecentTransactions = async (userId) => {
     try {
-      const response = await axios.get(`${API_URL}/transaction/user/${userId}?limit=5`);
+      const response = await axios.get(`/api/transaction/user/${userId}?limit=5`);
       console.log("Transaction data:", response.data);
       if (response.data) {
         setTransactions(response.data);
@@ -515,7 +515,7 @@ const Wallet = () => {
           <List sx={{ p: 0 }}>
             {transactions.map((transaction, index) => {
               // Determine transaction type and direction for display
-              const isIncoming = transaction.recipient_id === currentUser?.id;
+              const isIncoming = transaction.recipient_id === user?.id;
               const transactionType = transaction.transaction_type || 
                 (isIncoming ? 'RECEIVE' : 'SEND');
               

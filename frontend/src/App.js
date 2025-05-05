@@ -1,14 +1,17 @@
 import React, { useState } from 'react';
 import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
-import { Box, useMediaQuery, useTheme } from '@mui/material';
-import { useAuth } from './context/AuthContext';
+import { Box, useMediaQuery, useTheme, Typography } from '@mui/material';
+import { useAuth0 } from '@auth0/auth0-react';
+import AuthFlow from './components/AuthFlow';
+import KycForm from './components/KycForm';
+import './App.css';
 
 // Pages
 import Login from './pages/Login';
 import SignUp from './pages/SignUp';
 import Register from './pages/Register';
 import VerifyEmail from './pages/VerifyEmail';
-import Dashboard from './pages/Dashboard';
+import PageDashboard from './pages/Dashboard';
 import ModernCardDemo from './pages/ModernCardDemo';
 import Wallet from './pages/Wallet';
 import SendMoney from './pages/SendMoney';
@@ -16,11 +19,19 @@ import ReceiveMoney from './pages/ReceiveMoney';
 import Transactions from './pages/Transactions';
 import DepositFunds from './pages/DepositFunds';
 import WithdrawFunds from './pages/WithdrawFunds';
+import LandingPage from './pages/LandingPage';
+import HowItWorks from './pages/HowItWorks';
+import Security from './pages/Security';
+import KYCVerification from './pages/KYCVerification';
+import VerificationPending from './pages/VerificationPending';
+import AuthCallback from './pages/AuthCallback';
+import ProfilePage from './pages/Profile';
 
 // Components
 import Navbar from './components/Navbar';
 import ProtectedRoute from './components/ProtectedRoute';
 import AnimatedBackground from './components/animations/AnimatedBackground';
+import { AuthenticationGuard } from './components/auth/AuthenticationGuard';
 
 // Providers
 import { CustomThemeProvider as ThemeProvider } from './context/ThemeContext';
@@ -29,36 +40,44 @@ import { CustomThemeProvider as ThemeProvider } from './context/ThemeContext';
 const DRAWER_WIDTH = 260;
 
 function App() {
-  // Define routes that should use authenticated layout
-  const authenticatedRoutes = [
-    '/dashboard',
-    '/wallet',
-    '/send',
-    '/receive',
-    '/transactions',
-    '/profile',
-    '/settings',
-  ];
+  const { loginWithRedirect, logout, isAuthenticated, user, isLoading } = useAuth0();
+
+  if (isLoading) {
+    return (
+      <ThemeProvider>
+        <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh' }}>
+          <Typography variant="h5">Loading Liquicity application...</Typography>
+        </Box>
+      </ThemeProvider>
+    );
+  }
 
   return (
     <ThemeProvider>
       <Routes>
+        {/* Public Routes - No Authentication Required */}
+        <Route path="/" element={<LandingPage />} />
         <Route path="/login" element={<Login />} />
         <Route path="/signup" element={<SignUp />} />
         <Route path="/register" element={<Register />} />
-        <Route path="/verify-email" element={<VerifyEmail />} />
-        <Route
-          path="/"
-          element={<Navigate to="/dashboard" replace />}
-        />
+        <Route path="/how-it-works" element={<HowItWorks />} />
+        <Route path="/security" element={<Security />} />
+        <Route path="/callback" element={<AuthCallback />} />
         
-        {/* Protected Routes */}
+        {/* Auth0 Flow Routes - Protected */}
+        <Route path="/auth" element={<ProtectedRoute><AuthFlow /></ProtectedRoute>} />
+        <Route path="/kyc" element={<ProtectedRoute><KycForm /></ProtectedRoute>} />
+        <Route path="/verify-email" element={<ProtectedRoute><VerifyEmail /></ProtectedRoute>} />
+        <Route path="/kyc-verification" element={<ProtectedRoute><KYCVerification /></ProtectedRoute>} />
+        <Route path="/verification-pending" element={<ProtectedRoute><VerificationPending /></ProtectedRoute>} />
+        
+        {/* Dashboard Routes - Protected with Authenticated Layout */}
         <Route
           path="/dashboard"
           element={
             <ProtectedRoute>
               <AuthenticatedLayout>
-                <Dashboard />
+                <PageDashboard />
               </AuthenticatedLayout>
             </ProtectedRoute>
           }
@@ -123,8 +142,6 @@ function App() {
             </ProtectedRoute>
           }
         />
-        
-        {/* Demo Route */}
         <Route
           path="/demo"
           element={
@@ -135,6 +152,7 @@ function App() {
             </ProtectedRoute>
           }
         />
+        <Route path="/profile" element={<AuthenticationGuard component={ProfilePage} />} />
       </Routes>
     </ThemeProvider>
   );
@@ -143,7 +161,7 @@ function App() {
 // Layouts
 function AuthenticatedLayout({ children }) {
   const location = useLocation();
-  const { currentUser } = useAuth();
+  const { isAuthenticated, isLoading } = useAuth0();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('md'));
   const [drawerOpen, setDrawerOpen] = useState(!isMobile);
@@ -154,7 +172,7 @@ function AuthenticatedLayout({ children }) {
   };
 
   // Redirect to login if no user
-  if (!currentUser) {
+  if (!isAuthenticated) {
     return <Navigate to="/login" replace />;
   }
 

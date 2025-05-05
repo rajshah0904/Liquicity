@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from sqlalchemy import select, text
 from app.database import get_db
@@ -12,6 +12,7 @@ from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from app.dependencies.auth import get_current_user  # Auth0 JWT validation
 from datetime import datetime
+import logging
 
 load_dotenv()
 
@@ -28,6 +29,7 @@ class KycSubmitRequest(BaseModel):
     id_type: Optional[str] = None
     document_type: Optional[str] = None
     document_number: Optional[str] = None
+    skip_verification: Optional[bool] = False
 
 @router.get("/")
 def read_users(db: Session = Depends(get_db)):
@@ -911,26 +913,52 @@ async def upload_avatar(
 
 @router.post("/kyc/submit/")
 async def submit_kyc(
-    request: KycSubmitRequest,
+    first_name: str = Form(...),
+    last_name: str = Form(...),
+    date_of_birth: str = Form(...),
+    country: str = Form(...),
+    country_code: Optional[str] = Form(None),
+    nationality: Optional[str] = Form(None),
+    id_number: Optional[str] = Form(None),
+    id_type: Optional[str] = Form(None),
+    document_type: Optional[str] = Form(None),
+    document_number: Optional[str] = Form(None),
+    skip_verification: Optional[bool] = Form(False),
+    photo: UploadFile = File(None),
     db: Session = Depends(get_db),
     current_user: str = Depends(get_current_user)
 ):
     """Submit KYC info and update user metadata"""
     try:
-        # Get the current user's ID
+        # Debug: log incoming form data with more details
+        print(f"🔍 KYC SUBMISSION START: {first_name} {last_name}, country={country_code}")
+        print(f"🔑 AUTH USER: {current_user}")
+        
+        # Get or create the current user's ID
         user_row = db.execute(
             text("SELECT id FROM users WHERE email = :email"),
             {"email": current_user}
         ).first()
+        
         if not user_row:
-            raise HTTPException(status_code=404, detail="User not found")
-        user_id = user_row[0]
+            # Create the user if they don't exist yet
+            print(f"👤 Creating new user: {current_user}")
+            result = db.execute(
+                text("INSERT INTO users (email) VALUES (:email) RETURNING id"),
+                {"email": current_user}
+            )
+            user_id = result.fetchone()[0]
+            db.commit()
+            print(f"✅ User created with ID: {user_id}")
+        else:
+            user_id = user_row[0]
+            print(f"👤 Found existing user with ID: {user_id}")
 
-        # Update nationality in users table if provided
-        if request.nationality is not None:
+        # Update nationality if provided
+        if nationality:
             db.execute(
                 text("UPDATE users SET nationality = :nationality WHERE id = :user_id"),
-                {"nationality": request.nationality, "user_id": user_id}
+                {"nationality": nationality, "user_id": user_id}
             )
 
         # Upsert into user_metadata
@@ -940,7 +968,8 @@ async def submit_kyc(
         ).first()
         if existing:
             db.execute(
-                text("""
+                text(
+                    """
                     UPDATE user_metadata SET
                         first_name = :first_name,
                         last_name = :last_name,
@@ -953,24 +982,26 @@ async def submit_kyc(
                         document_number = :document_number,
                         updated_at = :updated_at
                     WHERE user_id = :user_id
-                """),
+                    """
+                ),
                 {
                     "user_id": user_id,
-                    "first_name": request.first_name,
-                    "last_name": request.last_name,
-                    "date_of_birth": request.date_of_birth,
-                    "country": request.country,
-                    "country_code": request.country_code,
-                    "id_number": request.id_number,
-                    "id_type": request.id_type,
-                    "document_type": request.document_type,
-                    "document_number": request.document_number,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "date_of_birth": date_of_birth,
+                    "country": country,
+                    "country_code": country_code,
+                    "id_number": id_number,
+                    "id_type": id_type,
+                    "document_type": document_type,
+                    "document_number": document_number,
                     "updated_at": datetime.utcnow()
                 }
             )
         else:
             db.execute(
-                text("""
+                text(
+                    """
                     INSERT INTO user_metadata (
                         user_id, first_name, last_name, date_of_birth, country, country_code,
                         id_number, id_type, document_type, document_number, created_at
@@ -978,23 +1009,118 @@ async def submit_kyc(
                         :user_id, :first_name, :last_name, :date_of_birth, :country, :country_code,
                         :id_number, :id_type, :document_type, :document_number, :created_at
                     )
-                """),
+                    """
+                ),
                 {
                     "user_id": user_id,
-                    "first_name": request.first_name,
-                    "last_name": request.last_name,
-                    "date_of_birth": request.date_of_birth,
-                    "country": request.country,
-                    "country_code": request.country_code,
-                    "id_number": request.id_number,
-                    "id_type": request.id_type,
-                    "document_type": request.document_type,
-                    "document_number": request.document_number,
+                    "first_name": first_name,
+                    "last_name": last_name,
+                    "date_of_birth": date_of_birth,
+                    "country": country,
+                    "country_code": country_code,
+                    "id_number": id_number,
+                    "id_type": id_type,
+                    "document_type": document_type,
+                    "document_number": document_number,
                     "created_at": datetime.utcnow()
                 }
             )
+
+        # For testing purposes: Auto-approve verification and set user as verified
+        try:
+            if skip_verification:
+                # Update user status to verified
+                db.execute(
+                    text("""
+                        UPDATE users SET 
+                            is_verified = TRUE,
+                            kyc_status = 'approved',
+                            kyc_verified_at = :verified_at,
+                            kyc_level = 2,
+                            updated_at = :updated_at
+                        WHERE id = :user_id
+                    """),
+                    {
+                        "user_id": user_id,
+                        "verified_at": datetime.utcnow(),
+                        "updated_at": datetime.utcnow()
+                    }
+                )
+                
+                # Create verification record
+                db.execute(
+                    text("""
+                        INSERT INTO kyc_verifications (
+                            user_id, status, verification_type, submitted_at, verified_at, notes
+                        ) VALUES (
+                            :user_id, 'approved', 'auto', :submitted_at, :verified_at, 'Auto-approved for testing'
+                        ) ON CONFLICT (user_id) DO UPDATE SET
+                            status = 'approved',
+                            verified_at = :verified_at,
+                            notes = 'Auto-approved for testing',
+                            updated_at = :updated_at
+                    """),
+                    {
+                        "user_id": user_id,
+                        "submitted_at": datetime.utcnow(),
+                        "verified_at": datetime.utcnow(),
+                        "updated_at": datetime.utcnow()
+                    }
+                )
+        except Exception as e:
+            logger.error(f"Error auto-approving verification: {str(e)}")
+            # Continue despite this error - not critical
+            
         db.commit()
-        return {"message": "KYC information submitted successfully"}
+        logger.info(f"KYC information submitted successfully for user {user_id}")
+        
+        return {
+            "message": "KYC information submitted successfully",
+            "auto_approved": skip_verification,
+            "user_id": user_id
+        }
+        
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
     except Exception as e:
+        logger.error(f"Unexpected error in KYC submission: {str(e)}")
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Error submitting KYC info: {str(e)}")
+
+# Add new models for Auth0 integration
+class Auth0UserCheck(BaseModel):
+    auth0_id: str
+    email: EmailStr
+
+class Auth0UserCreate(BaseModel):
+    email: EmailStr
+    name: Optional[str] = None
+    auth0_id: str
+
+@router.get("/check", tags=["auth"])
+async def check_user_exists(current_user: dict = Depends(get_current_user), db: Session = Depends(get_db)):
+    """Check if user exists in our database and if KYC is complete"""
+    auth0_id = current_user.get("sub")
+    email = current_user.get("email")
+    
+    # Check user in database
+    user = db.execute(
+        text("SELECT id, email, first_name, last_name, country FROM users WHERE email = :email"),
+        {"email": email}
+    ).first()
+    
+    if user:
+        # Check if KYC is complete by verifying required fields
+        kyc_complete = all([
+            user.first_name, 
+            user.last_name, 
+            user.country
+        ])
+        
+        return {
+            "exists": True,
+            "kyc_complete": kyc_complete
+        }
+    
+    return {"exists": False, "kyc_complete": False}

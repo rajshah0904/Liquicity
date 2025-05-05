@@ -43,13 +43,13 @@ import {
   Download,
   ReceiptLong
 } from '@mui/icons-material';
-import { useAuth } from '../context/AuthContext';
 import api from '../utils/api';
 import { format } from 'date-fns';
+import { useAuth0 } from '@auth0/auth0-react';
 
 const Transactions = () => {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
+  const { user } = useAuth0();
   const [transactions, setTransactions] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -117,9 +117,9 @@ const Transactions = () => {
     }
     
     // If we have the current user, determine if it's a send or receive
-    if (currentUser && currentUser.id) {
-      if (transaction.sender_id === currentUser.id) return 'SEND';
-      if (transaction.recipient_id === currentUser.id) return 'RECEIVE';
+    if (user && user.id) {
+      if (transaction.sender_id === user.id) return 'SEND';
+      if (transaction.recipient_id === user.id) return 'RECEIVE';
     }
     
     return 'TRANSFER';
@@ -166,9 +166,9 @@ const Transactions = () => {
       let transactionsData = [];
       
       // Try to get transactions for the specific user if we have a user ID
-      if (currentUser && currentUser.id) {
+      if (user && user.id) {
         try {
-          const response = await api.get(`/transaction/user/${currentUser.id}`);
+          const response = await api.get(`/transaction/user/${user.id}`);
           console.log('User transactions response:', response.data);
           if (Array.isArray(response.data)) {
             transactionsData = response.data;
@@ -215,9 +215,9 @@ const Transactions = () => {
       let walletsData = [];
       
       // Try to get wallets for the specific user if we have a user ID
-      if (currentUser && currentUser.id) {
+      if (user && user.id) {
         try {
-          const response = await api.get(`/wallet/${currentUser.id}`);
+          const response = await api.get(`/wallet/${user.id}`);
           console.log('User wallet response:', response.data);
           if (Array.isArray(response.data)) {
             walletsData = response.data;

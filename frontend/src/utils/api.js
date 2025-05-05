@@ -1,8 +1,7 @@
 import axios from 'axios';
 
-// Create axios instance with a base URL
+// Create axios instance without a specific baseURL since we use direct paths now
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json'
   }
@@ -14,15 +13,27 @@ api.interceptors.request.use(config => {
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
   }
+  
+  // Log outgoing requests
+  console.log(`🌐 API Request: ${config.method.toUpperCase()} ${config.url}`, config);
+  
   return config;
 }, error => {
+  console.error('📡 API Request Error:', error);
   return Promise.reject(error);
 });
 
 // Add response interceptor for handling common errors
 api.interceptors.response.use(
-  response => response,
+  response => {
+    console.log(`✅ API Response: ${response.status} from ${response.config.url}`, response.data);
+    return response;
+  },
   error => {
+    console.error('❌ API Response Error:', error.response?.status || 'Network Error', 
+      error.response?.data || error.message, 
+      error.config?.url);
+    
     // Handle 401 unauthorized errors by redirecting to login
     if (error.response && error.response.status === 401) {
       // Clear local storage
@@ -44,7 +55,7 @@ api.interceptors.response.use(
 // Export API endpoints for authentication
 export const authAPI = {
   // Register new user with email
-  register: (userData) => api.post('/user/register/', userData),
+  register: (userData, options = {}) => api.post('/user/register/', userData, options),
   
   // Login with email and password
   login: (email, password) => api.post('/user/login/', { email, password }),
@@ -107,7 +118,7 @@ export const paymentAPI = {
 // Export API endpoints for KYC operations
 export const kycAPI = {
   // Submit KYC data
-  submitKycData: (userId, kycData) => api.post(`/kyc/${userId}/submit`, kycData),
+  submitKycData: (userId, kycData) => api.post(`/kyc/submit`, kycData),
   
   // Get KYC status
   getKycStatus: (userId) => api.get(`/kyc/${userId}/status`),

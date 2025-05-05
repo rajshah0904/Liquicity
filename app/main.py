@@ -1,5 +1,4 @@
-from fastapi import FastAPI, Depends, Request, HTTPException, status
-from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
+from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.routers import user, wallet, payment
@@ -28,15 +27,9 @@ app = FastAPI(title="Liquicity API", version="0.1.0")
 app.mount("/static", StaticFiles(directory="static"), name="static")
 
 # Configure CORS
-origins = [
-    "http://localhost",
-    "http://localhost:3000",
-    "*"
-]
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=origins,
+    allow_origins=["http://localhost:3000", "http://localhost"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -67,3 +60,11 @@ async def health_check(db=Depends(get_db)):
         "database": db_status,
         "version": "0.1.0"
     }
+
+@app.get('/api/public', tags=["auth"])
+def public():
+    return {'message': 'Public endpoint'}
+
+@app.get('/api/private', tags=["auth"])
+def private(user=Depends(get_current_user)):
+    return {'message': 'Authenticated!', 'user': user}

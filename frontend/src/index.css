@@ -13,6 +13,20 @@ body {
   overflow-x: hidden;
 }
 
+/* Grid overlay (optional) */
+.grid-overlay {
+  background-image: linear-gradient(rgba(50, 50, 50, 0.08) 1px, transparent 1px),
+                   linear-gradient(90deg, rgba(50, 50, 50, 0.08) 1px, transparent 1px);
+  background-size: 30px 30px;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  pointer-events: none;
+  z-index: 1;
+}
+
 /* Typography */
 h1, h2, h3, h4, h5, h6 {
   color: #FFFFFF;
@@ -87,7 +101,7 @@ a:hover {
 @keyframes slideUp {
   from {
     opacity: 0;
-    transform: translateY(20px);
+    transform: translateY(40px);
   }
   to {
     opacity: 1;
@@ -95,30 +109,74 @@ a:hover {
   }
 }
 
-@keyframes glow {
+@keyframes slideIn {
+  from {
+    opacity: 0;
+    transform: translateX(-40px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.9);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes pulse {
   0% {
-    box-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+    transform: scale(1);
   }
   50% {
-    box-shadow: 0 0 20px rgba(255, 255, 255, 0.4);
+    transform: scale(1.05);
   }
   100% {
-    box-shadow: 0 0 5px rgba(255, 255, 255, 0.2);
+    transform: scale(1);
   }
 }
 
 /* Animation classes */
 .fade-in {
-  animation: fadeIn 0.5s ease-in-out;
+  animation: fadeIn 0.8s ease-in-out;
 }
 
 .slide-up {
-  animation: slideUp 0.5s ease-out;
+  animation: slideUp 0.8s ease-out;
 }
 
-.glow {
-  animation: glow 2s infinite;
+.slide-in {
+  animation: slideIn 0.8s ease-out;
 }
+
+.scale-in {
+  animation: scaleIn 0.6s ease-out;
+}
+
+.pulse {
+  animation: pulse 2s infinite;
+}
+
+/* Staggered animations */
+.stagger-item {
+  opacity: 0;
+}
+
+.stagger-item.animated {
+  animation: slideUp 0.5s ease-out forwards;
+}
+
+.stagger-item:nth-child(1) { animation-delay: 0.1s; }
+.stagger-item:nth-child(2) { animation-delay: 0.2s; }
+.stagger-item:nth-child(3) { animation-delay: 0.3s; }
+.stagger-item:nth-child(4) { animation-delay: 0.4s; }
 
 /* Responsive typography */
 @media (max-width: 768px) {
@@ -218,42 +276,80 @@ button, a {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Animations */
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+/* Custom font for Liquicity logo */
+@font-face {
+  font-family: 'Liquicity';
+  src: local('Liquicity'), local('Arial');
+  font-weight: 700;
 }
 
-@keyframes slideUp {
-  from { transform: translateY(20px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
+.liquicity-logo {
+  font-family: 'Liquicity', sans-serif;
+  font-weight: 700;
+  letter-spacing: -0.02em;
 }
 
-@keyframes glow {
-  0% { box-shadow: 0 0 5px rgba(255,255,255,0.5); }
-  50% { box-shadow: 0 0 20px rgba(255,255,255,0.5); }
-  100% { box-shadow: 0 0 5px rgba(255,255,255,0.5); }
+/* Fix for logo transitions */
+.logo-container {
+  position: relative;
+  height: 40px;
+  display: flex;
+  align-items: center;
 }
 
-/* Apply animations to elements */
-.fade-in {
-  animation: fadeIn 0.5s ease-out;
+.logo-image {
+  transition: opacity 0.3s ease;
 }
 
-.slide-up {
-  animation: slideUp 0.5s ease-out;
+.logo-text {
+  transition: opacity 0.3s ease;
 }
 
-.glow {
-  animation: glow 2s infinite;
+/* Header styling */
+.header-center-tabs {
+  display: flex;
+  justify-content: center;
+  flex-grow: 1;
 }
 
-/* Disable animations for users who prefer reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  * {
-    animation-duration: 0.01ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.01ms !important;
-    scroll-behavior: auto !important;
-  }
+/* Feature cards */
+.feature-card {
+  transition: transform 0.3s ease, box-shadow 0.3s ease;
+  will-change: transform, box-shadow;
+}
+
+.feature-card:hover {
+  transform: translateY(-10px);
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+}
+
+.button-glow {
+  position: relative;
+}
+
+.button-glow::after {
+  content: '';
+  position: absolute;
+  top: -5px;
+  left: -5px;
+  right: -5px;
+  bottom: -5px;
+  border-radius: 10px;
+  background: linear-gradient(45deg, #0070f3, #00c3ff);
+  z-index: -1;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.button-glow:hover::after {
+  opacity: 0.4;
+}
+
+/* Comparison table */
+.comparison-row {
+  transition: background-color 0.3s ease;
+}
+
+.comparison-row:hover {
+  background-color: rgba(255, 255, 255, 0.05);
 } 
