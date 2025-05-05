@@ -1,12 +1,17 @@
 from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from dotenv import load_dotenv
 from app.routers import user, wallet, payment
 from app.database import engine, Base, get_db
 from app.dependencies.auth import get_current_user
 from sqlalchemy import text
 import logging
 import os
+
+# Load environment variables explicitly
+load_dotenv()
+print("Environment variables loaded from .env file")
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)

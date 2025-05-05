@@ -1,7 +1,8 @@
 import axios from 'axios';
 
-// Create axios instance without a specific baseURL since we use direct paths now
+// Create axios instance with a base URL for the proxy
 const api = axios.create({
+  baseURL: process.env.REACT_APP_API_URL || '/api',
   headers: {
     'Content-Type': 'application/json'
   }

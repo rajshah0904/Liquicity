@@ -17,7 +17,11 @@ load_dotenv()
 AUTH0_DOMAIN = os.getenv('AUTH0_DOMAIN')
 if not AUTH0_DOMAIN or AUTH0_DOMAIN == 'none':
     AUTH0_DOMAIN = 'liquicity.us.auth0.com'  # Set a default domain if not provided
-API_AUDIENCE = os.getenv('API_AUDIENCE')  # Audience for your API, e.g. https://api.liquicity.com
+    print(f"⚠️ Using default Auth0 domain: {AUTH0_DOMAIN}")
+API_AUDIENCE = os.getenv('API_AUDIENCE')
+if not API_AUDIENCE:
+    API_AUDIENCE = 'https://api.liquicity.com'  # Set a default audience if not provided
+    print(f"⚠️ Using default API audience: {API_AUDIENCE}")
 ALGORITHMS = ['RS256']
 
 # Print configuration for debugging
@@ -34,12 +38,15 @@ def get_jwks():
         try:
             jwks_url = f"https://{AUTH0_DOMAIN}/.well-known/jwks.json"
             logger.info(f"Fetching JWKS from {jwks_url}")
-            response = requests.get(jwks_url, timeout=5)
+            response = requests.get(jwks_url, timeout=10)
             response.raise_for_status()
             _jwks_cache = response.json()
+            logger.info("JWKS fetched successfully")
         except Exception as e:
             logger.error(f"Error fetching JWKS: {e}")
+            # Provide empty JWKS structure instead of failing completely
             _jwks_cache = {"keys": []}
+            print(f"⚠️ Failed to fetch JWKS from Auth0: {e}")
     return _jwks_cache
 
 # Use HTTPBearer for Auth0-issued JWTs
