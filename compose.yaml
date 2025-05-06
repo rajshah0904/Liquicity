@@ -4,44 +4,65 @@ services:
   api:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: .devcontainer/Dockerfile
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    depends_on:
+      db:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://raj:Rajshah11@db:5432/liquicity
+      POSTGRES_DB: liquicity
+      POSTGRES_HOST: db
+      POSTGRES_PASSWORD: Rajshah11
+      POSTGRES_USER: raj
     ports:
       - "8000:8000"
-    environment:
-      - DATABASE_URL=postgresql://raj:Rajshah11@db:5432/liquicity
-      - POSTGRES_HOST=db
-      - POSTGRES_USER=raj
-      - POSTGRES_PASSWORD=Rajshah11
-      - POSTGRES_DB=liquicity
-    depends_on:
-      - db
     restart: always
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+    networks:
+      - default
 
   frontend:
     build:
       context: .
-      dockerfile: Dockerfile
+      dockerfile: .devcontainer/Dockerfile
+    command:
+      - npm
+      - run
+      - dev
+    depends_on:
+      api:
+        condition: service_started
+    environment:
+      REACT_APP_API_URL: http://api:8000
     ports:
       - "3000:3000"
-    environment:
-      - REACT_APP_API_URL=http://api:8000
-    depends_on:
-      - api
     restart: always
-    command: npm run dev
+    networks:
+      - default
 
   db:
     image: postgres:15-alpine
-    environment:
-      - POSTGRES_USER=raj
-      - POSTGRES_PASSWORD=Rajshah11
-      - POSTGRES_DB=liquicity
-    ports:
-      - "5432:5432"
+    restart: unless-stopped
     volumes:
       - postgres-data:/var/lib/postgresql/data
-    restart: always
+    environment:
+      POSTGRES_PASSWORD: Rajshah11
+      POSTGRES_USER: raj
+      POSTGRES_DB: liquicity
+    ports:
+      - "5432:5432"
+    networks:
+      - default
 
 volumes:
-  postgres-data: 
+  postgres-data:
+
+networks:
+  default:
+    driver: bridge
