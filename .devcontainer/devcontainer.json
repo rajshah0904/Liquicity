@@ -3,7 +3,7 @@
   "dockerComposeFile": [
     "../compose.yaml"        // then load your root-level compose
   ],
-  "service": "app",
+  "service": "api",
   "workspaceFolder": "/workspaces/Liquicity",
   "forwardPorts": [3000, 8000],
   "postCreateCommand": "pip install -r requirements.txt && npm install",
