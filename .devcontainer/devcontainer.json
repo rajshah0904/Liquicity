@@ -1,8 +1,8 @@
 {
   "name": "Liquicity Development Environment",
   "dockerComposeFile": [
-    "../compose.yaml",
-    "docker-compose.yml"
+    "docker-compose.yml",    // load this first, so its `build.context: ..` resolves to /workspaces/Liquicity
+    "../compose.yaml"        // then load your root-level compose
   ],
   "service": "app",
   "workspaceFolder": "/workspaces/Liquicity",
