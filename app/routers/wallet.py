@@ -29,7 +29,6 @@ class WalletUpdateFull(BaseModel):
     base_currency: Optional[str] = None
     display_currency: Optional[str] = None
     country_code: Optional[str] = None
-    blockchain_address: Optional[str] = None
     currency_settings: Optional[Dict[str, Any]] = None
 
 @router.post("/deposit/")
@@ -45,7 +44,6 @@ def deposit_fiat(deposit: DepositRequest, db: Session = Depends(get_db)):
         user_wallet = Wallet(
             user_id=deposit.user_id,
             fiat_balance=0,
-            stablecoin_balance=0,
             base_currency=deposit.currency,
             display_currency=deposit.currency
         )
@@ -83,8 +81,8 @@ def get_wallet(user_id: int, db: Session = Depends(get_db)):
     try:
         # Use raw SQL to avoid ORM issues
         wallet_query = """
-            SELECT id, user_id, fiat_balance, stablecoin_balance, base_currency, 
-                   display_currency, country_code, blockchain_address
+            SELECT id, user_id, fiat_balance, base_currency, 
+                   display_currency, country_code
             FROM wallets 
             WHERE user_id = :user_id
         """
@@ -93,9 +91,9 @@ def get_wallet(user_id: int, db: Session = Depends(get_db)):
         if not wallet_result:
             # Auto-create a wallet for the user if it doesn't exist
             create_wallet_query = """
-                INSERT INTO wallets (user_id, fiat_balance, stablecoin_balance, base_currency, display_currency)
-                VALUES (:user_id, 0, 0, 'USD', 'USD')
-                RETURNING id, user_id, fiat_balance, stablecoin_balance, base_currency, display_currency, country_code, blockchain_address
+                INSERT INTO wallets (user_id, fiat_balance, base_currency, display_currency)
+                VALUES (:user_id, 0, 'USD', 'USD')
+                RETURNING id, user_id, fiat_balance, base_currency, display_currency, country_code
             """
             wallet_result = db.execute(text(create_wallet_query), {"user_id": user_id}).first()
             db.commit()
@@ -105,11 +103,9 @@ def get_wallet(user_id: int, db: Session = Depends(get_db)):
             "id": wallet_result[0],
             "user_id": wallet_result[1],
             "fiat_balance": wallet_result[2],
-            "stablecoin_balance": wallet_result[3],
-            "base_currency": wallet_result[4],
-            "display_currency": wallet_result[5],
-            "country_code": wallet_result[6],
-            "blockchain_address": wallet_result[7]
+            "base_currency": wallet_result[3],
+            "display_currency": wallet_result[4],
+            "country_code": wallet_result[5]
         }
         
         # Get display balance in the preferred display currency
@@ -132,7 +128,6 @@ def get_wallet(user_id: int, db: Session = Depends(get_db)):
             "base_currency": wallet["base_currency"],
             "display_balance": display_balance,
             "display_currency": wallet["display_currency"],
-            "stablecoin_balance": wallet["stablecoin_balance"],
             "country_code": wallet["country_code"]
         }
     except Exception as e:
@@ -151,7 +146,6 @@ def update_display_currency(wallet_update: WalletUpdate, db: Session = Depends(g
         wallet = Wallet(
             user_id=wallet_update.user_id, 
             fiat_balance=0, 
-            stablecoin_balance=0, 
             base_currency="USD",  # Default base currency
             display_currency=wallet_update.display_currency.upper()
         )
@@ -164,7 +158,6 @@ def update_display_currency(wallet_update: WalletUpdate, db: Session = Depends(g
                 "id": wallet.id,
                 "user_id": wallet.user_id,
                 "fiat_balance": wallet.fiat_balance,
-                "stablecoin_balance": wallet.stablecoin_balance,
                 "base_currency": wallet.base_currency,
                 "display_currency": wallet.display_currency
             }
@@ -191,8 +184,7 @@ def update_display_currency(wallet_update: WalletUpdate, db: Session = Depends(g
             "fiat_balance": wallet.fiat_balance,
             "base_currency": wallet.base_currency,
             "display_balance": display_balance,
-            "display_currency": wallet.display_currency,
-            "stablecoin_balance": wallet.stablecoin_balance
+            "display_currency": wallet.display_currency
         }
     }
 
@@ -252,10 +244,6 @@ def update_wallet_full(user_id: int, wallet_data: WalletUpdateFull, db: Session 
     if wallet_data.country_code:
         wallet.country_code = wallet_data.country_code
     
-    # Update blockchain address if provided
-    if wallet_data.blockchain_address:
-        wallet.blockchain_address = wallet_data.blockchain_address
-    
     # Update currency settings if provided
     if wallet_data.currency_settings:
         # If wallet has existing settings, merge them with new settings
@@ -284,16 +272,14 @@ def update_wallet_full(user_id: int, wallet_data: WalletUpdateFull, db: Session 
             "base_currency": wallet.base_currency,
             "display_balance": display_balance,
             "display_currency": wallet.display_currency,
-            "stablecoin_balance": wallet.stablecoin_balance,
-            "country_code": wallet.country_code,
-            "blockchain_address": wallet.blockchain_address
+            "country_code": wallet.country_code
         }
     }
 
 @router.get("/lookup/{id_or_address}/")
 def lookup_wallet(id_or_address: str, db: Session = Depends(get_db)):
     """
-    Lookup a wallet by user ID, wallet ID, or blockchain address.
+    Lookup a wallet by user ID or wallet ID.
     Used when sending money to verify the recipient exists.
     Returns limited information for security reasons.
     """
@@ -309,22 +295,8 @@ def lookup_wallet(id_or_address: str, db: Session = Depends(get_db)):
                     "wallet_id": wallet.id,
                     "user_id": user.id,
                     "username": user.username,
-                    "currency": wallet.base_currency,
-                    "address": wallet.blockchain_address or "Not available"
+                    "currency": wallet.base_currency
                 }
-    
-    # Try to look up by blockchain address
-    wallet = db.query(Wallet).filter(Wallet.blockchain_address == id_or_address).first()
-    if wallet:
-        user = db.query(User).filter(User.id == wallet.user_id).first()
-        return {
-            "found": True, 
-            "wallet_id": wallet.id,
-            "user_id": user.id,
-            "username": user.username,
-            "currency": wallet.base_currency,
-            "address": wallet.blockchain_address
-        }
     
     # Not found
     raise HTTPException(status_code=404, detail="Wallet not found")
@@ -363,7 +335,6 @@ def create_wallet(wallet_data: WalletCreate, db: Session = Depends(get_db)):
     new_wallet = Wallet(
         user_id=wallet_data.user_id,
         fiat_balance=0,
-        stablecoin_balance=0,
         base_currency=wallet_data.base_currency,
         display_currency=display_currency,
         country_code=wallet_data.country_code,
@@ -384,7 +355,6 @@ def create_wallet(wallet_data: WalletCreate, db: Session = Depends(get_db)):
             "id": new_wallet.id,
             "user_id": new_wallet.user_id,
             "fiat_balance": new_wallet.fiat_balance,
-            "stablecoin_balance": new_wallet.stablecoin_balance,
             "base_currency": new_wallet.base_currency,
             "display_currency": new_wallet.display_currency,
             "country_code": new_wallet.country_code

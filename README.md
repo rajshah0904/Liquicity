@@ -1,6 +1,57 @@
-# Liquicity
+# Liquicity Payment Stack
 
-Liquicity is an autonomous finance platform that leverages stablecoins for efficient transactions and currency conversion, minimizing fees and delays in financial operations.
+This is the Liquicity payment stack for processing payments in various currencies. This version focuses on cross-border fiat payments using the Stargate bridge functionality.
+
+## Recent Changes
+
+### Functionality Updates
+- Removed blockchain wallet and stablecoin balance functionality
+- Removed AI/LLM integration
+- Kept cross-border functionality with Stargate
+- Focused on core payment processing using Modern Treasury
+
+### How to Run the Migration
+
+The codebase has been updated to remove the blockchain wallet, AI, and stablecoin balance-related functionality. To migrate your database schema, run:
+
+```bash
+python run_migration.py
+```
+
+This will:
+1. Remove the `stablecoin_balance` and `blockchain_address` columns from the `wallets` table
+2. Drop blockchain-related tables (`blockchain_transactions`, `blockchain_wallets`)
+3. Drop AI-related tables (`ai_messages`, `ai_actions`, `ai_conversations`, `ai_agents`)
+4. Drop data analytics tables (`data_pipeline_runs`, `data_pipelines`, `data_queries`)
+
+### Running the Application
+
+Make sure all dependencies are installed:
+
+```bash
+pip install -r requirements.txt
+cd frontend && npm install
+```
+
+Start the backend:
+
+```bash
+uvicorn app.main:app --reload
+```
+
+Start the frontend (in a separate terminal):
+
+```bash
+cd frontend && npm start
+```
+
+## Core Features
+
+- Cross-border payments integration using Stargate
+- Domestic payment processing with Modern Treasury
+- User authentication and wallet management
+- Currency conversion
+- Payment tracking
 
 ## Features
 

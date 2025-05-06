@@ -13,15 +13,6 @@ services:
       context: .
     ports:
       - 8000:8000
-    env_file:
-      - .env
-    environment:
-      - AUTH0_DOMAIN=liquicity.us.auth0.com
-      - API_AUDIENCE=https://api.liquicity.com
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/terraflow
-    depends_on:
-      db:
-        condition: service_healthy
 
 # The commented out section below is an example of how to define a PostgreSQL
 # database that your application can use. `depends_on` tells Docker Compose to
@@ -55,24 +46,4 @@ services:
 # secrets:
 #   db-password:
 #     file: db/password.txt
-
-  db:
-    image: postgres:14
-    restart: always
-    volumes:
-      - postgres-data:/var/lib/postgresql/data
-    environment:
-      - POSTGRES_USER=postgres
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_DB=terraflow
-    ports:
-      - 5432:5432
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-volumes:
-  postgres-data:
 
