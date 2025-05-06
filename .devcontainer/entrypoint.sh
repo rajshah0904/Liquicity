@@ -1,7 +1,6 @@
 #!/bin/bash
 set -e
 
-# Use the POSTGRES_PASSWORD env, or default
 export PGPASSWORD=${POSTGRES_PASSWORD:-Rajshah11}
 
 wait_for_postgres() {
@@ -12,10 +11,8 @@ wait_for_postgres() {
   echo "PostgreSQL is ready!"
 }
 
-# Only wait in Codespaces / DevContainer environments
 if [ -n "$CODESPACES" ] || [ -n "$DEVCONTAINER" ]; then
   wait_for_postgres
 fi
 
-# Finally run the CMD
 exec "$@"
