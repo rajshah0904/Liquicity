@@ -1,7 +1,7 @@
 FROM mcr.microsoft.com/devcontainers/python:3.10
 
 # Install Node.js
-RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash - \
+RUN curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
  && apt-get update \
  && DEBIAN_FRONTEND=noninteractive apt-get install -y nodejs \
  && apt-get clean -y && rm -rf /var/lib/apt/lists/*
