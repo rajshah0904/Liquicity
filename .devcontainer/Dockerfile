@@ -12,6 +12,7 @@ RUN apt-get update \
  && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
 # Set working directory
+RUN mkdir -p /workspaces/Liquicity
 WORKDIR /workspaces/Liquicity
 
 # Install Python dependencies
