@@ -1,8 +1,6 @@
 {
   "name": "Liquicity Development Environment",
-  "dockerComposeFile": [
-    "../compose.yaml"        // then load your root-level compose
-  ],
+  "dockerFile": "Dockerfile",  // Reference the Dockerfile in the same folder
   "service": "api",
   "workspaceFolder": "/workspaces/Liquicity",
   "forwardPorts": [3000, 8000],
