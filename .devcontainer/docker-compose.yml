@@ -1,1 +1,63 @@
+version: '3.8'
+
+services:
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile  # Reference the Dockerfile in the current directory
+    command:
+      - uvicorn
+      - app.main:app
+      - --host
+      - 0.0.0.0
+      - --port
+      - "8000"
+    depends_on:
+      db:
+        condition: service_started
+    environment:
+      DATABASE_URL: postgresql://raj:Rajshah11@db:5432/liquicity
+      POSTGRES_DB: liquicity
+      POSTGRES_HOST: db
+      POSTGRES_PASSWORD: Rajshah11
+      POSTGRES_USER: raj
+    ports:
+      - "8000:8000"
+    restart: always
+    networks:
+      - default
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile  # Reference the Dockerfile in the current directory
+    command:
+      - npm
+      - run
+      - dev
+    depends_on:
+      api:
+        condition: service_started
+    ports:
+      - "3000:3000"
+    networks:
+      - default
+
+  db:
+    image: postgres:latest
+    environment:
+      POSTGRES_PASSWORD: Rajshah11
+      POSTGRES_USER: raj
+      POSTGRES_DB: liquicity
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    networks:
+      - default
+
+volumes:
+  db-data:
+
+networks:
+  default:
+    driver: bridge
 
