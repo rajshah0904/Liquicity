@@ -1,43 +1,45 @@
-FROM mcr.microsoft.com/devcontainers/python:3.9
+FROM mcr.microsoft.com/devcontainers/python:3.10
 
-# Install additional packages needed for the app
-RUN apt-get update && apt-get install -y \
-    postgresql-client \
-    libpq-dev \
-    curl \
-    jq \
-    git \
-    build-essential \
-    && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+# Install Node.js
+RUN curl -fsSL https://deb.nodesource.com/setup_18.x | bash -
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get install -y nodejs \
+    && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
-# Install Python packages
-RUN pip install --no-cache-dir --upgrade pip \
-    && pip install --no-cache-dir \
-    black \
-    pylint \
-    pytest \
-    alembic \
-    uvicorn \
-    psycopg2-binary \
-    bcrypt \
-    python-jose
+# Install PostgreSQL client
+RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
+    && apt-get -y install postgresql-client \
+    && apt-get clean -y && rm -rf /var/lib/apt/lists/*
 
-# Set up a non-root user
+# Set working directory
+WORKDIR /workspaces/Liquicity
+
+# Install Python dependencies
+COPY requirements.txt requirements.txt
+RUN pip3 install --no-cache-dir -r requirements.txt
+RUN pip3 install uvicorn pytest black pylint
+
+# Install global Node.js packages
+RUN npm install -g npm@latest
+
+# Create a non-root user to use if preferred
 ARG USERNAME=vscode
 ARG USER_UID=1000
 ARG USER_GID=$USER_UID
 
-# Create the user
-RUN groupadd --gid $USER_GID $USERNAME \
-    && useradd --uid $USER_UID --gid $USER_GID -m $USERNAME \
-    && apt-get update \
-    && apt-get install -y sudo \
-    && echo $USERNAME ALL=\(root\) NOPASSWD:ALL > /etc/sudoers.d/$USERNAME \
-    && chmod 0440 /etc/sudoers.d/$USERNAME
+# Set environment variables
+ENV PYTHONUNBUFFERED=1 \
+    PYTHONDONTWRITEBYTECODE=1 \
+    NODE_ENV=development
 
-# Set the working directory
-WORKDIR /workspace
+# Configure ZSH
+RUN wget https://github.com/robbyrussell/oh-my-zsh/raw/master/tools/install.sh -O - | zsh || true
+RUN echo 'export PATH=$PATH:/workspaces/Liquicity/node_modules/.bin' >> ~/.zshrc
+RUN echo 'alias uvicorn-dev="uvicorn app.main:app --reload --host 0.0.0.0 --port 8000"' >> ~/.zshrc
 
-# [Optional] Set the default user
-USER $USERNAME 
+# Setup entrypoint
+COPY .devcontainer/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
+CMD ["sleep", "infinity"] 

@@ -6,48 +6,40 @@ services:
       context: ..
       dockerfile: .devcontainer/Dockerfile
     volumes:
-      - ..:/workspace:cached
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      - ..:/workspaces/Liquicity:cached
+    command: sleep infinity
+    environment:
+      - POSTGRES_HOST=db
+      - POSTGRES_PORT=5432
+      - POSTGRES_USER=raj
+      - POSTGRES_PASSWORD=Rajshah11
+      - POSTGRES_DB=liquicity
+      - DATABASE_URL=postgresql://raj:Rajshah11@db:5432/liquicity
     ports:
+      - "3000:3000"
       - "8000:8000"
     depends_on:
       - db
-    environment:
-      # React environment variables for Auth0 and API
-      - REACT_APP_AUTH0_DOMAIN=${REACT_APP_AUTH0_DOMAIN}
-      - REACT_APP_AUTH0_CLIENT_ID=${REACT_APP_AUTH0_CLIENT_ID}
-      - REACT_APP_AUTH0_AUDIENCE=${REACT_APP_AUTH0_AUDIENCE}
-      - REACT_APP_API_URL=http://localhost:8000
-      # Database connection using service name 'db'
-      - DATABASE_URL=postgresql://postgres:postgres@db:5432/liquicity
-      - PYTHONPATH=/workspace
-      - APP_URL=http://localhost:3000
-      # Add any other environment variables your app needs
-      - PLAID_CLIENT_ID=${PLAID_CLIENT_ID}
-      - PLAID_SECRET=${PLAID_SECRET}
-      - PLAID_ENV=${PLAID_ENV}
-      - STRIPE_API_KEY=${STRIPE_API_KEY}
-      - STRIPE_WEBHOOK_SECRET=${STRIPE_WEBHOOK_SECRET}
-      # Modern Treasury API keys (can be placeholders in dev)
-      - MODERN_TREASURY_API_KEY=test_api_key
-      - MODERN_TREASURY_ORG_ID=test_org_id
-      # Rapyd API keys (can be placeholders in dev)
-      - RAPYD_ACCESS_KEY=test_access_key
-      - RAPYD_SECRET_KEY=test_secret_key
-      # Set testing flag
-      - TESTING=1
+    networks:
+      - liquicity-network
 
   db:
-    image: postgres:14
+    image: postgres:15-alpine
     restart: unless-stopped
     volumes:
       - postgres-data:/var/lib/postgresql/data
     environment:
-      - POSTGRES_PASSWORD=postgres
-      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=Rajshah11
+      - POSTGRES_USER=raj
       - POSTGRES_DB=liquicity
     ports:
       - "5432:5432"
+    networks:
+      - liquicity-network
 
 volumes:
-  postgres-data: 
+  postgres-data:
+
+networks:
+  liquicity-network:
+    driver: bridge 

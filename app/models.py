@@ -15,11 +15,11 @@ team_members = Table(
 class User(Base):
     __tablename__ = "users"
     id = Column(Integer, primary_key=True, index=True)
-    username = Column(String, unique=True, index=True)
     hashed_password = Column(String)
     wallet_address = Column(String, nullable=True)
     email = Column(String, unique=True, index=True)
     # OAuth and verification fields
+    auth0_id = Column(String, unique=True, nullable=True, index=True)
     google_id = Column(String, unique=True, nullable=True)
     is_verified = Column(Boolean, default=False)
     verification_token = Column(String, nullable=True)
@@ -37,15 +37,22 @@ class User(Base):
     country = Column(String, nullable=True)
     nationality = Column(String, nullable=True)
     gender = Column(String, nullable=True)
-    ssn = Column(String, nullable=True)
+    # KYC fields (moved from UserMetadata)
+    id_number = Column(String, nullable=True)
+    id_type = Column(String, nullable=True)
+    document_type = Column(String, nullable=True)
+    document_number = Column(String, nullable=True)
+    country_code = Column(String, nullable=True)
+    phone_number = Column(String, nullable=True)
+    verification_status = Column(String, default="unverified")
+    verified_at = Column(DateTime, nullable=True)
     
     # Address information
-    street_address = Column(String, nullable=True)
-    street_address_2 = Column(String, nullable=True)
+    address_line1 = Column(String, nullable=True)
+    address_line2 = Column(String, nullable=True)
     city = Column(String, nullable=True)
     state = Column(String, nullable=True)
     postal_code = Column(String, nullable=True)
-    address_country = Column(String, nullable=True)
     
     # Stripe and payment info
     stripe_customer_id = Column(String, nullable=True)
@@ -89,35 +96,7 @@ class User(Base):
     blockchain_wallets = relationship("BlockchainWallet", back_populates="owner")
     teams = relationship("Team", secondary=team_members, back_populates="members")
     data_queries = relationship("DataQuery", back_populates="created_by")
-    user_metadata = relationship("UserMetadata", back_populates="user", uselist=False)
     bank_accounts = relationship("BankAccount", back_populates="user")
-
-class UserMetadata(Base):
-    __tablename__ = "user_metadata"
-    id = Column(Integer, primary_key=True, index=True)
-    user_id = Column(Integer, ForeignKey("users.id"), unique=True)
-    first_name = Column(String, nullable=True)
-    last_name = Column(String, nullable=True)
-    date_of_birth = Column(String, nullable=True)  # Store as ISO format string
-    country = Column(String, nullable=True)
-    country_code = Column(String, nullable=True)  # 2-letter country code
-    id_number = Column(String, nullable=True)  # SSN, NIN, etc.
-    id_type = Column(String, nullable=True)  # Type of ID (SSN, Passport, etc.)
-    document_type = Column(String, nullable=True)
-    document_number = Column(String, nullable=True)
-    address_street = Column(String, nullable=True)
-    address_city = Column(String, nullable=True)
-    address_state = Column(String, nullable=True)
-    address_postal = Column(String, nullable=True)
-    phone_number = Column(String, nullable=True)
-    verification_status = Column(String, default="unverified")  # unverified, pending, verified, rejected
-    verified_at = Column(DateTime, nullable=True)
-    profile_data = Column(JSON, nullable=True)  # Additional profile information
-    created_at = Column(DateTime, default=datetime.utcnow)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
-    
-    # Relationships
-    user = relationship("User", back_populates="user_metadata")
 
 class Team(Base):
     __tablename__ = "teams"

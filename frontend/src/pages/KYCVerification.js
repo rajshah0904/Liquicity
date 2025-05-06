@@ -433,8 +433,23 @@ const KYCVerification = () => {
         
         console.log('Registering user with Auth0 token...');
         
+        // Create a payload with user information from Auth0
+        const userData = {
+          email: user.email,
+          name: user.name,
+          given_name: user.given_name || user.name.split(' ')[0],
+          family_name: user.family_name || user.name.split(' ').slice(1).join(' '),
+          auth0_id: user.sub,
+          picture: user.picture,
+          // Include empty strings for required fields
+          taxId: "",
+          nationality: "",
+          dateOfBirth: "",
+          country: ""
+        };
+        
         // Add timeout option for registration API call
-        const { data } = await authAPI.register({}, { 
+        const { data } = await authAPI.register(userData, { 
           timeout: 15000 // 15 second timeout
         });
         
@@ -452,10 +467,10 @@ const KYCVerification = () => {
     };
     
     // Only try to register if the user is authenticated with Auth0
-    if (isAuthenticated) {
+    if (isAuthenticated && user) {
       registerUser();
     }
-  }, [isAuthenticated, getAccessTokenSilently]);
+  }, [isAuthenticated, getAccessTokenSilently, user]);
   
   // Handle country selection change
   const handleCountryChange = (e) => {

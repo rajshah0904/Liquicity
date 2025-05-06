@@ -1,6 +1,115 @@
 # Liquicity
 
-Liquicity is an autonomous finance platform that leverages stablecoins for efficient transactions and currency conversion, minimizing fees and delays in financial operations.
+A modern platform for liquidity and transactions built with FastAPI and React.
+
+## Quick Setup
+
+### Option 1: GitHub Codespaces (Recommended)
+
+The easiest way to run Liquicity is using GitHub Codespaces:
+
+1. Click the green "Code" button on the repository
+2. Select the "Codespaces" tab
+3. Click "Create codespace on main"
+4. Once loaded, run in terminal:
+   ```bash
+   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   ```
+5. In a second terminal, run:
+   ```bash
+   npm run dev
+   ```
+
+For detailed Codespaces setup, see [CODESPACES_SETUP.md](CODESPACES_SETUP.md).
+
+### Option 2: Local Docker
+
+To run locally with Docker:
+
+1. Clone the repository
+   ```bash
+   git clone https://github.com/yourusername/liquicity.git
+   cd liquicity
+   ```
+
+2. Start the application using Docker Compose
+   ```bash
+   docker compose up
+   ```
+
+3. Access the application:
+   - Backend API: http://localhost:8000
+   - Frontend: http://localhost:3000
+   - API Documentation: http://localhost:8000/docs
+
+### Option 3: Local Development Setup
+
+To run locally without Docker:
+
+1. Clone the repository
+   ```bash
+   git clone https://github.com/yourusername/liquicity.git
+   cd liquicity
+   ```
+
+2. Set up a Python virtual environment
+   ```bash
+   python -m venv venv
+   source venv/bin/activate  # On Windows: venv\Scripts\activate
+   pip install -r requirements.txt
+   ```
+
+3. Set up PostgreSQL
+   - Create a database named `liquicity`
+   - Set environment variable: `export DATABASE_URL=postgresql://user:password@localhost:5432/liquicity`
+
+4. Run the backend
+   ```bash
+   uvicorn app.main:app --reload
+   ```
+
+5. Install frontend dependencies
+   ```bash
+   npm install
+   ```
+
+6. Run the frontend
+   ```bash
+   npm run dev
+   ```
+
+7. Access the application:
+   - Backend API: http://localhost:8000
+   - Frontend: http://localhost:3000
+
+## Project Structure
+
+- `app/` - FastAPI backend
+  - `main.py` - Application entry point
+  - `routers/` - API route handlers
+  - `models.py` - SQLAlchemy models
+  - `database.py` - Database connection
+
+- `frontend/` - React frontend
+  - `src/` - Source code
+  - `public/` - Static assets
+
+- `.devcontainer/` - GitHub Codespaces configuration
+  - `devcontainer.json` - Dev container configuration
+  - `Dockerfile` - Development container setup
+
+## API Documentation
+
+When the backend is running, access interactive API documentation at:
+- OpenAPI UI: http://localhost:8000/docs
+- ReDoc UI: http://localhost:8000/redoc
+
+## Key Commands
+
+- Start backend: `uvicorn app.main:app --reload`
+- Start frontend: `npm run dev`
+- Run tests: `pytest`
+- Reset database: `python reset_database.py`
 
 ## Features
 
@@ -30,90 +139,6 @@ Liquicity is an autonomous finance platform that leverages stablecoins for effic
 ### Database
 - **PostgreSQL**: Primary relational database
 - **Redis**: Caching and session management
-
-## Getting Started
-
-### Prerequisites
-
-- Python 3.8+
-- Node.js 16+
-- PostgreSQL
-- Redis (optional)
-
-### Installation
-
-1. Clone the repository:
-```bash
-git clone https://github.com/yourusername/liquicity.git
-cd liquicity
-```
-
-2. Set up the backend:
-```bash
-# Create a virtual environment
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-
-# Install dependencies
-pip install -r requirements.txt
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your configuration
-
-# Run migrations
-alembic upgrade head
-
-# Start the server
-uvicorn app.main:app --reload
-```
-
-3. Set up the frontend:
-```bash
-cd frontend
-
-# Install dependencies
-npm install
-
-# Start the development server
-npm start
-```
-
-4. Navigate to http://localhost:3000 in your browser
-
-## Project Structure
-
-```
-liquicity/
-├── app/                 # Backend application
-│   ├── api/             # API endpoints
-│   ├── core/            # Core functionality and configuration
-│   ├── db/              # Database models and connection
-│   ├── routers/         # API routers
-│   ├── services/        # Business logic
-│   ├── schemas/         # Pydantic schemas
-│   └── main.py          # Application entry point
-├── frontend/            # Frontend application
-│   ├── public/          # Static files
-│   ├── src/             # Source code
-│   │   ├── components/  # Reusable components
-│   │   ├── context/     # React context providers
-│   │   ├── pages/       # Page components
-│   │   ├── utils/       # Utility functions
-│   │   ├── App.js       # Main component
-│   │   └── index.js     # Entry point
-├── migrations/          # Database migrations
-├── tests/               # Test suite
-├── .env                 # Environment variables
-└── README.md            # This file
-```
-
-## API Documentation
-
-When the server is running, you can access the API documentation at:
-
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
 
 ## Contributing
 

@@ -1,148 +1,92 @@
-# Liquicity GitHub Codespaces Setup Guide
+# Setting Up Liquicity in GitHub Codespaces
 
-This guide explains how to use GitHub Codespaces for developing the Liquicity application.
+This guide provides instructions for running the Liquicity application in GitHub Codespaces.
 
-## Getting Started with Codespaces
+## Quick Start
 
-GitHub Codespaces provides a complete, configured development environment in the cloud that opens directly in your browser. Follow these steps to get started:
+1. Click the green "Code" button on your GitHub repository
+2. Select the "Codespaces" tab
+3. Click "Create codespace on main"
+4. Wait for the codespace to be created and initialized
+5. Once the environment is ready, open a terminal and run:
+   ```bash
+   uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   ```
+6. In a new terminal, run the frontend:
+   ```bash
+   npm run dev
+   ```
+7. Access your application via the forwarded ports:
+   - Backend API: Port 8000
+   - Frontend: Port 3000
 
-### 1. Creating a Codespace
+## Environment Configuration
 
-1. Navigate to the [Liquicity repository](https://github.com/yourusername/liquicity) on GitHub
-2. Click the "Code" button
-3. Select the "Codespaces" tab
-4. Click "Create codespace on main"
+The Codespace is pre-configured with:
 
-This will create a new Codespace with all the necessary tools and dependencies pre-configured. The setup might take a few minutes the first time.
+- Python 3.10
+- Node.js 18
+- PostgreSQL client
+- VSCode extensions for development
+- Environment variables for database connection
 
-### 2. Exploring Your Codespace
+## Database Setup
 
-Once your Codespace is ready, you'll see:
+A PostgreSQL database container is automatically created as part of the Codespace. The database credentials are:
 
-- A VS Code interface in your browser
-- A terminal at the bottom
-- The project files in the explorer on the left
+- Host: `db`
+- Port: `5432`
+- User: `raj`
+- Password: `Rajshah11`
+- Database: `liquicity`
 
-The Codespace comes pre-configured with:
-- Python 3.9
-- Node.js 16
-- PostgreSQL
-- All required extensions for development
+You can connect to the database using:
 
-### 3. Accessing the Application
-
-When the Codespace starts, the initialization scripts will:
-1. Set up the PostgreSQL database
-2. Create test users automatically
-3. Install dependencies for both backend and frontend
-
-To run the application:
-
-**Backend:**
 ```bash
-cd /workspace
-python -m app.main
+psql postgresql://raj:Rajshah11@db:5432/liquicity
 ```
 
-**Frontend:**
-```bash
-cd /workspace/frontend
-npm start
-```
+## Available Commands
 
-You can access:
-- Backend API: https://[your-codespace-name]-8000.app.github.dev
-- Frontend: https://[your-codespace-name]-3000.app.github.dev
-- API Docs: https://[your-codespace-name]-8000.app.github.dev/docs
+The development environment includes several helpful commands:
 
-### 4. Database Access
-
-The PostgreSQL database is running in the Codespace and can be accessed:
-
-- **From VS Code:** Use the PostgreSQL extension (installed by default)
-- **From terminal:**
+- `uvicorn-dev`: Start the FastAPI backend with auto-reload
   ```bash
-  psql -U postgres -d liquicity
+  uvicorn-dev
   ```
-- **Connection details:**
-  - Host: localhost
-  - Port: 5432
-  - Username: postgres
-  - Password: postgres
-  - Database: liquicity
 
-### 5. Managing Environment Variables
+- Build and run the entire stack:
+  ```bash
+  docker-compose up
+  ```
 
-Environment variables are pre-configured for development, but you can add or modify sensitive values:
+## Development Workflow
 
-1. In GitHub, go to your repository
-2. Navigate to Settings > Secrets and variables > Codespaces
-3. Add your secrets (like API keys)
-
-For local Codespace-only variables, you can also edit the `.env` file directly.
-
-## Workflow Tips
-
-### Committing Changes
-
-You can commit and push changes directly from the Codespace:
-
-1. Make your changes
-2. Open the Source Control panel (Ctrl+Shift+G)
-3. Stage, commit, and push your changes
-
-### Working with Multiple Developers
-
-Codespaces makes it easy to collaborate:
-
-- **Share your Codespace:** Click the share button in the bottom-left corner
-- **Codespace Portability:** Stop your Codespace and resume it from any computer
-- **Simultaneous Access:** Multiple team members can each have their own Codespace for the same repository
-
-### Port Forwarding
-
-Your Codespace automatically forwards ports for the application:
-- Backend (8000)
-- Frontend (3000)
-- PostgreSQL (5432)
-
-You can access these from the "PORTS" tab in the terminal area.
+1. The API server runs on port 8000
+2. The frontend dev server runs on port 3000
+3. Use the VS Code UI to edit files, commit changes, and push to GitHub
+4. API changes will auto-reload with uvicorn-dev
+5. Frontend changes will auto-reload with npm run dev
 
 ## Troubleshooting
 
-### Database Issues
+If you encounter any issues:
 
-If you encounter database connection issues:
+1. Check the terminal output for errors
+2. Ensure the database is running:
+   ```bash
+   docker ps
+   ```
+3. Verify database connection:
+   ```bash
+   psql postgresql://raj:Rajshah11@db:5432/liquicity -c "SELECT 1"
+   ```
+4. Restart the application servers if needed
 
-```bash
-# Check if PostgreSQL is running
-pg_isready -h localhost -U postgres
+## Custom Configuration
 
-# Reset the database if needed
-cd /workspace
-python reset_database.py
-```
+You can customize your environment by modifying:
 
-### Environment Setup Issues
-
-For environment issues:
-
-```bash
-# Check environment variables
-env | grep DATABASE_URL
-
-# Manually rerun initialization
-sudo bash /workspace/.devcontainer/init-scripts/init-db.sh
-```
-
-### Application Errors
-
-If you encounter application errors:
-
-1. Check the terminal output for error messages
-2. Verify database connection
-3. Ensure all required environment variables are set
-
-## Need Help?
-
-If you encounter any issues with your Codespace that you can't resolve, please contact the project maintainer or open an issue in the GitHub repository. 
+- `.devcontainer/devcontainer.json`: VS Code settings and extensions
+- `.devcontainer/Dockerfile`: Development environment setup
+- `.devcontainer/docker-compose.yml`: Container configuration 
