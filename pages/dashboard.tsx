@@ -1,6 +1,8 @@
-import React from 'react';
+import React,{useState,useEffect} from 'react';
 import Head from 'next/head';
 import Link from 'next/link';
+import { apiFetch } from '../lib/api';
+import NotificationCenter from '../components/NotificationCenter';
 
 // Mock data for the dashboard
 const transactions = [
@@ -9,12 +11,6 @@ const transactions = [
   { id: 3, date: new Date(Date.now() - 172800000), amount: '2,100.00', status: 'completed', type: 'payment', route: 'chain', recipient: 'John Doe' },
   { id: 4, date: new Date(Date.now() - 259200000), amount: '350.75', status: 'failed', type: 'payment', route: 'chain', recipient: 'Alice Smith' },
 ];
-
-const walletBalance = {
-  total: '$4,586.25',
-  available: '$3,286.25',
-  pending: '$1,300.00',
-};
 
 // Helper functions for formatting
 const formatDate = (date: Date) => {
@@ -54,6 +50,9 @@ const getTypeBadge = (type: string) => {
 };
 
 export default function Dashboard() {
+  const [balance,setBalance]=useState<{total:number,available:number,pending:number}>({total:0,available:0,pending:0});
+  useEffect(()=>{async function load(){try{const data=await apiFetch('/wallet/overview');let total=0;data.wallets.forEach((w:any)=>{total+=w.local_balance});setBalance({total,available:total,pending:0});}catch(e){console.error(e);} }load();},[]);
+
   return (
     <div className="min-h-screen bg-gray-50">
       <Head>
@@ -121,7 +120,7 @@ export default function Dashboard() {
                   <div className="ml-5 w-0 flex-1">
                     <dl>
                       <dt className="text-sm font-medium text-gray-500 truncate">Total Balance</dt>
-                      <dd className="text-xl font-semibold text-gray-900">{walletBalance.total}</dd>
+                      <dd className="text-xl font-semibold text-gray-900">{balance.total}</dd>
                     </dl>
                   </div>
                 </div>
@@ -139,7 +138,7 @@ export default function Dashboard() {
                   <div className="ml-5 w-0 flex-1">
                     <dl>
                       <dt className="text-sm font-medium text-gray-500 truncate">Available Balance</dt>
-                      <dd className="text-xl font-semibold text-gray-900">{walletBalance.available}</dd>
+                      <dd className="text-xl font-semibold text-gray-900">{balance.available}</dd>
                     </dl>
                   </div>
                 </div>
@@ -157,7 +156,7 @@ export default function Dashboard() {
                   <div className="ml-5 w-0 flex-1">
                     <dl>
                       <dt className="text-sm font-medium text-gray-500 truncate">Pending</dt>
-                      <dd className="text-xl font-semibold text-gray-900">{walletBalance.pending}</dd>
+                      <dd className="text-xl font-semibold text-gray-900">{balance.pending}</dd>
                     </dl>
                   </div>
                 </div>
@@ -251,6 +250,8 @@ export default function Dashboard() {
               </ul>
             </div>
           </div>
+
+          <NotificationCenter />
         </div>
       </main>
     </div>
