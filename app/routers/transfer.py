@@ -9,6 +9,11 @@ import os
 from app.dependencies.auth import get_current_user
 from app.database import get_db
 from app.services.bridge import BridgeClient
+from app.utils.fee_constants import (
+    STANDARD_SEND_FEE_PCT,
+    BANK_TRANSFER_FEE_PCT,
+    INSTANT_DEPOSIT_FEE_PCT
+)
 
 router = APIRouter(prefix="/transfer", tags=["transfer"])
 
@@ -32,9 +37,6 @@ async def _get_usdb_wallet_id(client: BridgeClient, customer_id: str) -> str:
 TREASURY_WALLET_ID = os.getenv("TREASURY_WALLET_ID")
 if not TREASURY_WALLET_ID:
     print("⚠️ TREASURY_WALLET_ID not set – advance payouts will be disabled.")
-
-SEND_COVERED_FEE_PCT = Decimal(os.getenv("SEND_COVERED_FEE_PCT", "0.005"))  # 0.5%
-SEND_UNCOVERED_FEE_PCT = Decimal(os.getenv("SEND_UNCOVERED_FEE_PCT", "0.03"))  # 3%
 
 # -------------------------------
 # Request models
@@ -213,9 +215,8 @@ async def deposit_fiat_to_wallet(
 
     instant_details = None
     if body.instant:
-        # Compute fee (e.g., 1% of amount) and include developer_fee in advance transfer
-        fee_pct = Decimal(os.getenv("INSTANT_DEPOSIT_FEE_PCT", "0.01"))
-        dev_fee = (Decimal(body.amount) * fee_pct).quantize(Decimal("0.01"))
+        # Use the updated instant deposit fee (1.5076%)
+        dev_fee = (Decimal(body.amount) * INSTANT_DEPOSIT_FEE_PCT).quantize(Decimal("0.01"))
         try:
             adv_resp = await _credit_from_treasury(client, user_wallet_id, Decimal(body.amount), cust_id, dev_fee)
             instant_details = {
@@ -245,7 +246,7 @@ async def send_money(
     current_user: str = Depends(get_current_user),
 ):
     """Peer-to-peer send. If sender funds sufficient, USDB wallet→wallet (0.5% fee).
-    If insufficient, trigger on-ramp to treasury and advance funds to recipient (3% fee).
+    If insufficient, trigger on-ramp to treasury and advance funds to recipient (2.9% fee).
     """
     sender_row = _lookup_user(db, current_user)
     if not sender_row or not sender_row[1]:
@@ -271,7 +272,7 @@ async def send_money(
 
     if balance >= body.amount:
         # Covered transfer with 0.5% fee
-        fee = (Decimal(body.amount) * SEND_COVERED_FEE_PCT).quantize(Decimal("0.01"))
+        fee = (Decimal(body.amount) * STANDARD_SEND_FEE_PCT).quantize(Decimal("0.01"))
         payload = {
             "amount": str(body.amount),
             "developer_fee": str(fee),
@@ -315,8 +316,8 @@ async def send_money(
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Failed to start funding transfer: {e}")
 
-    # 2. Advance funds from treasury to recipient (3% fee)
-    adv_fee = (Decimal(body.amount) * SEND_UNCOVERED_FEE_PCT).quantize(Decimal("0.01"))
+    # 2. Advance funds from treasury to recipient using updated fee
+    adv_fee = (Decimal(body.amount) * BANK_TRANSFER_FEE_PCT).quantize(Decimal("0.01"))
     try:
         advance_resp = await _credit_from_treasury(client, recipient_wallet_id, Decimal(body.amount), sender_cust_id, developer_fee=adv_fee)
     except Exception as e:

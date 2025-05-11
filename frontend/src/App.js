@@ -3,6 +3,8 @@ import { Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { Box, useMediaQuery, useTheme, Typography } from '@mui/material';
 import { useAuth0 } from '@auth0/auth0-react';
 import './App.css';
+import theme from './theme';
+import MockDataProvider from './components/MockDataProvider';
 
 // Pages
 import Login from './pages/Login';
@@ -13,6 +15,15 @@ import HowItWorks from './pages/HowItWorks';
 import Security from './pages/Security';
 import KYCVerification from './pages/KYCVerification';
 import AuthCallback from './pages/AuthCallback';
+import WalletPage from './pages/Wallet';
+import DepositPage from './pages/wallet/Deposit';
+import WithdrawPage from './pages/wallet/Withdraw';
+import SendPage from './pages/payments/Send';
+import RequestPage from './pages/payments/Request';
+import TransactionsPage from './pages/Transactions';
+import CardPage from './pages/Card';
+import SettingsPage from './pages/Settings';
+import ProfilePage from './pages/Profile';
 
 // Components
 import Navbar from './components/Navbar';
@@ -43,6 +54,7 @@ function App() {
 
   return (
     <ThemeProvider>
+      <MockDataProvider>
       <Routes>
         {/* Public Routes - No Authentication Required */}
         <Route path="/" element={<LandingPage />} />
@@ -68,7 +80,27 @@ function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Wallet Routes - Protected with Authenticated Layout */}
+        <Route path="/wallet" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><WalletPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
+        <Route path="/wallet/deposit" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><DepositPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
+        <Route path="/wallet/withdraw" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><WithdrawPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
+
+        {/* Payments Routes - Protected with Authenticated Layout */}
+        <Route path="/payments/send" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><SendPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
+        <Route path="/payments/request" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><RequestPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
+
+          {/* Card Route */}
+          <Route path="/card" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><CardPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
+
+          {/* Settings & Profile */}
+          <Route path="/settings" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><SettingsPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
+          <Route path="/profile" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><ProfilePage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
+
+        {/* Transactions Routes - Protected with Authenticated Layout */}
+        <Route path="/transactions" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><TransactionsPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
       </Routes>
+      </MockDataProvider>
     </ThemeProvider>
   );
 }

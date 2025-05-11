@@ -40,6 +40,7 @@ import QrCodeIcon from '@mui/icons-material/QrCode';
 import SmartToyIcon from '@mui/icons-material/SmartToy';
 import CurrencyBitcoinIcon from '@mui/icons-material/CurrencyBitcoin';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import CreditCardIcon from '@mui/icons-material/CreditCard';
 
 import { 
   GlassIconButton, 
@@ -131,8 +132,9 @@ const NavDivider = styled(Divider)(({ theme }) => ({
 const navItems = [
   { path: '/dashboard', icon: <DashboardIcon />, text: 'Dashboard' },
   { path: '/wallet', icon: <AccountBalanceWalletIcon />, text: 'Wallet' },
-  { path: '/send', icon: <SendIcon />, text: 'Send' },
-  { path: '/receive', icon: <QrCodeIcon />, text: 'Receive' },
+  { path: '/payments/send', icon: <SendIcon />, text: 'Send' },
+  { path: '/payments/request', icon: <QrCodeIcon />, text: 'Receive' },
+  { path: '/card', icon: <CreditCardIcon />, text: 'Card' },
   { path: '/transactions', icon: <ReceiptLongIcon />, text: 'Transactions' },
 ];
 

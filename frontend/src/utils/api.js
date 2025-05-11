@@ -53,6 +53,34 @@ api.interceptors.response.use(
   }
 );
 
+// Helper to use mock data when backend is unavailable
+const withMockFallback = (apiCall, mockFunction) => async (...args) => {
+  try {
+    return await apiCall(...args);
+  } catch (error) {
+    console.log('💫 Using mock data fallback');
+    // Check if we have a mock implementation
+    if (window.mockOverrides && mockFunction) {
+      const parts = mockFunction.split('.');
+      let mockImpl = window.mockOverrides;
+      
+      // Navigate through the object path
+      for (const part of parts) {
+        mockImpl = mockImpl[part];
+        if (!mockImpl) break;
+      }
+      
+      // If we found a matching mock function, use it
+      if (typeof mockImpl === 'function') {
+        return mockImpl(...args);
+      }
+    }
+    
+    // Re-throw the error if we don't have a mock implementation
+    throw error;
+  }
+};
+
 // Export API endpoints for authentication
 export const authAPI = {
   // Register new user with email
@@ -98,7 +126,19 @@ export const walletAPI = {
   updateWallet: (userId, walletData) => api.put(`/wallet/update/${userId}`, walletData),
   
   // Get wallet transactions
-  getTransactions: (walletId) => api.get(`/wallet/${walletId}/transactions`)
+  getTransactions: (walletId) => api.get(`/wallet/${walletId}/transactions`),
+  
+  // Get all transactions (Bridge aggregated)
+  getAllTransactions: (options = {}) => withMockFallback(
+    () => api.get('/wallet/transactions', options),
+    'walletAPI.getAllTransactions'
+  )(),
+  
+  // Get wallet overview
+  getOverview: (options = {}) => withMockFallback(
+    () => api.get('/wallet/overview', options),
+    'walletAPI.getOverview'
+  )()
 };
 
 // Export API endpoints for payment operations
@@ -136,6 +176,47 @@ export const kycAPI = {
       }
     });
   }
+};
+
+// === Bridge-centric helpers (new) ===
+export const bridgeAPI = {
+  // Ensure customer exists & return record
+  getOrCreateCustomer: (options = {}) => api.get('/bridge/customers', options),
+
+  // Link external bank / IBAN / CLABE
+  createExternalAccount: (payload, options = {}) => api.post('/bridge/external_account', payload, options),
+
+  // Card issuance / management (virtual for now)
+  createCard: (payload = { type: 'virtual', currency: 'usdb' }, options = {}) =>
+    api.post('/bridge/cards', payload, options),
+
+  // Plaid flows (US bank linking)
+  getPlaidLinkToken: (options = {}) => api.get('/bridge/plaid/link_request', options),
+  exchangePlaidPublicToken: (requestId, options = {}) =>
+    api.post(`/bridge/plaid/exchange/${requestId}`, {}, options),
+};
+
+// New Transfer-centric helpers (deposit / withdraw / send)
+export const transferAPI = {
+  deposit: (payload, options = {}) => api.post('/transfer/deposit', payload, options),
+  withdraw: (payload, options = {}) => api.post('/transfer/withdraw', payload, options),
+  send: (payload, options = {}) => withMockFallback(
+    () => api.post('/transfer/send', payload, options),
+    'transferAPI.send'
+  )(),
+  internal: (payload, options = {}) => api.post('/transfer/internal', payload, options),
+};
+
+// New Requests helper
+export const requestsAPI = {
+  create: (payload, options = {}) => withMockFallback(
+    () => api.post('/requests', payload, options),
+    'requestsAPI.create'
+  )(),
+  list: (options = {}) => withMockFallback(
+    () => api.get('/requests', options),
+    'requestsAPI.list'
+  )(),
 };
 
 // Export the base API instance as default

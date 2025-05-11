@@ -1,14 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { 
-  Box, 
+  Box,
   Container, 
   Typography, 
-  Paper,
   CircularProgress,
   Alert,
-  Button, 
-  Card, 
-  CardContent, 
   Divider,
   Chip,
   Grid,
@@ -25,7 +21,7 @@ import {
   alpha,
   ListItemIcon
 } from '@mui/material';
-import api from '../utils/api';
+import { walletAPI } from '../utils/api';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
 import SendIcon from '@mui/icons-material/Send';
 import ReceiveIcon from '@mui/icons-material/CallReceived';
@@ -50,21 +46,21 @@ import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import AddIcon from '@mui/icons-material/Add';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import { useAuth0 } from '@auth0/auth0-react';
+import NotificationCenter from '../components/NotificationCenter';
+import RefreshIcon from '@mui/icons-material/Refresh';
 
 // Import our custom UI components
 import {
-  FloatingCard as GlassCard,
-  NeonButton as GradientButton,
-  NeonButton as SecondaryGradientButton,
-  GradientBorder as BorderGradientCard,
+  FloatingCard,
+  NeonButton,
+  GradientBorder,
   GradientDivider,
   GradientChip,
   GlassIconButton,
   GradientText,
-  AnimatedBackground as GradientBackground,
-  FuturisticAvatar as GradientBorderAvatar,
-  GlassContainer as FrostedGlassContainer,
-  Box as DashboardContainer
+  AnimatedBackground,
+  FuturisticAvatar,
+  GlassContainer,
 } from '../components/ui/ModernUIComponents';
 
 import {
@@ -101,44 +97,22 @@ const Dashboard = () => {
 
     const fetchData = async () => {
       try {
-        const userId = user?.id || localStorage.getItem('userId') || 1;
-        console.log("Dashboard: Fetching data for user ID:", userId);
-        
-        // Fetch wallet data
-        const walletResponse = await api.get(`/wallet/${userId}`);
-        if (walletResponse.status === 200) {
-          setWallets([walletResponse.data]);
-          
-          // Set main balance and currency from wallet data
-          const walletData = walletResponse.data;
-          setMainBalance(walletData?.fiat_balance || 0);
-          setMainCurrency(walletData?.base_currency || 'USD');
-          setStablecoinBalance(walletData?.stablecoin_balance || 0);
-        }
+        // Fetch wallet overview
+        const walletResp = await walletAPI.getOverview();
+        setWallets(walletResp.data.wallets || []);
+        // Main balance: sum of local balances
+        const totalLocal = (walletResp.data.wallets || []).reduce((acc,w)=>acc + (w.local_balance||0),0);
+        setMainBalance(totalLocal);
+        setMainCurrency(walletResp.data.wallets[0]?.local_currency?.toUpperCase() || 'USD');
 
-        // Fetch transaction history
-        const historyResponse = await api.get(`/transaction/user/${userId}`);
-        if (historyResponse.status === 200) {
-          setTransactions(historyResponse.data);
-          
-          // Set recent transactions (latest 5)
-          const sortedTransactions = historyResponse.data
-            .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))
-            .slice(0, 5);
-          setRecentTransactions(sortedTransactions);
-          
-          // Calculate pending amount
-          const pendingAmount = historyResponse.data
-            .filter(tx => tx.status === 'pending')
-            .reduce((sum, tx) => {
-              // If user is recipient, add to pending
-              if (tx.recipient_id === userId) {
-                return sum + (tx.target_amount || 0);
-              }
-              return sum;
-            }, 0);
-          setPending(pendingAmount);
-        }
+        // Fetch transactions
+        const historyResp = await walletAPI.getAllTransactions();
+        const txns = historyResp.data.transactions || [];
+        setTransactions(txns);
+        const sorted = [...txns].sort((a,b)=> new Date(b.date)- new Date(a.date)).slice(0,5);
+        setRecentTransactions(sorted);
+        const pendingAmount = txns.filter(tx=> tx.state==='pending').reduce((s,tx)=> s+Number(tx.amount||0),0);
+        setPending(pendingAmount);
       } catch (error) {
         console.error("Error fetching data:", error);
         setError("Unable to load your data. Please try again later.");
@@ -165,10 +139,10 @@ const Dashboard = () => {
   };
 
   // Quick actions
-  const handleSendMoney = () => navigate('/send');
-  const handleReceiveMoney = () => navigate('/receive');
-  const handleAddFunds = () => navigate('/deposit');
-  const handleWithdraw = () => navigate('/withdraw');
+  const handleSendMoney = () => navigate('/payments/send');
+  const handleReceiveMoney = () => navigate('/payments/request');
+  const handleAddFunds = () => navigate('/wallet/deposit');
+  const handleWithdraw = () => navigate('/wallet/withdraw');
   const handleHistory = () => navigate('/transactions');
   const handleSwap = () => navigate('/wallet');
   const handleLink = () => navigate('/wallet');
@@ -271,443 +245,402 @@ const Dashboard = () => {
   // Get wallet for the current user
   const wallet = wallets.length > 0 ? wallets[0] : null;
 
+  // Dashboard rendering
   if (loading) {
     return (
-      <Box display="flex" justifyContent="center" alignItems="center" minHeight="70vh">
-        <ScaleUpBox>
-          <CircularProgress color="primary" size={60} thickness={4} />
-        </ScaleUpBox>
-      </Box>
+      <Container sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
+        <CircularProgress color="primary" />
+      </Container>
+    );
+  }
+
+  if (error) {
+    return (
+      <Container sx={{ mt: 4 }}>
+        <Alert severity="error">{error}</Alert>
+      </Container>
     );
   }
 
   return (
-    <Container maxWidth="lg" sx={{ px: { xs: 2, md: 3 } }}>
-      {error && (
-        <SlideUpBox>
-          <Alert severity="error" sx={{ 
-            mb: 2, 
-            borderRadius: 2,
-            backgroundColor: `rgba(${theme.palette.error.main}, 0.1)`,
-            backdropFilter: 'blur(10px)'
-          }}>
-            {error}
-          </Alert>
-        </SlideUpBox>
-      )}
+    <Box 
+      component={motion.div}
+      initial="initial"
+      animate="animate"
+      variants={pageVariants}
+      sx={{ 
+        width: '100%', 
+        minHeight: 'calc(100vh - 64px)',
+        background: '#000000',
+        pb: 8
+      }}
+    >
+      <AnimatedBackground />
       
-      {/* Welcome Section - reduced vertical spacing */}
-      <SlideUpBox>
-        <Box sx={{ mb: 3 }}>
-          <Typography variant="h4" component="h1" gutterBottom fontWeight="700">
-            Welcome back, <GradientText>{user?.profile?.first_name || user?.username || 'User'}</GradientText>
-          </Typography>
-          <Typography variant="subtitle1" color="text.secondary">
-            Here's an overview of your finances
-          </Typography>
-        </Box>
-      </SlideUpBox>
-      
-      {/* Main Balance and Quick Actions - reduced spacing */}
-      <Grid 
-        container 
-        spacing={2} 
-        sx={{ mb: 3 }}
-      >
-        {/* Balance Card */}
-        <Grid item xs={12} md={6}>
-          <Box sx={{ 
-            p: { xs: 2, md: 3 },
-            background: (theme) => theme.palette.background.paper,
-            borderRadius: 2,
-            border: (theme) => `1px solid ${theme.palette.divider}`,
-            boxShadow: 'none',
-          }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
-              <Typography variant="h6" component="div" fontWeight="600" sx={{ color: 'text.primary' }}>
-                Your Balance
-              </Typography>
-            </Box>
-            
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="h3" component="div" sx={{ fontWeight: 'bold', my: 1, color: 'text.primary' }}>
-                <CountUp 
-                  end={parseFloat(mainBalance)} 
-                  prefix={mainCurrency === 'USD' ? '$' : ''} 
-                  suffix={mainCurrency !== 'USD' ? ` ${mainCurrency}` : ''}
-                  decimals={2}
-                  duration={1}
-                  separator=","
-                />
-              </Typography>
-              
-              {pending > 0 && (
-                <Box sx={{ 
-                  display: 'inline-block', 
-                  px: 1.5, 
-                  py: 0.5, 
-                  borderRadius: 0, 
-                  background: (theme) => alpha(theme.palette.warning.main, 0.1), 
-                  border: (theme) => `1px solid ${alpha(theme.palette.warning.main, 0.3)}`,
-                  mt: 1
-                }}>
-                  <Typography variant="caption" sx={{ color: 'text.primary', fontWeight: 500 }}>
-                    {formatCurrency(pending, mainCurrency)} pending
-                  </Typography>
-                </Box>
-              )}
-            </Box>
-            
-            <Box sx={{ 
-              height: '1px', 
-              width: '100%', 
-              background: (theme) => theme.palette.divider,
-              my: 2
-            }} />
-            
-            <Box sx={{ mt: 2, display: 'flex', gap: 2 }}>
-              <Button 
-                variant="contained"
-                onClick={handleSendMoney}
-                sx={{ 
-                  flex: 1, 
-                  py: 1.5, 
-                  color: (theme) => theme.palette.mode === 'dark' ? '#000000' : '#FFFFFF',
-                  fontWeight: 'bold',
-                  background: (theme) => theme.palette.primary.main,
-                  borderRadius: 0,
-                  '&:hover': {
-                    background: (theme) => theme.palette.primary.dark,
-                  }
-                }}
-              >
-                <Typography fontSize="1.2rem" sx={{ mr: 1, color: 'inherit' }}>→</Typography>
-                Send
-              </Button>
-              <Button 
-                variant="outlined" 
-                onClick={handleReceiveMoney}
-                sx={{ 
-                  flex: 1, 
-                  py: 1.5,
-                  fontWeight: 'bold',
-                  color: 'primary.main',
-                  borderRadius: 0,
-                  borderColor: 'primary.main',
-                  borderWidth: 1,
-                  '&:hover': {
-                    borderColor: 'primary.dark',
-                    borderWidth: 1,
-                    background: (theme) => alpha(theme.palette.primary.main, 0.05),
-                  }
-                }}
-              >
-                <Typography fontSize="1.2rem" sx={{ mr: 1, color: 'inherit' }}>←</Typography>
-                Receive
-              </Button>
-            </Box>
-          </Box>
-        </Grid>
-
-        {/* Quick Actions */}
-        <Grid item xs={12} md={6}>
-          <Box sx={{ 
-            p: { xs: 2, md: 3 },
-            background: (theme) => theme.palette.background.paper,
-            borderRadius: 2,
-            border: (theme) => `1px solid ${theme.palette.divider}`,
-            boxShadow: 'none',
-            height: '100%',
-          }}>
-            <Typography variant="h6" component="div" sx={{ color: 'text.primary' }} fontWeight="600" gutterBottom>
-              Quick Actions
+      <Container maxWidth="lg" sx={{ pt: 3 }}>
+        <Box sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center', 
+          mb: 4,
+          flexDirection: isMobile ? 'column' : 'row',
+          gap: isMobile ? 2 : 0
+        }}>
+          <Box component={motion.div} variants={itemVariants}>
+            <Typography variant="h4" component="h1" fontWeight="600">
+              Dashboard
             </Typography>
-            
-            <Grid container spacing={2} sx={{ mt: 0 }}>
-              <Grid item xs={6}>
-                <Box sx={{ 
-                  p: 2, 
-                  height: '100%', 
-                  cursor: 'pointer',
-                  bgcolor: 'background.paper',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s ease-in-out',
-                  borderRadius: 0,
-                  border: (theme) => `1px solid ${theme.palette.divider}`,
-                  '&:hover': {
-                    borderColor: 'primary.main',
-                    background: (theme) => alpha(theme.palette.primary.main, 0.03),
-                  }
-                }}
-                  onClick={handleAddFunds}
-                >
-                  <Box sx={{ textAlign: 'center' }}>
-                    <Typography sx={{ 
-                      fontSize: '2rem', 
-                      mb: 1,
-                      color: 'primary.main'
-                    }}>
-                      +
-                    </Typography>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
-                      Add Funds
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      Deposit to wallet
-                    </Typography>
-                  </Box>
-                </Box>
-              </Grid>
-              
-              <Grid item xs={6}>
-                <Box sx={{ 
-                  p: 2, 
-                  height: '100%', 
-                  cursor: 'pointer',
-                  bgcolor: 'background.paper',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s ease-in-out',
-                  borderRadius: 0,
-                  border: (theme) => `1px solid ${theme.palette.divider}`,
-                  '&:hover': {
-                    borderColor: 'primary.main',
-                    background: (theme) => alpha(theme.palette.primary.main, 0.03),
-                  }
-                }}
-                  onClick={handleWithdraw}
-                >
-                  <Box sx={{ textAlign: 'center' }}>
-                    <Typography sx={{ 
-                      fontSize: '2rem', 
-                      mb: 1,
-                      color: 'primary.main'
-                    }}>
-                      ↓
-                    </Typography>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
-                      Withdraw Funds
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      Withdraw to bank
-                    </Typography>
-                  </Box>
-                </Box>
-              </Grid>
-              
-              <Grid item xs={6}>
-                <Box sx={{ 
-                  p: 2, 
-                  height: '100%', 
-                  cursor: 'pointer',
-                  bgcolor: 'background.paper',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s ease-in-out',
-                  borderRadius: 0,
-                  border: (theme) => `1px solid ${theme.palette.divider}`,
-                  '&:hover': {
-                    borderColor: 'primary.main',
-                    background: (theme) => alpha(theme.palette.primary.main, 0.03),
-                  }
-                }}
-                  onClick={() => navigate('/receive')}
-                >
-                  <Box sx={{ textAlign: 'center' }}>
-                    <Typography sx={{ 
-                      fontSize: '2rem', 
-                      mb: 1,
-                      color: 'primary.main'
-                    }}>
-                      ←
-                    </Typography>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
-                      Request
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      Request payment
-                    </Typography>
-                  </Box>
-                </Box>
-              </Grid>
-              
-              <Grid item xs={6}>
-                <Box sx={{ 
-                  p: 2, 
-                  height: '100%', 
-                  cursor: 'pointer',
-                  bgcolor: 'background.paper',
-                  display: 'flex',
-                  flexDirection: 'column',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s ease-in-out',
-                  borderRadius: 0,
-                  border: (theme) => `1px solid ${theme.palette.divider}`,
-                  '&:hover': {
-                    borderColor: 'primary.main',
-                    background: (theme) => alpha(theme.palette.primary.main, 0.03),
-                  }
-                }}
-                  onClick={() => navigate('/transactions')}
-                >
-                  <Box sx={{ textAlign: 'center' }}>
-                    <Typography sx={{ 
-                      fontSize: '2rem', 
-                      mb: 1,
-                      color: 'primary.main'
-                    }}>
-                      🔍
-                    </Typography>
-                    <Typography variant="subtitle1" sx={{ fontWeight: 600, color: 'text.primary' }}>
-                      Transactions
-                    </Typography>
-                    <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                      View all activity
-                    </Typography>
-                  </Box>
-                </Box>
-              </Grid>
-            </Grid>
+            <Typography 
+              variant="body2" 
+              color="text.secondary" 
+              sx={{ mt: 0.5, display: 'flex', alignItems: 'center' }}
+            >
+              Last updated: {format(new Date(), 'MMM dd, yyyy • HH:mm')}
+              <IconButton 
+                size="small" 
+                sx={{ ml: 1 }}
+                onClick={() => window.location.reload()}
+              >
+                <RefreshIcon fontSize="small" />
+              </IconButton>
+            </Typography>
           </Box>
-        </Grid>
-        </Grid>
+        </Box>
 
-      {/* Recent Transactions Section - reduced spacing */}
-      <Grid 
-        container 
-        spacing={2}
-      >
-        <Grid item xs={12}>
-          <Box sx={{ 
-            p: { xs: 2, md: 3 },
-            borderRadius: 2,
-            background: (theme) => theme.palette.background.paper,
-            boxShadow: 'none',
-            border: (theme) => `1px solid ${theme.palette.divider}`,
-          }}>
-            <Box sx={{ mb: 2 }}>
-              <Typography variant="h5" component="h2" gutterBottom fontWeight="600" sx={{ color: 'text.primary' }}>
-                Recent Activity
-              </Typography>
-            </Box>
-            
-            {recentTransactions.length > 0 ? (
-              <List sx={{ p: 0 }}>
-                {recentTransactions.map((transaction, index) => {
-                  // Determine transaction type and direction for display
-                  const isIncoming = transaction.recipient_id === user?.id;
-                  const transactionType = transaction.transaction_type || 
-                    (isIncoming ? 'RECEIVE' : 'SEND');
-                  
-                  return (
-                    <ListItem
-                      key={transaction.id || index}
-                      sx={{
-                        borderBottom: (theme) => index < recentTransactions.length - 1 ? `1px solid ${theme.palette.divider}` : 'none',
-                        transition: 'all 0.2s ease-in-out',
-                        '&:hover': {
-                          backgroundColor: (theme) => alpha(theme.palette.primary.main, 0.03),
-                        },
-                        borderRadius: 0,
-                        my: 0,
-                        py: 1.5
-                      }}
-                      secondaryAction={
-                        <Box sx={{ textAlign: 'right' }}>
-                          <Typography variant="subtitle2" fontWeight="600" 
-                            color={(theme) => isIncoming ? theme.palette.success.main : theme.palette.error.main}
-                          >
-                            {isIncoming ? '+' : '-'}
-                            {formatCurrency(
-                              isIncoming ? transaction.target_amount : transaction.source_amount, 
-                              isIncoming ? transaction.target_currency : transaction.source_currency || mainCurrency
-                            )}
-                          </Typography>
-                          <Typography variant="caption" color="text.secondary">
-                            {transaction.status || 'completed'}
-                          </Typography>
-                        </Box>
-                      }
-                    >
-                      <ListItemIcon>
-                        <Box sx={{ 
-                          width: 36,
-                          height: 36,
-                          display: 'flex', 
-                          alignItems: 'center', 
-                          justifyContent: 'center',
-                          borderRadius: 0,
-                          bgcolor: (theme) => alpha(theme.palette.primary.main, 0.05),
-                          border: (theme) => `1px solid ${theme.palette.divider}`
-                        }}>
-                          <Typography fontSize="1.2rem" sx={{ color: (theme) => isIncoming ? theme.palette.success.main : theme.palette.error.main }}>
-                            {isIncoming ? '←' : '→'}
-                          </Typography>
-                        </Box>
-                      </ListItemIcon>
-                      <ListItemText
-                        primary={
-                          <Typography variant="body1" sx={{ fontWeight: 500, color: 'text.primary' }}>
-                            {transaction.description || getTransactionTypeLabel(transactionType)}
-                          </Typography>
-                        }
-                        secondary={
-                          <Typography variant="caption" sx={{ color: 'text.secondary' }}>
-                            {new Date(transaction.timestamp).toLocaleDateString('en-US', {
-                              day: 'numeric',
-                              month: 'short',
-                              hour: 'numeric',
-                              minute: '2-digit'
-                            })}
-                          </Typography>
-                        }
-                      />
-                    </ListItem>
-                  );
-                })}
-              </List>
-            ) : (
-              <Box sx={{ textAlign: 'center', py: 3 }}>
-                <Typography variant="body1" sx={{ color: 'text.secondary' }}>
-                  No recent transactions
+        {/* Balance Summary */}
+        <SlideRightBox variants={itemVariants}>
+          <FloatingCard 
+            sx={{ 
+              p: 3, 
+              mb: 4,
+              background: 'rgba(17, 24, 39, 0.7)',
+              borderColor: 'rgba(59, 130, 246, 0.1)'
+            }}
+          >
+            <Box>
+              <Typography variant="body2" color="text.secondary" fontWeight="500">Total Balance</Typography>
+              <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
+                <Typography variant="h3" component="div" fontWeight={700}>
+                  <CountUp
+                    start={0}
+                    end={mainBalance}
+                    duration={1.5}
+                    separator=","
+                    decimals={2}
+                    decimal="."
+                    prefix={mainCurrency === 'USD' ? '$' : (mainCurrency === 'EUR' ? '€' : '')}
+                  />
                 </Typography>
               </Box>
-            )}
+            </Box>
+          </FloatingCard>
+        </SlideRightBox>
+
+        {/* Quick Actions */}
+        <motion.div variants={itemVariants}>
+          <Box sx={{ mb: 4 }}>
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                mb: 2 
+              }}
+            >
+              <Typography variant="h6" fontWeight="600">
+                Quick Actions
+              </Typography>
+            </Box>
             
-            {recentTransactions.length > 0 && (
-              <Box sx={{ p: 1, textAlign: 'center' }}>
-                <Button 
-                  endIcon={<KeyboardArrowRightIcon />}
-                  onClick={() => navigate('/transactions')}
+            <Grid container spacing={2}>
+              {[
+                { 
+                  title: 'Deposit', 
+                  icon: <AddIcon />, 
+                  color: '#3b82f6', 
+                  onClick: handleAddFunds,
+                  bgColor: 'rgba(59, 130, 246, 0.1)'
+                },
+                { 
+                  title: 'Withdraw', 
+                  icon: <ArrowUpwardIcon />, 
+                  color: '#10b981', 
+                  onClick: handleWithdraw,
+                  bgColor: 'rgba(16, 185, 129, 0.1)'
+                },
+                { 
+                  title: 'Send', 
+                  icon: <SendIcon />, 
+                  color: '#8b5cf6', 
+                  onClick: handleSendMoney,
+                  bgColor: 'rgba(139, 92, 246, 0.1)'
+                },
+                { 
+                  title: 'Card', 
+                  icon: <CreditCardIcon />, 
+                  color: '#f59e0b', 
+                  onClick: () => navigate('/card'),
+                  bgColor: 'rgba(245, 158, 11, 0.1)'
+                }
+              ].map((action, index) => (
+                <Grid item xs={6} sm={3} key={index}>
+                  <Box 
+                    sx={{ 
+                      borderRadius: 2,
+                      p: 2,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      background: 'rgba(17, 24, 39, 0.5)',
+                      border: '1px solid rgba(55, 65, 81, 0.5)',
+                      transition: 'all 0.3s ease',
+                      cursor: 'pointer',
+                      height: 100,
+                      '&:hover': {
+                        transform: 'translateY(-4px)',
+                        boxShadow: `0 4px 20px rgba(0, 0, 0, 0.1)`,
+                        borderColor: `${action.color}80`,
+                        background: 'rgba(17, 24, 39, 0.7)',
+                      }
+                    }}
+                    onClick={action.onClick}
+                  >
+                    <Box 
+                      sx={{ 
+                        width: 50, 
+                        height: 50, 
+                        borderRadius: '50%', 
+                        display: 'flex', 
+                        alignItems: 'center', 
+                        justifyContent: 'center',
+                        color: action.color,
+                        background: action.bgColor,
+                        mb: 1
+                      }}
+                    >
+                      {action.icon}
+                    </Box>
+                    <Typography variant="body2" fontWeight="600">
+                      {action.title}
+                    </Typography>
+                  </Box>
+                </Grid>
+              ))}
+            </Grid>
+          </Box>
+        </motion.div>
+
+        {/* Notifications */}
+        <motion.div variants={itemVariants}>
+          <Box sx={{ mb: 4 }}>
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                mb: 2 
+              }}
+            >
+              <Typography variant="h6" fontWeight="600">
+                Notifications
+              </Typography>
+              <Typography 
+                variant="body2" 
+                color="primary" 
+                sx={{ cursor: 'pointer' }}
+                onClick={() => navigate('/notifications')}
+              >
+                View all
+              </Typography>
+            </Box>
+            
+            <FloatingCard sx={{ 
+              p: 0, 
+              overflow: 'hidden',
+              background: 'rgba(17, 24, 39, 0.7)',
+              borderColor: 'rgba(59, 130, 246, 0.1)'
+            }}>
+              <List sx={{ p: 0 }}>
+                <ListItem 
                   sx={{ 
-                    borderRadius: 0,
-                    textTransform: 'none',
-                    fontWeight: 'bold',
-                    color: 'primary.main',
-                    borderColor: 'primary.main',
-                    border: '1px solid',
-                    '&:hover': {
-                      borderColor: 'primary.dark',
-                      background: (theme) => alpha(theme.palette.primary.main, 0.05)
-                    }
+                    borderBottom: '1px solid rgba(55, 65, 81, 0.2)', 
+                    py: 2,
+                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
                   }}
                 >
-                  View All Transactions
-                </Button>
-              </Box>
-            )}
+                  <ListItemAvatar>
+                    <Avatar sx={{ backgroundColor: '#8b5cf6' }}>
+                      <AttachMoneyIcon />
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText 
+                    primary="You sent Alex Johnson money" 
+                    secondary={<>$150.00 • 2 hours ago</>} 
+                  />
+                  <Box sx={{ 
+                    width: 8, 
+                    height: 8, 
+                    borderRadius: '50%', 
+                    bgcolor: 'primary.main',
+                    boxShadow: '0 0 8px 0 rgba(59, 130, 246, 0.8)'
+                  }} />
+                </ListItem>
+                
+                <ListItem 
+                  sx={{ 
+                    borderBottom: '1px solid rgba(55, 65, 81, 0.2)', 
+                    py: 2,
+                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
+                  }}
+                >
+                  <ListItemAvatar>
+                    <Avatar sx={{ backgroundColor: '#10b981' }}>
+                      <AttachMoneyIcon />
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText 
+                    primary="Sarah Miller sent you money" 
+                    secondary={<>$75.50 • Yesterday</>} 
+                  />
+                  <Box sx={{ 
+                    width: 8, 
+                    height: 8, 
+                    borderRadius: '50%', 
+                    bgcolor: 'primary.main',
+                    boxShadow: '0 0 8px 0 rgba(59, 130, 246, 0.8)'
+                  }} />
+                </ListItem>
+                
+                <ListItem 
+                  sx={{ 
+                    py: 2,
+                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
+                  }}
+                >
+                  <ListItemAvatar>
+                    <Avatar sx={{ backgroundColor: '#f59e0b' }}>
+                      <AttachMoneyIcon />
+                    </Avatar>
+                  </ListItemAvatar>
+                  <ListItemText 
+                    primary="David Williams requested money" 
+                    secondary={<>$42.99 • Yesterday</>} 
+                  />
+                  <Box sx={{ 
+                    width: 8, 
+                    height: 8, 
+                    borderRadius: '50%', 
+                    bgcolor: 'primary.main',
+                    boxShadow: '0 0 8px 0 rgba(59, 130, 246, 0.8)'
+                  }} />
+                </ListItem>
+              </List>
+            </FloatingCard>
           </Box>
-        </Grid>
-      </Grid>
-    </Container>
+        </motion.div>
+
+        {/* Recent Transactions */}
+        <motion.div variants={itemVariants}>
+          <Box sx={{ mb: 4 }}>
+            <Box 
+              sx={{ 
+                display: 'flex', 
+                justifyContent: 'space-between', 
+                alignItems: 'center', 
+                mb: 2 
+              }}
+            >
+              <Typography variant="h6" fontWeight="600">
+                Recent Transactions
+              </Typography>
+              <Typography 
+                variant="body2" 
+                color="primary" 
+                sx={{ cursor: 'pointer' }}
+                onClick={handleHistory}
+              >
+                View all
+              </Typography>
+            </Box>
+            
+            <FloatingCard sx={{ 
+              p: 0, 
+              overflow: 'hidden',
+              background: 'rgba(17, 24, 39, 0.7)',
+              borderColor: 'rgba(59, 130, 246, 0.1)'
+            }}>
+              <List sx={{ p: 0 }}>
+                <ListItem 
+                  sx={{ 
+                    borderBottom: '1px solid rgba(55, 65, 81, 0.2)', 
+                    py: 2,
+                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
+                  }}
+                >
+                  <ListItemIcon>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: 'rgba(59, 130, 246, 0.1)' }}>
+                      <ArrowUpwardIcon color="error" />
+                    </Box>
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={<Box component="span" sx={{ fontWeight: 500 }}>Withdrawal to Bank ****4582</Box>} 
+                    secondary={<>May 10, 2023</>}
+                  />
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="body2" color="error.main" fontWeight="600">-$250.00</Typography>
+                    <Typography variant="caption" color="text.secondary">Completed</Typography>
+                  </Box>
+                </ListItem>
+                
+                <ListItem 
+                  sx={{ 
+                    borderBottom: '1px solid rgba(55, 65, 81, 0.2)', 
+                    py: 2,
+                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
+                  }}
+                >
+                  <ListItemIcon>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: 'rgba(139, 92, 246, 0.1)' }}>
+                      <SendIcon color="error" />
+                    </Box>
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={<Box component="span" sx={{ fontWeight: 500 }}>Sent to Alex Johnson</Box>} 
+                    secondary={<>May 9, 2023</>}
+                  />
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="body2" color="error.main" fontWeight="600">-$150.00</Typography>
+                    <Typography variant="caption" color="text.secondary">Completed</Typography>
+                  </Box>
+                </ListItem>
+                
+                <ListItem 
+                  sx={{ 
+                    py: 2,
+                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
+                  }}
+                >
+                  <ListItemIcon>
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: 'rgba(16, 185, 129, 0.1)' }}>
+                      <ReceiveIcon color="success" />
+                    </Box>
+                  </ListItemIcon>
+                  <ListItemText 
+                    primary={<Box component="span" sx={{ fontWeight: 500 }}>Deposit from Bank ****4582</Box>} 
+                    secondary={<>May 8, 2023</>}
+                  />
+                  <Box sx={{ textAlign: 'right' }}>
+                    <Typography variant="body2" color="success.main" fontWeight="600">+$500.00</Typography>
+                    <Typography variant="caption" color="text.secondary">Completed</Typography>
+                  </Box>
+                </ListItem>
+              </List>
+            </FloatingCard>
+          </Box>
+        </motion.div>
+      </Container>
+    </Box>
   );
 };
 
