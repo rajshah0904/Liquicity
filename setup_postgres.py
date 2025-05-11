@@ -5,6 +5,9 @@ import subprocess
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 import bcrypt
+from dotenv import load_dotenv
+
+load_dotenv()
 
 print("Liquicity PostgreSQL Setup Script")
 print("=================================")
@@ -75,130 +78,177 @@ try:
     )
     cursor = conn.cursor()
     
+    # Clean existing lean tables to ensure correct schema
+    cursor.execute("DROP TABLE IF EXISTS wallet_transactions CASCADE")
+    cursor.execute("DROP TABLE IF EXISTS wallets CASCADE")
+    cursor.execute("DROP TABLE IF EXISTS transfers CASCADE")
+    cursor.execute("DROP TABLE IF EXISTS card_accounts CASCADE")
+    cursor.execute("DROP TABLE IF EXISTS external_accounts CASCADE")
+    cursor.execute("DROP TABLE IF EXISTS kyc_submissions CASCADE")
+    cursor.execute("DROP TABLE IF EXISTS users CASCADE")
+    cursor.execute("DROP TABLE IF EXISTS bank_accounts CASCADE")
+    cursor.execute("DROP TABLE IF EXISTS transactions CASCADE")
+    cursor.execute("DROP TABLE IF EXISTS teams CASCADE")
+    cursor.execute("DROP TABLE IF EXISTS team_members CASCADE")
+
     # Create tables
-    print("Creating tables...")
-    
-    # Create users table
+    print("Creating tables (lean Bridge schema)...")
+
+    # Enable pgcrypto for UUID generation
+    cursor.execute("CREATE EXTENSION IF NOT EXISTS pgcrypto")
+
+    # --------------------
+    # 1. USERS
+    # --------------------
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS users (
-        id SERIAL PRIMARY KEY,
-        username VARCHAR UNIQUE NOT NULL,
-        hashed_password VARCHAR NOT NULL,
-        wallet_address VARCHAR,
-        email VARCHAR UNIQUE,
-        role VARCHAR DEFAULT 'user',
-        created_at TIMESTAMP DEFAULT NOW(),
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        auth0_user_id TEXT UNIQUE NOT NULL,
+        email TEXT NOT NULL,
+        name TEXT,
+        country CHAR(2) NOT NULL,
+        bridge_customer_id TEXT UNIQUE,
+        kyc_status TEXT,
+        account_type TEXT DEFAULT 'auth0',
+        wallet_address TEXT,
+        first_name TEXT,
+        last_name TEXT,
+        is_verified BOOLEAN DEFAULT FALSE,
+        role TEXT DEFAULT 'user',
         is_active BOOLEAN DEFAULT TRUE,
-        first_name VARCHAR,
-        last_name VARCHAR,
-        date_of_birth VARCHAR,
-        country VARCHAR,
-        nationality VARCHAR,
-        gender VARCHAR,
-        ssn VARCHAR,
-        street_address VARCHAR,
-        street_address_2 VARCHAR,
-        city VARCHAR,
-        state VARCHAR,
-        postal_code VARCHAR,
-        address_country VARCHAR,
-        stripe_customer_id VARCHAR
+        auth0_id TEXT UNIQUE,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
     )
     """)
-    
-    # Create wallets table
+
+    # --------------------
+    # 2. KYC SUBMISSIONS (raw staged data)
+    # --------------------
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS kyc_submissions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id),
+        payload JSONB NOT NULL,
+        status TEXT DEFAULT 'pending',
+        error_msg TEXT,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    )
+    """)
+
+    # --------------------
+    # 3. EXTERNAL ACCOUNTS (bank rails)
+    # --------------------
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS external_accounts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id),
+        external_account_id TEXT UNIQUE NOT NULL,
+        activation_method TEXT NOT NULL,     -- 'plaid' | 'raw'
+        payment_rail TEXT NOT NULL,          -- 'ach' | 'sepa' | 'spei'
+        currency TEXT NOT NULL,              -- 'usd' | 'eur' | 'mxn'
+        details JSONB NOT NULL,
+        active BOOLEAN DEFAULT true,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    )
+    """)
+
+    # --------------------
+    # 4. CARD ACCOUNTS (Bridge Visa)
+    # --------------------
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS card_accounts (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id),
+        card_account_id TEXT UNIQUE NOT NULL,
+        client_reference_id TEXT,
+        currency TEXT NOT NULL,
+        chain TEXT NOT NULL,
+        last_4 TEXT,
+        expiry TEXT,
+        status TEXT,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    )
+    """)
+
+    # --------------------
+    # 5. TRANSFERS (prefunded audit log)
+    # --------------------
+    cursor.execute("""
+    CREATE TABLE IF NOT EXISTS transfers (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id),
+        transfer_id TEXT UNIQUE NOT NULL,
+        amount NUMERIC NOT NULL,
+        src_rail TEXT NOT NULL,              -- 'prefunded'
+        dst_rail TEXT NOT NULL,              -- 'ach' | 'sepa' | 'spei' | 'card'
+        currency_src TEXT NOT NULL,
+        currency_dst TEXT NOT NULL,
+        state TEXT NOT NULL,
+        receipt JSONB,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
+    )
+    """)
+
+    # --------------------
+    # 6. WALLETS (cached balances)
+    # --------------------
     cursor.execute("""
     CREATE TABLE IF NOT EXISTS wallets (
-        id SERIAL PRIMARY KEY,
-        user_id INTEGER UNIQUE REFERENCES users(id),
-        fiat_balance FLOAT DEFAULT 0.0,
-        stablecoin_balance FLOAT DEFAULT 0.0,
-        base_currency VARCHAR DEFAULT 'USD',
-        display_currency VARCHAR DEFAULT 'USD',
-        country_code VARCHAR,
-        blockchain_address VARCHAR,
-        currency_settings JSON
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        user_id UUID REFERENCES users(id),
+        bridge_wallet_id TEXT UNIQUE NOT NULL,
+        currency TEXT NOT NULL,
+        balance NUMERIC NOT NULL,
+        local_currency TEXT NOT NULL,
+        local_balance NUMERIC NOT NULL,
+        last_fetched_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT now(),
+        updated_at TIMESTAMPTZ DEFAULT now()
     )
     """)
-    
-    # Create transactions table
+
+    # --------------------
+    # 7. WALLET TRANSACTIONS
+    # --------------------
     cursor.execute("""
-    CREATE TABLE IF NOT EXISTS transactions (
-        id SERIAL PRIMARY KEY,
-        sender_id INTEGER REFERENCES users(id),
-        recipient_id INTEGER REFERENCES users(id),
-        amount FLOAT NOT NULL,
-        currency VARCHAR NOT NULL,
-        transaction_type VARCHAR NOT NULL,
-        status VARCHAR NOT NULL,
-        created_at TIMESTAMP DEFAULT NOW(),
-        updated_at TIMESTAMP DEFAULT NOW(),
-        description VARCHAR,
-        transaction_id VARCHAR,
-        external_transaction_id VARCHAR,
-        blockchain_transaction_hash VARCHAR,
-        fees FLOAT DEFAULT 0.0,
-        meta_data JSON
+    CREATE TABLE IF NOT EXISTS wallet_transactions (
+        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+        wallet_id UUID REFERENCES wallets(id),
+        transaction_id TEXT UNIQUE NOT NULL,
+        amount NUMERIC NOT NULL,
+        currency TEXT NOT NULL,
+        description TEXT,
+        date DATE,
+        booking_date DATE,
+        transaction_date DATE,
+        value_date DATE,
+        updated_at TIMESTAMPTZ,
+        created_at TIMESTAMPTZ DEFAULT now()
     )
     """)
-    
-    # Create blockchain_wallets table
-    cursor.execute("""
-    CREATE TABLE IF NOT EXISTS blockchain_wallets (
-        id SERIAL PRIMARY KEY,
-        address VARCHAR NOT NULL,
-        chain VARCHAR NOT NULL,
-        wallet_type VARCHAR NOT NULL,
-        name VARCHAR,
-        user_id INTEGER REFERENCES users(id),
-        team_id INTEGER,
-        is_active BOOLEAN DEFAULT TRUE,
-        created_at TIMESTAMP DEFAULT NOW(),
-        safe_address VARCHAR,
-        safe_owners VARCHAR[],
-        safe_threshold INTEGER,
-        meta_data JSON,
-        private_key_encrypted VARCHAR
-    )
-    """)
-    
-    # Check if test user exists
-    cursor.execute("SELECT id FROM users WHERE username = 'testuser'")
-    if not cursor.fetchone():
-        # Create test user
-        print("Creating test user...")
-        password = "test123"
-        hashed_password = bcrypt.hashpw(password.encode('utf-8'), bcrypt.gensalt()).decode('utf-8')
-        
-        cursor.execute("""
-        INSERT INTO users (username, email, hashed_password, first_name, last_name, role)
-        VALUES (%s, %s, %s, %s, %s, %s) RETURNING id
-        """, ('testuser', 'test@example.com', hashed_password, 'Test', 'User', 'admin'))
-        
-        user_id = cursor.fetchone()[0]
-        
-        # Create wallet for test user
-        cursor.execute("""
-        INSERT INTO wallets (user_id, fiat_balance, stablecoin_balance, base_currency, display_currency, country_code, blockchain_address)
-        VALUES (%s, %s, %s, %s, %s, %s, %s)
-        """, (user_id, 10000.0, 5000.0, 'USD', 'USD', 'US', '0x1234567890abcdef1234567890abcdef12345678'))
-        
-        print(f"✅ Test user created with ID: {user_id}")
-        print("   Username: testuser")
-        print("   Password: test123")
-        print("   Role: admin")
-        print("   Initial balance: $10,000 USD and 5,000 USDT")
-    else:
-        print("✅ Test user already exists")
-    
+
+    # ---- INDEXES ----
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_users_auth0_id ON users(auth0_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_external_accounts_user ON external_accounts(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_card_accounts_user ON card_accounts(user_id)")
+    cursor.execute("CREATE INDEX IF NOT EXISTS idx_wallets_user ON wallets(user_id)")
+
+    print("✅ Lean tables created (or already existed)")
+
     # Commit changes
     conn.commit()
-    
+
     # Close connection
     cursor.close()
     conn.close()
-    
-    print("\n✅ Database setup complete!")
+
+    print("\n✅ Database setup complete! (Lean schema)")
     print("\nYou can now start the application with:")
     print("   - Backend: python -m app.main")
     print("   - Frontend: cd frontend && npm start")

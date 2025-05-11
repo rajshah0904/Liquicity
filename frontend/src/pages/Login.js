@@ -124,6 +124,17 @@ const Login = () => {
   const [error, setError] = useState('');
   const { loginWithRedirect, isAuthenticated, getAccessTokenSilently } = useAuth0();
   const navigate = useNavigate();
+  const location = useLocation();
+  
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('existing') === 'true') {
+      setError('Account already exists. Please log in below.');
+    }
+    if (params.get('noaccount') === 'true') {
+      setError('No account found. Please sign up first.');
+    }
+  }, [location.search]);
   
   // After login, get token and navigate
   useEffect(() => {

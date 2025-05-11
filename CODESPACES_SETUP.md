@@ -51,7 +51,7 @@ psql postgresql://raj:Rajshah11@db:5432/liquicity
 The development environment includes several helpful commands:
 
 - `uvicorn-dev`: Start the FastAPI backend with auto-reload
-  ```bash
+```bash
   uvicorn-dev
   ```
 
@@ -74,11 +74,11 @@ If you encounter any issues:
 
 1. Check the terminal output for errors
 2. Ensure the database is running:
-   ```bash
+```bash
    docker ps
    ```
 3. Verify database connection:
-   ```bash
+```bash
    psql postgresql://raj:Rajshah11@db:5432/liquicity -c "SELECT 1"
    ```
 4. Restart the application servers if needed

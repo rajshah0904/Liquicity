@@ -2,7 +2,7 @@ from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
-from app.routers import user, wallet, payment
+from app.routers import user, wallet
 from app.database import engine, Base, get_db
 from app.dependencies.auth import get_current_user
 from sqlalchemy import text
@@ -42,8 +42,7 @@ app.add_middleware(
 
 # Include only the essential routers
 app.include_router(user, prefix="/user", tags=["users"])
-app.include_router(wallet, prefix="/wallet", tags=["wallets"])
-app.include_router(payment, prefix="/payment", tags=["payments"])
+app.include_router(wallet, prefix="/wallet", tags=["wallet"])
 
 @app.get("/", tags=["status"])
 async def root():

@@ -38,122 +38,41 @@ const generateRandomWalletAddress = () => {
   return address;
 };
 
-// Update the countries list with more details for country-specific fields
 const countries = [
-  { 
-    name: 'United States', 
-    code: 'US', 
-    currency: 'USD', 
+  {
+    name: 'United States',
+    code: 'US',
+    currency: 'USD',
+    idLabel: 'Social Security Number',
+    region: 'US',
     idType: 'SSN',
     idFormat: 'XXX-XX-XXXX',
-    idLabel: 'Social Security Number',
-    region: 'North America',
-    requiredFields: ['ssn', 'dob', 'address'],
-    acceptedDocuments: ['passport', 'drivers_license']
+    requiredFields: ['ssn']
   },
-  { 
-    name: 'United Kingdom', 
-    code: 'GB', 
-    currency: 'GBP', 
-    idType: 'NINO',
-    idFormat: 'AA999999A',
-    idLabel: 'National Insurance Number',
-    region: 'Europe',
-    requiredFields: ['nino', 'dob', 'address', 'postal_code'],
-    acceptedDocuments: ['passport', 'drivers_license', 'national_id']
+  {
+    name: 'Mexico',
+    code: 'MX',
+    currency: 'MXN',
+    idLabel: 'National ID Number',
+    region: 'Mexico',
+    idType: 'CURP',
+    idFormat: 'XXXX000000XXX',
+    requiredFields: ['national_id']
   },
-  { 
-    name: 'Canada', 
-    code: 'CA', 
-    currency: 'CAD', 
-    idType: 'SIN',
-    idFormat: '999-999-999',
-    idLabel: 'Social Insurance Number',
-    region: 'North America',
-    requiredFields: ['sin', 'dob', 'address'],
-    acceptedDocuments: ['passport', 'drivers_license', 'pr_card']
-  },
-  { 
-    name: 'Australia', 
-    code: 'AU', 
-    currency: 'AUD', 
-    idType: 'TFN',
-    idFormat: '999 999 999',
-    idLabel: 'Tax File Number',
-    region: 'Oceania',
-    requiredFields: ['tfn', 'dob', 'address', 'medicare'],
-    acceptedDocuments: ['passport', 'drivers_license', 'medicare_card']
-  },
-  { 
-    name: 'Germany', 
-    code: 'DE', 
-    currency: 'EUR', 
-    idType: 'TIN',
-    idFormat: '99999999999',
-    idLabel: 'Tax Identification Number',
-    region: 'Europe',
-    requiredFields: ['tax_id', 'dob', 'address'],
-    acceptedDocuments: ['passport', 'national_id', 'residence_permit']
-  },
-  { 
-    name: 'France', 
-    code: 'FR', 
-    currency: 'EUR', 
-    idType: 'INSEE',
-    idFormat: '9 99 99 99999 999 99',
-    idLabel: 'INSEE Number',
-    region: 'Europe',
-    requiredFields: ['insee', 'dob', 'address'],
-    acceptedDocuments: ['passport', 'national_id', 'residence_permit']
-  },
-  { 
-    name: 'Japan', 
-    code: 'JP', 
-    currency: 'JPY', 
-    idType: 'My Number',
-    idFormat: '9999-9999-9999',
-    idLabel: 'My Number',
-    region: 'Asia',
-    requiredFields: ['my_number', 'dob', 'address'],
-    acceptedDocuments: ['passport', 'residence_card', 'my_number_card']
-  },
-  { 
-    name: 'Singapore', 
-    code: 'SG', 
-    currency: 'SGD', 
-    idType: 'NRIC',
-    idFormat: 'S9999999A',
-    idLabel: 'NRIC Number',
-    region: 'Asia',
-    requiredFields: ['nric', 'dob', 'address'],
-    acceptedDocuments: ['passport', 'nric']
-  },
-  { 
-    name: 'India', 
-    code: 'IN', 
-    currency: 'INR', 
-    idType: 'Aadhaar',
-    idFormat: '9999 9999 9999',
-    idLabel: 'Aadhaar Number',
-    region: 'Asia',
-    requiredFields: ['aadhaar', 'dob', 'address', 'pan'],
-    acceptedDocuments: ['passport', 'aadhaar_card', 'pan_card', 'voters_id']
-  },
-  { 
-    name: 'Brazil', 
-    code: 'BR', 
-    currency: 'BRL', 
-    idType: 'CPF',
-    idFormat: '999.999.999-99',
-    idLabel: 'CPF Number',
-    region: 'South America',
-    requiredFields: ['cpf', 'dob', 'address'],
-    acceptedDocuments: ['passport', 'national_id', 'drivers_license']
+  {
+    name: 'European Union',
+    code: 'EU',
+    currency: 'EUR',
+    idLabel: 'National ID Number',
+    region: 'EU',
+    idType: 'National ID',
+    idFormat: 'Varies',
+    requiredFields: ['national_id','proof_of_address']
   }
 ];
 
-// Group countries by region
-const regions = Array.from(new Set(countries.map(country => country.region))).sort();
+// Regions list for select menus
+const regions = ['US','EU','Mexico'];
 
 const documentTypes = [
   { value: 'passport', label: 'Passport' },
@@ -263,7 +182,7 @@ const Register = () => {
     // ID validation based on country
     if (formData.countryObject) {
       if (!formData.idNumber) {
-        newErrors.idNumber = `${formData.countryObject.idType || 'ID number'} is required`;
+        newErrors.idNumber = `${formData.countryObject.idLabel} is required`;
       } else if (formData.countryObject.code === 'US' && !/^\d{3}-\d{2}-\d{4}$/.test(formData.idNumber)) {
         newErrors.idNumber = 'SSN must be in format XXX-XX-XXXX';
       }
@@ -345,12 +264,8 @@ const Register = () => {
     const acceptedDocuments = formData.countryObject?.acceptedDocuments || 
       documentTypes.map(doc => doc.value);
       
-    // Filtering document types based on selected country
-    const filteredDocumentTypes = documentTypes.filter(
-      docType => !formData.countryObject || 
-        !formData.countryObject.acceptedDocuments || 
-        formData.countryObject.acceptedDocuments.includes(docType.value)
-    );
+    // Filtering document types – all types allowed for now
+    const filteredDocumentTypes = documentTypes;
     
     return (
       <>
@@ -633,34 +548,19 @@ const Register = () => {
             />
           </Grid>
           
-          {/* Additional region/country-specific fields */}
-          {formData.countryObject && formData.countryObject.code === 'IN' && (
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                name="panCard"
-                label="PAN Card Number"
-                value={formData.panCard || ''}
-                onChange={handleChange}
-                error={!!errors.panCard}
-                helperText={errors.panCard || 'Format: ABCDE1234F'}
-                required={requiredFields.includes('pan')}
-              />
-            </Grid>
-          )}
-          
-          {formData.countryObject && formData.countryObject.code === 'AU' && (
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                name="medicareNumber"
-                label="Medicare Card Number"
-                value={formData.medicareNumber || ''}
-                onChange={handleChange}
-                error={!!errors.medicareNumber}
-                helperText={errors.medicareNumber}
-                required={requiredFields.includes('medicare')}
-              />
+          {/* EU proof of address upload */}
+          {formData.countryObject && requiredFields.includes('proof_of_address') && (
+            <Grid item xs={12}>
+              <Button variant="outlined" component="label">
+                Upload Proof of Address
+                <input
+                  hidden
+                  type="file"
+                  name="proofOfAddress"
+                  accept="image/*,application/pdf"
+                  onChange={handleChange}
+                />
+              </Button>
             </Grid>
           )}
         </Grid>

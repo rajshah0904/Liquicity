@@ -236,6 +236,8 @@ const LandingPage = () => {
             </form>
             
             <Button 
+              component="a"
+              href="mailto:rajshah@liquicity.io"
               variant="text" 
               endIcon={<ArrowForwardIcon />}
               sx={{ 

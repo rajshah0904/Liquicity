@@ -22,14 +22,16 @@ import {
 import { useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { AnimatedBackground } from '../components/ui/ModernUIComponents';
-import api, { authAPI } from '../utils/api';
+import api from '../utils/api';
+import { kycAPI } from '../utils/api';
 
 // Define KYC requirements for different countries
 const countryKycRequirements = {
   US: {
     name: 'United States',
     fields: [
-      { name: 'fullName', label: 'Full Legal Name', type: 'text', required: true },
+      { name: 'firstName', label: 'First Name', type: 'text', required: true },
+      { name: 'lastName', label: 'Last Name', type: 'text', required: true },
       { name: 'dateOfBirth', label: 'Date of Birth', type: 'date', required: true },
       { name: 'streetAddress', label: 'Street Address', type: 'text', required: true },
       { name: 'city', label: 'City', type: 'text', required: true },
@@ -90,182 +92,28 @@ const countryKycRequirements = {
         ]
       },
       { name: 'postalCode', label: 'ZIP Code', type: 'text', required: true },
-      { name: 'idType', label: 'Identification Type', type: 'select', required: true, 
-        options: [
-          { value: 'ssn', label: 'Social Security Number (SSN)' },
-          { value: 'drivers_license', label: 'Driver\'s License' },
-          { value: 'passport', label: 'US Passport' },
-          { value: 'state_id', label: 'State ID Card' }
+      { name: 'idType', label: 'ID Type', type: 'select', required: true,
+        options:[
+          {value:'ssn',label:'Social Security Number'},
+          {value:'drivers_license', label:'Driver License'},
+          {value:'passport', label:'Passport'}
         ]
       },
       { name: 'idNumber', label: 'ID Number', type: 'text', required: true },
-      { name: 'idState', label: 'Issuing State', type: 'select', required: false, 
-        dependsOn: { field: 'idType', values: ['drivers_license', 'state_id'] },
-        options: [
-          { value: 'AL', label: 'Alabama' },
-          { value: 'AK', label: 'Alaska' },
-          { value: 'AZ', label: 'Arizona' },
-          { value: 'AR', label: 'Arkansas' },
-          { value: 'CA', label: 'California' },
-          { value: 'CO', label: 'Colorado' },
-          { value: 'CT', label: 'Connecticut' },
-          { value: 'DE', label: 'Delaware' },
-          { value: 'FL', label: 'Florida' },
-          { value: 'GA', label: 'Georgia' },
-          { value: 'HI', label: 'Hawaii' },
-          { value: 'ID', label: 'Idaho' },
-          { value: 'IL', label: 'Illinois' },
-          { value: 'IN', label: 'Indiana' },
-          { value: 'IA', label: 'Iowa' },
-          { value: 'KS', label: 'Kansas' },
-          { value: 'KY', label: 'Kentucky' },
-          { value: 'LA', label: 'Louisiana' },
-          { value: 'ME', label: 'Maine' },
-          { value: 'MD', label: 'Maryland' },
-          { value: 'MA', label: 'Massachusetts' },
-          { value: 'MI', label: 'Michigan' },
-          { value: 'MN', label: 'Minnesota' },
-          { value: 'MS', label: 'Mississippi' },
-          { value: 'MO', label: 'Missouri' },
-          { value: 'MT', label: 'Montana' },
-          { value: 'NE', label: 'Nebraska' },
-          { value: 'NV', label: 'Nevada' },
-          { value: 'NH', label: 'New Hampshire' },
-          { value: 'NJ', label: 'New Jersey' },
-          { value: 'NM', label: 'New Mexico' },
-          { value: 'NY', label: 'New York' },
-          { value: 'NC', label: 'North Carolina' },
-          { value: 'ND', label: 'North Dakota' },
-          { value: 'OH', label: 'Ohio' },
-          { value: 'OK', label: 'Oklahoma' },
-          { value: 'OR', label: 'Oregon' },
-          { value: 'PA', label: 'Pennsylvania' },
-          { value: 'RI', label: 'Rhode Island' },
-          { value: 'SC', label: 'South Carolina' },
-          { value: 'SD', label: 'South Dakota' },
-          { value: 'TN', label: 'Tennessee' },
-          { value: 'TX', label: 'Texas' },
-          { value: 'UT', label: 'Utah' },
-          { value: 'VT', label: 'Vermont' },
-          { value: 'VA', label: 'Virginia' },
-          { value: 'WA', label: 'Washington' },
-          { value: 'WV', label: 'West Virginia' },
-          { value: 'WI', label: 'Wisconsin' },
-          { value: 'WY', label: 'Wyoming' },
-          { value: 'DC', label: 'District of Columbia' },
-          { value: 'PR', label: 'Puerto Rico' },
-        ]
+      { name: 'idImageFront', label: 'ID Image (Front)', type: 'file', required: false,
+        dependsOn:{field:'idType', values:['drivers_license','passport']}
       },
-      { name: 'idExpiryDate', label: 'ID Expiry Date', type: 'date', required: false,
-        dependsOn: { field: 'idType', values: ['drivers_license', 'state_id', 'passport'] }
-      }
+      { name: 'idImageBack', label: 'ID Image (Back)', type: 'file', required: false,
+        dependsOn:{field:'idType', values:['drivers_license']}
+      },
     ],
     description: 'Per FinCEN CIP Rule (31 C.F.R. § 1020.220)'
-  },
-  CA: {
-    name: 'Canada',
-    fields: [
-      { name: 'fullName', label: 'Full Legal Name', type: 'text', required: true },
-      { name: 'dateOfBirth', label: 'Date of Birth', type: 'date', required: true },
-      { name: 'streetAddress', label: 'Street Address', type: 'text', required: true },
-      { name: 'city', label: 'City', type: 'text', required: true },
-      { name: 'province', label: 'Province', type: 'select', required: true, 
-        options: [
-          { value: 'AB', label: 'Alberta' },
-          { value: 'BC', label: 'British Columbia' },
-          { value: 'MB', label: 'Manitoba' },
-          { value: 'NB', label: 'New Brunswick' },
-          { value: 'NL', label: 'Newfoundland and Labrador' },
-          { value: 'NS', label: 'Nova Scotia' },
-          { value: 'NT', label: 'Northwest Territories' },
-          { value: 'NU', label: 'Nunavut' },
-          { value: 'ON', label: 'Ontario' },
-          { value: 'PE', label: 'Prince Edward Island' },
-          { value: 'QC', label: 'Quebec' },
-          { value: 'SK', label: 'Saskatchewan' },
-          { value: 'YT', label: 'Yukon' }
-        ]
-      },
-      { name: 'postalCode', label: 'Postal Code', type: 'text', required: true },
-      { name: 'idType', label: 'Government-issued ID Type', type: 'select', required: true, 
-        options: [
-  { value: 'passport', label: 'Passport' },
-  { value: 'drivers_license', label: 'Driver\'s License' },
-        ]
-      },
-      { name: 'idNumber', label: 'ID Number', type: 'text', required: true },
-      { name: 'idIssuingProvince', label: 'Issuing Province', type: 'text', required: true },
-      { name: 'idExpiryDate', label: 'ID Expiry Date', type: 'date', required: true },
-    ],
-    description: 'Per FINTRAC\'s PCMLTFA guidance for Money Services Businesses'
-  },
-  NG: {
-    name: 'Nigeria',
-    fields: [
-      { name: 'fullName', label: 'Full Legal Name', type: 'text', required: true },
-      { name: 'dateOfBirth', label: 'Date of Birth', type: 'date', required: true },
-      { name: 'gender', label: 'Gender', type: 'select', required: true,
-        options: [
-          { value: 'male', label: 'Male' },
-          { value: 'female', label: 'Female' },
-          { value: 'other', label: 'Other' }
-        ]
-      },
-      { name: 'nationality', label: 'Nationality', type: 'text', required: true },
-      { name: 'streetAddress', label: 'Street Address', type: 'text', required: true },
-      { name: 'city', label: 'City', type: 'text', required: true },
-      { name: 'state', label: 'State', type: 'select', required: true, 
-        options: [
-          { value: 'AB', label: 'Abia' },
-          { value: 'AD', label: 'Adamawa' },
-          { value: 'AK', label: 'Akwa Ibom' },
-          { value: 'AN', label: 'Anambra' },
-          { value: 'BA', label: 'Bauchi' },
-          { value: 'BY', label: 'Bayelsa' },
-          { value: 'BE', label: 'Benue' },
-          { value: 'BO', label: 'Borno' },
-          { value: 'CR', label: 'Cross River' },
-          { value: 'DE', label: 'Delta' },
-          { value: 'EB', label: 'Ebonyi' },
-          { value: 'ED', label: 'Edo' },
-          { value: 'EK', label: 'Ekiti' },
-          { value: 'EN', label: 'Enugu' },
-          { value: 'FC', label: 'Federal Capital Territory' },
-          { value: 'GO', label: 'Gombe' },
-          { value: 'IM', label: 'Imo' },
-          { value: 'JI', label: 'Jigawa' },
-          { value: 'KD', label: 'Kaduna' },
-          { value: 'KN', label: 'Kano' },
-          { value: 'KT', label: 'Katsina' },
-          { value: 'KB', label: 'Kebbi' },
-          { value: 'KG', label: 'Kogi' },
-          { value: 'KW', label: 'Kwara' },
-          { value: 'LA', label: 'Lagos' },
-          { value: 'NA', label: 'Nasarawa' },
-          { value: 'NI', label: 'Niger' },
-          { value: 'OG', label: 'Ogun' },
-          { value: 'ON', label: 'Ondo' },
-          { value: 'OS', label: 'Osun' },
-          { value: 'OY', label: 'Oyo' },
-          { value: 'PL', label: 'Plateau' },
-          { value: 'RI', label: 'Rivers' },
-          { value: 'SO', label: 'Sokoto' },
-          { value: 'TA', label: 'Taraba' },
-          { value: 'YO', label: 'Yobe' },
-          { value: 'ZA', label: 'Zamfara' }
-        ]
-      },
-      { name: 'postalCode', label: 'Postal Code', type: 'text', required: true },
-      { name: 'phoneNumber', label: 'Telephone Number', type: 'text', required: true },
-      { name: 'bvn', label: 'Bank Verification Number (BVN)', type: 'text', required: true },
-      { name: 'photo', label: 'Passport-size Photograph', type: 'file', required: true },
-    ],
-    description: 'Under the CBN\'s tiered KYC framework, Tier 1 ("KYC Lite")'
   },
   MX: {
     name: 'Mexico',
     fields: [
-      { name: 'fullName', label: 'Full Legal Name', type: 'text', required: true },
+      { name: 'firstName', label: 'First Name', type: 'text', required: true },
+      { name: 'lastName', label: 'Last Name', type: 'text', required: true },
       { name: 'dateOfBirth', label: 'Date of Birth', type: 'date', required: true },
       { name: 'nationality', label: 'Nationality', type: 'text', required: true },
       { name: 'streetAddress', label: 'Street Address', type: 'text', required: true },
@@ -307,8 +155,19 @@ const countryKycRequirements = {
         ]
       },
       { name: 'postalCode', label: 'Postal Code', type: 'text', required: true },
-      { name: 'rfc', label: 'Taxpayer Registration Code (RFC)', type: 'text', required: true },
-      { name: 'phoneNumber', label: 'Telephone Number', type: 'text', required: true },
+      { name: 'idType', label: 'ID Type', type: 'select', required: true,
+        options:[
+          {value:'consular_id', label:'Consular ID'},
+          {value:'permanent_residency_id', label:'Residency Permit'},
+          {value:'passport', label:'Passport'}
+        ]
+      },
+      { name: 'idNumber', label: 'ID Number', type: 'text', required: true },
+      { name: 'idImageFront', label: 'ID Image (Front)', type: 'file', required: true,
+        dependsOn:{field:'idType', values:['consular_id','permanent_residency_id','passport']}
+      },
+      { name: 'idImageBack', label: 'ID Image (Back)', type: 'file', required: false },
+      { name: 'rfc', label: 'Tax Identification Number (RFC)', type: 'text', required: true },
       { name: 'email', label: 'Email Address', type: 'email', required: true },
     ],
     description: 'According to CNBV and AML law (LFPIORPI)'
@@ -316,12 +175,13 @@ const countryKycRequirements = {
   EU: {
     name: 'European Union',
     fields: [
-      { name: 'fullName', label: 'Full Legal Name', type: 'text', required: true },
-      { name: 'placeOfBirth', label: 'Place of Birth', type: 'text', required: true },
+      { name: 'firstName', label: 'First Name', type: 'text', required: true },
+      { name: 'lastName', label: 'Last Name', type: 'text', required: true },
       { name: 'dateOfBirth', label: 'Date of Birth', type: 'date', required: true },
-      { name: 'streetAddress', label: 'Street Address', type: 'text', required: true },
+      { name: 'streetAddress', label: 'Street Address (Line 1)', type: 'text', required: true },
+      { name: 'streetAddress2', label: 'Street Address (Line 2)', type: 'text', required: false },
       { name: 'city', label: 'City', type: 'text', required: true },
-      { name: 'region', label: 'Region/Province', type: 'text', required: true },
+      { name: 'region', label: 'Subdivision (ISO-3166-2 code, e.g. MAN)', type: 'text', required: true },
       { name: 'postalCode', label: 'Postal Code', type: 'text', required: true },
       { name: 'countryOfResidence', label: 'Country of Residence', type: 'select', required: true,
         options: [
@@ -330,32 +190,49 @@ const countryKycRequirements = {
           { value: 'BG', label: 'Bulgaria' },
           { value: 'HR', label: 'Croatia' },
           { value: 'CY', label: 'Cyprus' },
-          { value: 'CZ', label: 'Czech Republic' },
+          { value: 'CZ', label: 'Czechia' },
           { value: 'DK', label: 'Denmark' },
           { value: 'EE', label: 'Estonia' },
           { value: 'FI', label: 'Finland' },
           { value: 'FR', label: 'France' },
           { value: 'DE', label: 'Germany' },
-          { value: 'GR', label: 'Greece' },
+          { value: 'EL', label: 'Greece' },
           { value: 'HU', label: 'Hungary' },
           { value: 'IE', label: 'Ireland' },
           { value: 'IT', label: 'Italy' },
           { value: 'LV', label: 'Latvia' },
+          { value: 'LI', label: 'Liechtenstein' },
           { value: 'LT', label: 'Lithuania' },
           { value: 'LU', label: 'Luxembourg' },
           { value: 'MT', label: 'Malta' },
           { value: 'NL', label: 'Netherlands' },
+          { value: 'NO', label: 'Norway' },
           { value: 'PL', label: 'Poland' },
           { value: 'PT', label: 'Portugal' },
           { value: 'RO', label: 'Romania' },
           { value: 'SK', label: 'Slovakia' },
           { value: 'SI', label: 'Slovenia' },
           { value: 'ES', label: 'Spain' },
-          { value: 'SE', label: 'Sweden' }
+          { value: 'SE', label: 'Sweden' },
+          { value: 'CH', label: 'Switzerland' },
+          { value: 'GB', label: 'United Kingdom' }
         ]
       },
-      { name: 'nationality', label: 'Nationality', type: 'text', required: true },
-      { name: 'idNumber', label: 'Identity Document Number', type: 'text', required: true },
+      { name: 'idType', label:'ID Type', type:'select', required:true,
+        options:[
+          {value:'drivers_license', label:'Driver License'},
+          {value:'national_id', label:'National ID'},
+          {value:'passport', label:'Passport'}
+        ]
+      },
+      { name: 'idNumber', label: 'ID Number', type: 'text', required: true },
+      { name: 'idImageFront', label: 'ID Image (Front)', type: 'file', required: true,
+        dependsOn:{field:'idType', values:['drivers_license','national_id','passport']}
+      },
+      { name: 'idImageBack', label: 'ID Image (Back)', type: 'file', required: false,
+        dependsOn:{field:'idType', values:['drivers_license']}
+      },
+      { name: 'proofOfAddress', label: 'Proof of Address Document', type: 'file', required: false },
       { name: 'personalIdNumber', label: 'Personal Identification Number (if applicable)', type: 'text', required: false },
     ],
     description: 'Under EU AML/CFT rules (Directive (EU) 2015/849 and delegations)'
@@ -365,9 +242,7 @@ const countryKycRequirements = {
 // Countries for dropdown selection
 const countries = [
   { code: 'US', name: 'United States' },
-  { code: 'CA', name: 'Canada' },
-  { code: 'NG', name: 'Nigeria' },
-  { code: 'MX', name: 'Mexico' }, 
+  { code: 'MX', name: 'Mexico' },
   { code: 'EU', name: 'European Union' },
 ];
 
@@ -382,6 +257,7 @@ const KYCVerification = () => {
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [activeStep, setActiveStep] = useState(0);
+  const [verificationStatus, setVerificationStatus] = useState(null);
   
   // Initialize form data when country is selected
   useEffect(() => {
@@ -395,8 +271,10 @@ const KYCVerification = () => {
         });
         
         // Pre-populate with user data if available
-    if (user) {
-          initialData.fullName = user.name || '';
+        if (user) {
+          const parts = user.name ? user.name.split(' ') : [''];
+          initialData.firstName = parts[0];
+          initialData.lastName = parts.slice(1).join(' ');
           initialData.email = user.email || '';
         }
         
@@ -410,7 +288,7 @@ const KYCVerification = () => {
   useEffect(() => {
     if (selectedCountry === 'US' && formData.idType) {
       // Clear errors for conditional fields when ID type changes
-      const fieldsToCheck = ['idState', 'idExpiryDate'];
+      const fieldsToCheck = ['idIssuingState', 'idExpiryDate'];
       const updatedErrors = { ...errors };
       
       fieldsToCheck.forEach(field => {
@@ -423,54 +301,26 @@ const KYCVerification = () => {
     }
   }, [selectedCountry, formData.idType]);
   
-  // Register user in our backend as soon as Auth0 is ready
+  // If we already know user ID, check KYC status so we can skip the form when pending/approved
   useEffect(() => {
-    const registerUser = async () => {
+    const fetchKycStatus = async () => {
+      if (!dbUserId) return;
       try {
-        // Set longer timeout for the registration request
-        const token = await getAccessTokenSilently();
-        api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-        
-        console.log('Registering user with Auth0 token...');
-        
-        // Create a payload with user information from Auth0
-        const userData = {
-          email: user.email,
-          name: user.name,
-          given_name: user.given_name || user.name.split(' ')[0],
-          family_name: user.family_name || user.name.split(' ').slice(1).join(' '),
-          auth0_id: user.sub,
-          picture: user.picture,
-          // Include empty strings for required fields
-          taxId: "",
-          nationality: "",
-          dateOfBirth: "",
-          country: ""
-        };
-        
-        // Add timeout option for registration API call
-        const { data } = await authAPI.register(userData, { 
-          timeout: 15000 // 15 second timeout
-        });
-        
-        console.log('User registered successfully:', data);
-        setDbUserId(data.id);
-      } catch (err) {
-        console.error('Error registering user:', err);
-        
-        // If registration fails, still allow user to proceed with KYC
-        // We'll create their account when they submit KYC data
-        if (err.code === 'ERR_BAD_RESPONSE' || err.code === 'ERR_NETWORK') {
-          console.log('Using fallback registration flow - will register on KYC submit');
+        const { data } = await kycAPI.getKycStatus(dbUserId);
+        setVerificationStatus(data.verification_status);
+
+        if (data.verification_status === 'approved') {
+          navigate('/dashboard');
+        } else if (data.verification_status === 'pending') {
+          setActiveStep(2); // show pending screen
         }
+      } catch (err) {
+        console.error('Failed to fetch KYC status', err);
       }
     };
-    
-    // Only try to register if the user is authenticated with Auth0
-    if (isAuthenticated && user) {
-      registerUser();
-    }
-  }, [isAuthenticated, getAccessTokenSilently, user]);
+
+    fetchKycStatus();
+  }, [dbUserId, navigate]);
   
   // Handle country selection change
   const handleCountryChange = (e) => {
@@ -478,12 +328,34 @@ const KYCVerification = () => {
     setActiveStep(1);
   };
   
+  // Go back to country selection and clear previously entered data
+  const handleBackToCountry = () => {
+    setSelectedCountry('');
+    setFormData({});
+    setErrors({});
+    setActiveStep(0);
+  };
+  
   // Handle form field changes
   const handleChange = (e) => {
     const { name, value } = e.target;
+
+    // Auto-format SSN while typing for US users
+    let newValue = value;
+    if (selectedCountry === 'US' && formData.idType === 'ssn' && name === 'idNumber') {
+      const digits = value.replace(/\D/g, '').slice(0, 9);
+      if (digits.length > 5) {
+        newValue = digits.replace(/^(\d{3})(\d{2})(\d+)/, '$1-$2-$3');
+      } else if (digits.length > 3) {
+        newValue = digits.replace(/^(\d{3})(\d+)/, '$1-$2');
+      } else {
+        newValue = digits;
+      }
+    }
+
     setFormData({
       ...formData,
-      [name]: value
+      [name]: newValue
     });
     
     // Clear error when field is changed
@@ -543,28 +415,20 @@ const KYCVerification = () => {
     // Special validations
     if (selectedCountry === 'US') {
       // Conditional validations based on ID type
-      if (formData.idType === 'ssn' && formData.idNumber) {
-        const ssnRegex = /^\d{3}-\d{2}-\d{4}$/;
-        if (!ssnRegex.test(formData.idNumber)) {
-          newErrors.idNumber = 'Enter a valid SSN (XXX-XX-XXXX)';
+      if (formData.idNumber) {
+        const digits = formData.idNumber.replace(/\D/g, '');
+        if (digits.length !== 9) {
+          newErrors.idNumber = 'Enter a valid SSN (9 digits)';
         }
-      } else if ((formData.idType === 'drivers_license' || formData.idType === 'state_id') && !formData.idState) {
-        newErrors.idState = 'Issuing state is required for this ID type';
-      } else if ((formData.idType === 'drivers_license' || formData.idType === 'state_id' || formData.idType === 'passport') && !formData.idExpiryDate) {
-        newErrors.idExpiryDate = 'Expiry date is required for this ID type';
       }
     }
     
-    // Nigeria-specific validations for passport photo
-    if (selectedCountry === 'NG' && !formData.photo) {
-      newErrors.photo = 'Passport-size photograph is required for Nigeria KYC';
-    }
-    
-    if (formData.phoneNumber) {
-    const phoneRegex = /^\+?[0-9]{10,15}$/;
-      if (!phoneRegex.test(formData.phoneNumber.replace(/\s+/g, ''))) {
-      newErrors.phoneNumber = 'Enter a valid phone number';
-      }
+    // Image requirements based on idType
+    if (formData.idType === 'drivers_license') {
+      if (!formData.idImageFront) newErrors.idImageFront = 'Front image required';
+      if (!formData.idImageBack) newErrors.idImageBack = 'Back image required';
+    } else if (formData.idType && formData.idType !== 'ssn') {
+      if (!formData.idImageFront) newErrors.idImageFront = 'Front image required';
     }
     
     setErrors(newErrors);
@@ -584,27 +448,41 @@ const KYCVerification = () => {
       const submitData = new FormData();
       
       // Process full name into first/last name for backend
-      if (formData.fullName) {
-        const nameParts = formData.fullName.trim().split(' ');
-        const firstName = nameParts[0];
-        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
-        submitData.append('first_name', firstName);
-        submitData.append('last_name', lastName);
-      }
+      submitData.append('first_name', formData.firstName);
+      submitData.append('last_name', formData.lastName);
       
       // Add country information
-      submitData.append('country', countryKycRequirements[selectedCountry].name);
-      submitData.append('country_code', selectedCountry);
+      submitData.append('kyc_country', selectedCountry);
+      
+      // Always include Auth0 email claim
+      if (user && user.email) {
+        submitData.append('email', user.email);
+      }
       
       // Append all form fields, converting camelCase keys to snake_case
       Object.entries(formData).forEach(([key, value]) => {
-        // React form uses camelCase, FastAPI expects snake_case
-        const snakeKey = key.replace(/([A-Z])/g, '_$1').toLowerCase();
+        // Skip firstName and lastName as we've already processed them
+        if (key === 'firstName' || key === 'lastName') return;
+        
+        // Map specific fields to their backend names
+        const fieldMapping = {
+          'dateOfBirth': 'date_of_birth',
+          'streetAddress': 'street_address',
+          'streetAddress2': 'street_address_2',
+          'postalCode': 'postal_code',
+          'idType': 'id_type',
+          'idNumber': 'id_number',
+          'region': 'state',
+          'proofOfAddress': 'proof_of_address',
+          'countryOfResidence': 'country_of_residence',
+          'firstName': 'first_name',
+          'lastName': 'last_name',
+        };
+        
+        // Use mapped name if it exists, otherwise convert camelCase to snake_case
+        const snakeKey = fieldMapping[key] || key.replace(/([A-Z])/g, '_$1').toLowerCase();
         submitData.append(snakeKey, value);
       });
-      
-      // Add testing flag
-      submitData.append('skip_verification', 'true');
       
       console.log('Submitting KYC data to backend...');
       
@@ -618,8 +496,8 @@ const KYCVerification = () => {
       console.log('KYC submission response:', response.data);
       setSubmitSuccess(true);
       
-      // For testing: Instead of waiting for verification, redirect to dashboard immediately
-      setTimeout(() => navigate('/dashboard'), 1000);
+      // Wait for 2 seconds to show success message before redirecting
+      setTimeout(() => navigate('/dashboard'), 2000);
     } catch (error) {
       console.error('KYC submission error:', error);
       
@@ -645,7 +523,7 @@ const KYCVerification = () => {
         }
       } else {
         // Something else happened while setting up the request
-      setSubmitError('Failed to submit verification. Please try again or contact support.');
+        setSubmitError('Failed to submit verification. Please try again or contact support.');
       }
     } finally {
       setIsSubmitting(false);
@@ -825,8 +703,9 @@ const KYCVerification = () => {
           </Typography>
           
           <Typography variant="body1" sx={{ mb: 4, textAlign: 'center', color: 'rgba(255,255,255,0.7)' }}>
-            To comply with financial regulations and ensure your security, we need to verify your identity before you can use Liquicity.
-                </Typography>
+            To comply with financial regulations and ensure the security of our platform, 
+            we require identity verification. Your information is encrypted and securely stored.
+          </Typography>
           
           <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
             <Step>
@@ -885,19 +764,12 @@ const KYCVerification = () => {
                     We do not store sensitive document images or complete ID numbers in our database. All verification is done 
                     securely and in compliance with financial regulations.
                   </Typography>
-                  
-                  {selectedCountry === 'NG' && (
-                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', mt: 1 }}>
-                      <strong>Note for Nigeria:</strong> CBN regulations require a passport-size photograph for KYC verification.
-                      Your photo will be processed securely and in accordance with data protection laws.
-                    </Typography>
-                  )}
                 </Box>
                 
                 <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
                   <Button 
                     variant="outlined"
-                    onClick={() => setActiveStep(0)}
+                    onClick={handleBackToCountry}
                     sx={{ 
                       color: 'white',
                       borderColor: 'rgba(255,255,255,0.3)'

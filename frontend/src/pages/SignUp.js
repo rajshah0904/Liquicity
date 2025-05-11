@@ -11,7 +11,7 @@ import {
   CircularProgress
 } from '@mui/material';
 import { styled } from '@mui/material/styles';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import api from '../utils/api';
 
@@ -105,11 +105,78 @@ const DividerWithText = styled(Box)(({ theme }) => ({
 }));
 
 const SignUp = () => {
-  const { loginWithPopup, getAccessTokenSilently } = useAuth0();
+  const { loginWithPopup, getAccessTokenSilently, isAuthenticated, logout } = useAuth0();
   const navigate = useNavigate();
+  const location = useLocation();
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  // On mount, check for query param indicating duplicate account message
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('existing') === 'true') {
+      setError('Account already exists. Please log in.');
+    }
+    if (params.get('noaccount') === 'true') {
+      setError('No account found. Please sign up first.');
+    }
+  }, [location.search]);
+
+  // Clear duplicate-account error as soon as user edits the email field
+  useEffect(() => {
+    if (error && error.startsWith('Account already exists') && email) {
+      // Remove query param if still present
+      if (location.search.includes('existing=true')) {
+        navigate('/signup', { replace: true });
+      }
+      setError('');
+    }
+  }, [email]);
+
+  // helper used after popup to see if account already exists
+  const checkExists = async (token) => {
+    try {
+      const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
+      if (res.data.exists) {
+        // User already exists – sign them out locally and show error on this screen
+        setError('Account already exists. Please log in.');
+        await logout({ logoutParams: { returnTo: `${window.location.origin}/signup?existing=true` } });
+        return true;
+      }
+    } catch (e) {
+      console.error('check user error', e);
+    }
+    return false;
+  };
+
+  // If user already authenticated, confirm they don't already exist
+  useEffect(() => {
+    const guard = async () => {
+      if (!isAuthenticated) return;
+      if (localStorage.getItem('isNewSignup') === 'true') return; // skip duplicate guard during fresh signup
+      try {
+        const token = await getAccessTokenSilently();
+        const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
+        if (res.data.exists) {
+          setError('Account already exists. Please log in.');
+          await logout({ logoutParams: { returnTo: `${window.location.origin}/signup?existing=true` } });
+        }
+      } catch(e) { console.error(e); }
+    };
+    guard();
+  }, [isAuthenticated, getAccessTokenSilently, logout]);
+
+  // Public check without auth
+  const checkEmailExistsPublic = async (emailToCheck) => {
+    try {
+      const res = await api.get('/user/email-exists', { params: { email: emailToCheck } });
+      return res.data.exists;
+    } catch (err) {
+      console.error('email-exists check failed', err);
+      return false;
+    }
+  };
 
   const handleEmailSignUp = async e => {
     e.preventDefault();
@@ -117,15 +184,35 @@ const SignUp = () => {
       setError('Please enter a valid email address');
       return;
     }
+
+    // Early duplicate check to avoid hitting Auth0 signup flow
+    const already = await checkEmailExistsPublic(email);
+    if (already) {
+      setError('Account already exists. Please log in.');
+      // add query param so page refresh still shows error
+      navigate('/signup?existing=true', { replace: true });
+      return; // do NOT open Auth0 popup
+    }
+
+    // Mark flow as new signup so other guards know
+    localStorage.setItem('isNewSignup', 'true');
+
     setError('');
     setLoading(true);
     try {
-      // Open Auth0 signup popup
-      await loginWithPopup({ authorizationParams: { screen_hint: 'signup', login_hint: email } });
-      // Get token and set API header
+      // Trigger Auth0 hosted signup page (popup) pre-filled with the email
+      await loginWithPopup({
+        authorizationParams: {
+          screen_hint: 'signup',
+          login_hint: email,
+        },
+      });
+
+      // Get token and set API header for subsequent calls
       const token = await getAccessTokenSilently();
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-      // Navigate to KYC page
+
+      // It is safe to go straight to the KYC route after successful signup
       navigate('/kyc-verification');
     } catch (err) {
       setError(err.message || 'Signup failed.');
@@ -138,11 +225,19 @@ const SignUp = () => {
     setError('');
     setLoading(true);
     try {
+      // Mark flow as new signup
+      localStorage.setItem('isNewSignup', 'true');
+
       // Open Auth0 Google signup popup
       await loginWithPopup({ authorizationParams: { connection: 'google-oauth2' } });
       // Get token and set API header
       const token = await getAccessTokenSilently();
       api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+
+      // If the account already exists we bail out early via duplicate guard
+      const exists = await checkExists(token);
+      if (exists) return;
+
       // Navigate to KYC page
       navigate('/kyc-verification');
     } catch (err) {

@@ -27,13 +27,22 @@ const AuthFlow = () => {
         if (!exists) {
           // Register the user in our database
           setStatus('registering');
-          await api.post(`/user/register`, {
-            email: user.email,
-            name: user.name,
-            auth0_id: user.sub
-          }, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
+          try {
+            await api.post(`/user/register`, {
+              email: user.email,
+              name: user.name,
+              auth0_id: user.sub
+            }, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+          } catch (regErr) {
+            // If the email already exists, redirect user to login screen with flag
+            if (regErr.response && regErr.response.status === 400 && regErr.response.data?.detail?.includes('Email already registered')) {
+              navigate('/login?existing=true');
+              return;
+            }
+            throw regErr;
+          }
           
           // After registration, redirect to KYC
           setStatus('redirecting_to_kyc');

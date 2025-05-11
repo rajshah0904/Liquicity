@@ -2,6 +2,8 @@ import os
 from dotenv import load_dotenv
 from pydantic import BaseModel
 from typing import Dict, List, Optional
+from pydantic_settings import BaseSettings
+from functools import lru_cache
 
 # Load environment variables
 load_dotenv()
@@ -20,25 +22,6 @@ class AuthConfig(BaseModel):
     auth0_audience: str = os.getenv("AUTH0_AUDIENCE", "https://api.liquicity.io")
     auth0_callback_url: str = os.getenv("AUTH0_CALLBACK_URL", "http://localhost:8000/callback")
 
-class APIKeysConfig(BaseModel):
-    exchange_rate_api_key: Optional[str] = os.getenv("EXCHANGE_RATE_API_KEY")
-    openai_api_key: Optional[str] = os.getenv("OPENAI_API_KEY")
-    anthropic_api_key: Optional[str] = os.getenv("ANTHROPIC_API_KEY")
-
-class BlockchainConfig(BaseModel):
-    eth_rpc_url: str = os.getenv("ETH_RPC_URL", "https://mainnet.infura.io/v3/your_infura_key")
-    polygon_rpc_url: str = os.getenv("POLYGON_RPC_URL", "https://polygon-rpc.com")
-    avalanche_rpc_url: str = os.getenv("AVALANCHE_RPC_URL", "https://api.avax.network/ext/bc/C/rpc")
-    gnosis_safe_transaction_service: str = os.getenv("GNOSIS_SAFE_TRANSACTION_SERVICE", "https://safe-transaction.gnosis.io")
-    deployer_private_key: Optional[str] = os.getenv("DEPLOYER_PRIVATE_KEY")
-    admin_wallet_address: Optional[str] = os.getenv("ADMIN_WALLET_ADDRESS")
-
-class MessagingConfig(BaseModel):
-    slack_bot_token: Optional[str] = os.getenv("SLACK_BOT_TOKEN")
-    slack_signing_secret: Optional[str] = os.getenv("SLACK_SIGNING_SECRET")
-    twilio_account_sid: Optional[str] = os.getenv("TWILIO_ACCOUNT_SID")
-    twilio_auth_token: Optional[str] = os.getenv("TWILIO_AUTH_TOKEN")
-
 class DataStorageConfig(BaseModel):
     vector_db_path: str = os.getenv("VECTOR_DB_PATH", "./vector_db")
     data_storage_path: str = os.getenv("DATA_STORAGE_PATH", "./data_storage")
@@ -46,9 +29,6 @@ class DataStorageConfig(BaseModel):
 class AppConfig(BaseModel):
     database: DatabaseConfig = DatabaseConfig()
     auth: AuthConfig = AuthConfig()
-    api_keys: APIKeysConfig = APIKeysConfig()
-    blockchain: BlockchainConfig = BlockchainConfig()
-    messaging: MessagingConfig = MessagingConfig()
     data_storage: DataStorageConfig = DataStorageConfig()
     debug: bool = os.getenv("DEBUG", "False").lower() in ("true", "1", "t")
     environment: str = os.getenv("ENVIRONMENT", "development")
@@ -59,3 +39,34 @@ config = AppConfig()
 def get_config() -> AppConfig:
     """Returns the application configuration."""
     return config 
+
+class Settings(BaseSettings):
+    # Database
+    DATABASE_URL: str
+
+    # Auth0 Configuration
+    AUTH0_DOMAIN: str
+    AUTH0_CLIENT_ID: str
+    AUTH0_CLIENT_SECRET: str
+    AUTH0_AUDIENCE: str
+
+    # Modern Treasury Configuration
+    MODERN_TREASURY_API_KEY: str
+    MODERN_TREASURY_ORGANIZATION_ID: str
+    MODERN_TREASURY_ENVIRONMENT: str = "sandbox"
+
+    # Brale Configuration
+    BRALE_API_KEY: str
+    BRALE_ENVIRONMENT: str = "sandbox"
+
+    # Application Settings
+    APP_URL: str = "http://localhost:3000"
+    API_URL: str = "http://localhost:8000"
+    NODE_ENV: str = "development"
+
+    class Config:
+        env_file = ".env"
+
+@lru_cache()
+def get_settings() -> Settings:
+    return Settings() 

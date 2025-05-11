@@ -6,7 +6,7 @@ import { CircularProgress, Box, Typography, Alert } from '@mui/material';
 const AuthCallback = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { isAuthenticated, isLoading, user, getAccessTokenSilently } = useAuth0();
+  const { isAuthenticated, isLoading, user, getAccessTokenSilently, logout } = useAuth0();
   const [error, setError] = useState(null);
   
   useEffect(() => {
@@ -26,8 +26,30 @@ const AuthCallback = () => {
           const { default: api } = await import('../utils/api');
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
           
-          // Check for signup flag
+          // Check for signup flag (used for new registrations)
           const isNewSignup = localStorage.getItem('isNewSignup') === 'true';
+          
+          // Verify the user exists in our backend unless we are processing a fresh signup
+          let userRowExists = true;
+          try {
+            const checkResp = await api.get('/user/check');
+            userRowExists = checkResp.data?.exists;
+          } catch (checkErr) {
+            console.error('AuthCallback: /user/check failed', checkErr);
+            userRowExists = false;
+          }
+
+          if (!userRowExists) {
+            if (isNewSignup) {
+              // Legitimate first-time signup – allow the flow to continue to KYC
+              console.log('AuthCallback: user not yet registered but isNewSignup=true – continue');
+            } else {
+              // Something is wrong (row deleted?) – force remote logout and send to signup page
+              localStorage.removeItem('auth_token');
+              await logout({ logoutParams: { returnTo: `${window.location.origin}/signup?noaccount=true` } });
+              return; // stop further navigation
+            }
+          }
           
           // Check URL for Auth0 state parameter to detect appState
           const params = new URLSearchParams(location.search);
@@ -56,7 +78,7 @@ const AuthCallback = () => {
     };
     
     parseAppState();
-  }, [isLoading, isAuthenticated, navigate, location, user, getAccessTokenSilently]);
+  }, [isLoading, isAuthenticated, navigate, location, user, getAccessTokenSilently, logout]);
   
   return (
     <Box sx={{ 
