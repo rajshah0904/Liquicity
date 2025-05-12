@@ -23,7 +23,7 @@ import {
 } from '@mui/material';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
-import { transferAPI, bridgeAPI, walletAPI } from '../../utils/api';
+import { transferAPI, bridgeAPI, walletAPI, authAPI } from '../../utils/api';
 import { useNavigate } from 'react-router-dom';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
@@ -49,21 +49,38 @@ import {
   StaggerItem
 } from '../../components/animations/AnimatedComponents';
 
-// Helper function to detect user region based on browser language
-const detectUserRegion = () => {
-  const language = navigator.language || 'en-US';
+// Replace the region detection with a function that gets the user's region directly from profile
+const getUserRegion = (userData) => {
+  // Get the user's country from their profile
+  const country = userData?.profile?.country || 'US';
   
-  if (language.includes('es-MX')) return { region: 'mx', currency: 'mxn' };
-  if (language.includes('en-US')) return { region: 'us', currency: 'usd' };
-  if (language.startsWith('es')) return { region: 'mx', currency: 'mxn' };
+  // Map country to region and currency
+  if (country === 'MX') return { region: 'mx', currency: 'mxn' };
+  if (country === 'US') return { region: 'us', currency: 'usd' };
   
-  // Default to European
-  const europeanLanguages = ['de', 'fr', 'it', 'es', 'pt', 'nl', 'el', 'pl'];
-  for (const lang of europeanLanguages) {
-    if (language.startsWith(lang)) return { region: 'eu', currency: 'eur' };
+  // Check if country is in EU
+  const EU_COUNTRIES = [
+    'AT','BE','BG','CH','CY','CZ','DE','DK','EE','ES','FI','FR','GB',
+    'GR','HR','HU','IE','IS','IT','LI','LT','LU','LV','MT','NL','NO',
+    'PL','PT','RO','SE','SI','SK'
+  ];
+  
+  if (EU_COUNTRIES.includes(country)) return { region: 'eu', currency: 'eur' };
+  
+  // Default to US if unknown
+  return { region: 'us', currency: 'usd' };
+};
+
+// Add a helper function to get the correct currency symbol
+const getCurrencySymbol = (currencyCode) => {
+  const code = currencyCode?.toUpperCase() || 'USD';
+  switch(code) {
+    case 'EUR': return '€';
+    case 'GBP': return '£';
+    case 'MXN': return '₱';
+    case 'CAD': return 'C$';
+    default: return '$';
   }
-  
-  return { region: 'eu', currency: 'eur' };
 };
 
 export default function Withdraw() {
@@ -77,7 +94,7 @@ export default function Withdraw() {
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
   const [linkedAccounts, setLinkedAccounts] = useState([]);
-  const [detectedRegion, setDetectedRegion] = useState(detectUserRegion());
+  const [userRegion, setUserRegion] = useState({ region: 'us', currency: 'usd' });
   const [newAccountForm, setNewAccountForm] = useState({ 
     account_number: '', 
     routing_number: '', 
@@ -118,12 +135,20 @@ export default function Withdraw() {
     
     fetchLinkedAccounts();
     
-    // Fetch wallet data
+    // Fetch wallet data and user profile
     const fetchWalletData = async () => {
       try {
         const resp = await walletAPI.getOverview();
         if (resp.data && resp.data.wallets && resp.data.wallets.length > 0) {
           const mainWallet = resp.data.wallets[0];
+          
+          // Also fetch user profile to get country for region/currency
+          const userResp = await authAPI.getCurrentUser();
+          if (userResp.data) {
+            // Set region based on user's country from profile
+            setUserRegion(getUserRegion(userResp.data));
+          }
+          
           setBalanceData({
             total: mainWallet.total_balance || 0,
             available: mainWallet.available_balance || 0,
@@ -201,7 +226,7 @@ export default function Withdraw() {
     try {
       const resp = await transferAPI.withdraw({
         amount: form.amount,
-        currency: detectedRegion.currency,
+        currency: userRegion.currency.toLowerCase(),
         external_account_id: form.external_account_id
       });
       
@@ -246,9 +271,9 @@ export default function Withdraw() {
     }
   };
 
-  // Get rail name based on region
+  // Get rail name based on user's region
   const getRailName = () => {
-    switch (detectedRegion.region) {
+    switch (userRegion.region) {
       case 'us': return 'ACH';
       case 'eu': return 'SEPA';
       case 'mx': return 'SPEI';
@@ -293,7 +318,7 @@ export default function Withdraw() {
                 )}
               </Box>
               <Typography variant="body2" color="text.secondary">
-                Balance: <Typography component="span" fontWeight="600" color="#fff">${balanceData.available.toLocaleString()}</Typography>
+                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(balanceData.currency)}{balanceData.available.toLocaleString()}</Typography>
               </Typography>
             </Box>
             

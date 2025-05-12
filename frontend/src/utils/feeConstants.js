@@ -7,7 +7,7 @@
 // Two-Tier Fee Structure
 
 // Standard Tier (1-3 business days)
-// Free deposit + 0.75% send; all-in ≤ Wise/Remitly fast rails
+// Free deposit + 0.50% send; all-in = 0.50%
 export const STANDARD_DEPOSIT_FEE_RATE = 0.0;  // No fee for standard deposits
 export const STANDARD_SEND_FEE_RATE = 0.005;  // 0.5% for P2P wallet transfers
 
@@ -16,6 +16,7 @@ export const STANDARD_SEND_FEE_RATE = 0.005;  // 0.5% for P2P wallet transfers
 // Display as 1.5% in UI, but calculate with exact rate
 export const INSTANT_DEPOSIT_FEE_RATE = 0.015076;  // 1.5076% for instant deposits
 // All-in express fee is 2.0% (math: 1 - (1 - 0.015076) × (1 - 0.005) ≈ 0.02)
+export const EXPRESS_ALL_IN_FEE_RATE = 0.02; // 2.0% all-in fee for express transfers
 
 // P2P Wallet-Only (for users who have already deposited)
 // Best-in-class pure P2P, 0.5% fee
@@ -34,6 +35,8 @@ export const BANK_TRANSFER_FEE_RATE = 0.029;  // 2.9% fee for bank-funded transf
 export const UI_INSTANT_DEPOSIT_FEE = '1.5%';  // Display as 1.5% in UI
 export const UI_STANDARD_SEND_FEE = '0.5%';  // Display as 0.5% in UI
 export const UI_BANK_TRANSFER_FEE = '2.9%';  // Display as 2.9% in UI
+export const UI_EXPRESS_ALL_IN_FEE = '2.0%';  // Display as 2.0% in UI
+export const UI_STANDARD_ALL_IN_FEE = '0.5%';  // Display as 0.5% in UI
 
 /**
  * Calculate fee for a transaction

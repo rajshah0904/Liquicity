@@ -29,10 +29,14 @@ import { AnimatedBackground } from '../../components/ui/ModernUIComponents';
 import { format } from 'date-fns';
 import CountUp from 'react-countup';
 import { 
-  STANDARD_SEND_FEE_RATE, 
-  BANK_TRANSFER_FEE_RATE,
+  STANDARD_DEPOSIT_FEE_RATE, 
+  STANDARD_SEND_FEE_RATE,
+  INSTANT_DEPOSIT_FEE_RATE,
+  EXPRESS_ALL_IN_FEE_RATE,
+  UI_STANDARD_ALL_IN_FEE,
+  UI_EXPRESS_ALL_IN_FEE,
   UI_STANDARD_SEND_FEE,
-  UI_BANK_TRANSFER_FEE,
+  UI_INSTANT_DEPOSIT_FEE,
   calculateFee,
   calculateTotalWithFee
 } from '../../utils/feeConstants';
@@ -87,7 +91,7 @@ export default function Send() {
   const [recipient, setRecipient] = useState(null);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [paymentMethod, setPaymentMethod] = useState('balance');
+  const [speedOption, setSpeedOption] = useState('standard'); // 'standard' or 'express'
   const [bankAccounts, setBankAccounts] = useState([
     { id: 'ext-001', name: 'Chase Bank', accountNumber: '****4582', status: 'verified' },
     { id: 'ext-002', name: 'Bank of America', accountNumber: '****7891', status: 'verified' }
@@ -97,14 +101,14 @@ export default function Send() {
   // Updated fee structure based on new requirements
   // P2P Send fee: 0.50%
   const balanceFee = amount ? calculateFee(parseFloat(amount), STANDARD_SEND_FEE_RATE) : 0;
-  const bankFee = amount ? calculateFee(parseFloat(amount), BANK_TRANSFER_FEE_RATE) : 0;
+  const bankFee = amount ? calculateFee(parseFloat(amount), EXPRESS_ALL_IN_FEE_RATE) : 0;
   
   const amountFromBalance = () => {
     if (!amount) return 0;
     const amountNum = parseFloat(amount);
-    if (paymentMethod === 'balance') {
+    if (speedOption === 'standard') {
       return amountNum;
-    } else if (paymentMethod === 'mixed') {
+    } else if (speedOption === 'express') {
       return Math.min(amountNum, balanceData.available);
     }
     return 0;
@@ -113,9 +117,9 @@ export default function Send() {
   const amountFromBank = () => {
     if (!amount) return 0;
     const amountNum = parseFloat(amount);
-    if (paymentMethod === 'bank') {
+    if (speedOption === 'express') {
       return amountNum;
-    } else if (paymentMethod === 'mixed') {
+    } else if (speedOption === 'standard') {
       return Math.max(0, amountNum - balanceData.available);
     }
     return 0;
@@ -124,7 +128,7 @@ export default function Send() {
   const totalFee = () => {
     const balanceAmount = amountFromBalance();
     const bankAmount = amountFromBank();
-    return calculateFee(balanceAmount, STANDARD_SEND_FEE_RATE) + calculateFee(bankAmount, BANK_TRANSFER_FEE_RATE);
+    return calculateFee(balanceAmount, STANDARD_SEND_FEE_RATE) + calculateFee(bankAmount, EXPRESS_ALL_IN_FEE_RATE);
   };
   
   const totalAmount = () => {
@@ -136,11 +140,11 @@ export default function Send() {
     // Auto-select payment method based on balance vs amount
     if (amount && parseFloat(amount) > 0) {
       if (parseFloat(amount) <= balanceData.available) {
-        setPaymentMethod('balance');
+        setSpeedOption('standard');
       } else if (balanceData.available > 0) {
-        setPaymentMethod('mixed');
+        setSpeedOption('express');
       } else {
-        setPaymentMethod('bank');
+        setSpeedOption('express');
       }
     }
   }, [amount, balanceData.available]);
@@ -186,13 +190,8 @@ export default function Send() {
     setNote(e.target.value);
   };
   
-  const handlePaymentMethodChange = (e) => {
-    setPaymentMethod(e.target.value);
-    
-    // If bank is selected but no account is selected, select the first one
-    if (e.target.value === 'bank' && !selectedBankAccount && bankAccounts.length > 0) {
-      setSelectedBankAccount(bankAccounts[0].id);
-    }
+  const handleSpeedOptionChange = (e) => {
+    setSpeedOption(e.target.value);
   };
   
   const handleBankAccountChange = (e) => {
@@ -212,20 +211,26 @@ export default function Send() {
       const payload = {
         recipient_user_id: recipient.id,
         amount: amount,
-        memo: note || undefined
+        memo: note || undefined,
+        speed_option: speedOption
       };
       
-      // Add external account info if using bank
-      if (paymentMethod === 'bank' || paymentMethod === 'mixed') {
+      // Determine if we need to split the transaction (part from wallet, part from bank)
+      const amountNum = parseFloat(amount);
+      const hasInsufficientFunds = amountNum > balanceData.available;
+      
+      // If insufficient funds, add external account info
+      if (hasInsufficientFunds) {
         if (selectedBankAccount) {
           payload.external_account_id = selectedBankAccount;
         } else if (bankAccounts.length > 0) {
           payload.external_account_id = bankAccounts[0].id;
         }
+        
+        // Include how much should come from wallet vs bank
+        payload.amount_from_wallet = balanceData.available;
+        payload.amount_from_bank = amountNum - balanceData.available;
       }
-      
-      // Add payment method type
-      payload.payment_method = paymentMethod;
       
       const resp = await transferAPI.send(payload);
       setSuccess(resp.data);
@@ -246,7 +251,7 @@ export default function Send() {
       setRecipient(null);
       setAmount('');
       setNote('');
-      setPaymentMethod('balance');
+      setSpeedOption('standard');
       setSelectedBankAccount('');
       setStep('initial');
     }
@@ -542,79 +547,61 @@ export default function Send() {
       {parseFloat(amount) > 0 && (
         <Box sx={{ mb: 4 }}>
           <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
-            Payment Method
+            Delivery Speed
           </Typography>
           
           <RadioGroup
-            value={paymentMethod}
-            onChange={handlePaymentMethodChange}
+            value={speedOption}
+            onChange={handleSpeedOptionChange}
             sx={{ width: '100%' }}
           >
-            {/* Balance option */}
-            {balanceData.available > 0 && parseFloat(amount) <= balanceData.available && (
-              <FormControlLabel 
-                value="balance"
-                control={<Radio />}
-                label={
-                  <Box sx={{ ml: 1 }}>
-                    <Typography variant="body2" color="text.primary">
-                      Liquicity Balance
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      {UI_STANDARD_SEND_FEE} fee (${balanceFee.toFixed(2)})
-                    </Typography>
-                  </Box>
-                }
-                sx={{ 
-                  p: 2, 
-                  borderRadius: 2,
-                  bgcolor: 'rgba(17, 25, 40, 0.7)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  mb: 2,
-                  width: '100%',
-                  m: 0
-                }}
-              />
-            )}
-            
-            {/* Mixed option */}
-            {balanceData.available > 0 && parseFloat(amount) > balanceData.available && (
-              <FormControlLabel 
-                value="mixed"
-                control={<Radio />}
-                label={
-                  <Box sx={{ ml: 1 }}>
-                    <Typography variant="body2" color="text.primary">
-                      Liquicity Balance + Bank Account
-                    </Typography>
-                    <Typography variant="caption" color="text.secondary">
-                      ${balanceData.available.toFixed(2)} from balance ({UI_STANDARD_SEND_FEE} fee) + ${(parseFloat(amount) - balanceData.available).toFixed(2)} from bank ({UI_BANK_TRANSFER_FEE} fee)
-                    </Typography>
-                  </Box>
-                }
-                sx={{ 
-                  p: 2, 
-                  borderRadius: 2,
-                  bgcolor: 'rgba(17, 25, 40, 0.7)',
-                  border: '1px solid rgba(255, 255, 255, 0.1)',
-                  mb: 2,
-                  width: '100%',
-                  m: 0
-                }}
-              />
-            )}
-            
-            {/* Bank account option */}
+            {/* Standard option */}
             <FormControlLabel 
-              value="bank"
+              value="standard"
               control={<Radio />}
               label={
                 <Box sx={{ ml: 1 }}>
                   <Typography variant="body2" color="text.primary">
-                    Bank Account
+                    Standard
                   </Typography>
                   <Typography variant="caption" color="text.secondary">
-                    {UI_BANK_TRANSFER_FEE} fee (${bankFee.toFixed(2)})
+                    {UI_STANDARD_ALL_IN_FEE} fee (${calculateFee(parseFloat(amount || '0'), STANDARD_SEND_FEE_RATE).toFixed(2)})
+                  </Typography>
+                  {parseFloat(amount) > balanceData.available && (
+                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                      ${Math.min(parseFloat(amount), balanceData.available).toFixed(2)} sent instantly, ${(parseFloat(amount) - balanceData.available).toFixed(2)} in 1-3 business days
+                    </Typography>
+                  )}
+                </Box>
+              }
+              sx={{ 
+                p: 2, 
+                borderRadius: 2,
+                bgcolor: 'rgba(17, 25, 40, 0.7)',
+                border: '1px solid rgba(255, 255, 255, 0.1)',
+                mb: 2,
+                width: '100%',
+                m: 0
+              }}
+            />
+            
+            {/* Express option */}
+            <FormControlLabel 
+              value="express"
+              control={<Radio />}
+              label={
+                <Box sx={{ ml: 1 }}>
+                  <Typography variant="body2" color="text.primary">
+                    Express
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary">
+                    {UI_EXPRESS_ALL_IN_FEE} fee (${calculateFee(parseFloat(amount || '0'), EXPRESS_ALL_IN_FEE_RATE).toFixed(2)})
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                    Funds available instantly (≤15 minutes)
+                  </Typography>
+                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.7rem', mt: 0.5, opacity: 0.7 }}>
+                    *Includes {UI_INSTANT_DEPOSIT_FEE} deposit fee + {UI_STANDARD_SEND_FEE} send fee
                   </Typography>
                 </Box>
               }
@@ -628,48 +615,63 @@ export default function Send() {
               }}
             />
           </RadioGroup>
+        </Box>
+      )}
+      
+      {/* Bank account selection */}
+      {parseFloat(amount) > balanceData.available && (
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 2 }}>
+            Bank Account for Additional Funds
+          </Typography>
           
-          {/* Bank account selection */}
-          {(paymentMethod === 'bank' || paymentMethod === 'mixed') && (
-            <Box sx={{ mt: 2 }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-                Select Bank Account
-              </Typography>
-              
-              <TextField
-                select
-                fullWidth
-                value={selectedBankAccount}
-                onChange={handleBankAccountChange}
-                InputProps={{
-                  sx: {
-                    borderRadius: '12px',
+          {bankAccounts.length > 0 ? (
+            <RadioGroup
+              value={selectedBankAccount}
+              onChange={handleBankAccountChange}
+              sx={{ width: '100%' }}
+            >
+              {bankAccounts.map((account) => (
+                <FormControlLabel
+                  key={account.id}
+                  value={account.id}
+                  control={<Radio />}
+                  label={
+                    <Box sx={{ ml: 1 }}>
+                      <Typography variant="body2" color="text.primary">
+                        {account.name}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {account.accountNumber}
+                      </Typography>
+                    </Box>
+                  }
+                  sx={{ 
+                    p: 2, 
+                    borderRadius: 2,
                     bgcolor: 'rgba(17, 25, 40, 0.7)',
                     border: '1px solid rgba(255, 255, 255, 0.1)',
-                    color: '#fff'
-                  }
-                }}
-                sx={{
-                  '& .MuiOutlinedInput-root': {
-                    '& fieldset': {
-                      border: 'none'
-                    },
-                    '&:hover fieldset': {
-                      border: 'none'
-                    },
-                    '&.Mui-focused fieldset': {
-                      border: 'none'
-                    }
-                  }
-                }}
-              >
-                {bankAccounts.map((account) => (
-                  <MenuItem key={account.id} value={account.id}>
-                    {account.name} ({account.accountNumber})
-                  </MenuItem>
-                ))}
-              </TextField>
-            </Box>
+                    mb: 1,
+                    width: '100%',
+                    m: 0
+                  }}
+                />
+              ))}
+            </RadioGroup>
+          ) : (
+            <Button
+              variant="outlined"
+              startIcon={<AddIcon />}
+              fullWidth
+              sx={{ 
+                py: 2,
+                borderColor: 'rgba(255, 255, 255, 0.1)',
+                color: 'text.primary',
+                borderStyle: 'dashed'
+              }}
+            >
+              Link Bank Account
+            </Button>
           )}
         </Box>
       )}
@@ -746,30 +748,16 @@ export default function Send() {
             Payment Method
           </Typography>
           
-          {paymentMethod === 'balance' && (
+          {speedOption === 'standard' && (
             <Typography variant="body1" color="text.primary">
-              Liquicity Balance
+              Standard (1-3 business days)
             </Typography>
           )}
           
-          {paymentMethod === 'bank' && (
+          {speedOption === 'express' && (
             <Typography variant="body1" color="text.primary">
-              {bankAccounts.find(acc => acc.id === selectedBankAccount)?.name || 'Bank Account'} 
-              ({bankAccounts.find(acc => acc.id === selectedBankAccount)?.accountNumber || ''})
+              Express (≤15 minutes)
             </Typography>
-          )}
-          
-          {paymentMethod === 'mixed' && (
-            <>
-              <Typography variant="body1" color="text.primary">
-                Liquicity Balance + Bank Account
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                ${balanceData.available.toFixed(2)} from balance + 
-                ${(parseFloat(amount) - balanceData.available).toFixed(2)} from 
-                {bankAccounts.find(acc => acc.id === selectedBankAccount)?.name || 'bank'}
-              </Typography>
-            </>
           )}
         </Box>
         
@@ -779,9 +767,23 @@ export default function Send() {
           </Typography>
           <Typography variant="body1" color="text.primary">
             ${totalFee().toFixed(2)} 
-            {paymentMethod === 'balance' && `(${UI_STANDARD_SEND_FEE}%)`}
-            {paymentMethod === 'bank' && `(${UI_BANK_TRANSFER_FEE}%)`}
-            {paymentMethod === 'mixed' && '(mixed rates)'}
+            {speedOption === 'standard' 
+              ? `(${UI_STANDARD_ALL_IN_FEE} - Standard)` 
+              : `(${UI_EXPRESS_ALL_IN_FEE} - Express)`}
+          </Typography>
+        </Box>
+        
+        <Box sx={{ mb: 2 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Delivery
+          </Typography>
+          <Typography variant="body1" color="text.primary">
+            {speedOption === 'standard' && parseFloat(amount) <= balanceData.available && 'Funds available in 1-3 business days'}
+            {speedOption === 'standard' && parseFloat(amount) > balanceData.available && (
+              `${Math.min(parseFloat(amount), balanceData.available).toFixed(2)} instantly, 
+               ${(parseFloat(amount) - balanceData.available).toFixed(2)} in 1-3 business days`
+            )}
+            {speedOption === 'express' && 'All funds available instantly (≤15 minutes)'}
           </Typography>
         </Box>
         
@@ -887,6 +889,22 @@ export default function Send() {
             </Typography>
           </Box>
         )}
+        
+        <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(255, 255, 255, 0.05)', borderRadius: 1 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
+            Delivery Speed
+          </Typography>
+          <Typography variant="body1" color="text.primary">
+            {speedOption === 'standard' ? 'Standard (1-3 business days)' : 'Express (≤15 minutes)'}
+          </Typography>
+          
+          {speedOption === 'standard' && parseFloat(amount) > balanceData.available && (
+            <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+              ${Math.min(parseFloat(amount), balanceData.available).toFixed(2)} sent instantly, 
+              ${(parseFloat(amount) - balanceData.available).toFixed(2)} will arrive in 1-3 business days
+            </Typography>
+          )}
+        </Box>
         
         <Typography variant="body2" color="text.secondary">
           Transaction ID: {success?.transfer_id || 'TRX' + Math.floor(Math.random() * 1000000)}

@@ -187,7 +187,7 @@ export const bridgeAPI = {
   createExternalAccount: (payload, options = {}) => api.post('/bridge/external_account', payload, options),
 
   // Card issuance / management (virtual for now)
-  createCard: (payload = { type: 'virtual', currency: 'usdb' }, options = {}) =>
+  createCard: (payload = { type: 'virtual', currency: 'usd' }, options = {}) =>
     api.post('/bridge/cards', payload, options),
 
   // Plaid flows (US bank linking)

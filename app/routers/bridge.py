@@ -2,10 +2,12 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 from typing import Any, Dict
-
-from app.dependencies.auth import get_current_user
+from pydantic import BaseModel, Field, constr
 from app.database import get_db
+from app.dependencies.auth import get_current_user
 from app.services.bridge import BridgeClient
+from app.models import User
+import os
 
 router = APIRouter(tags=["bridge"])
 
@@ -89,8 +91,6 @@ async def get_or_create_customer(
 
 # -------- External Accounts --------
 
-from pydantic import BaseModel, constr, Field
-
 class ExternalAccountIn(BaseModel):
     currency: constr(strip_whitespace=True, to_lower=True)
     account_holder_name: str = Field(..., max_length=100)
@@ -118,7 +118,7 @@ async def create_external_account(
 
 class CardCreateIn(BaseModel):
     type: str = Field("virtual", description="Type of card to issue, e.g., virtual or physical")
-    currency: str = Field("usdc", description="Currency for the card account")
+    # Currency is derived from user profile/KYC
 
 @router.post("/cards")
 async def create_card_account(
@@ -127,9 +127,34 @@ async def create_card_account(
     current_user: str = Depends(get_current_user),
 ):
     cust_id = await _ensure_bridge_customer(db, current_user)
+    
+    # Get the user's local currency from their profile
+    row = db.execute(
+        text("SELECT country FROM users WHERE email = :id OR auth0_id = :id"),
+        {"id": current_user},
+    ).first()
+    
+    # Default to USD, but use local currency based on country if available
+    local_currency = "usd"
+    if row and row[0]:
+        country = row[0].upper()
+        if country == "MX":
+            local_currency = "mxn"
+        elif country in [
+            "AT","BE","BG","CH","CY","CZ","DE","DK","EE","ES","FI","FR","GB",
+            "GR","HR","HU","IE","IS","IT","LI","LT","LU","LV","MT","NL","NO",
+            "PL","PT","RO","SE","SI","SK"
+        ]:
+            local_currency = "eur"
+    
     client = BridgeClient()
     try:
-        resp = await client.create_card(cust_id, body.dict())
+        # Create payload with the user's local currency
+        payload = {
+            "type": body.type,
+            "currency": local_currency
+        }
+        resp = await client.create_card(cust_id, payload)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Bridge create_card failed: {e}")
     return resp
@@ -162,4 +187,25 @@ async def plaid_exchange_public_token(
         resp = await client.plaid_exchange_token(request_id)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Bridge plaid_exchange_token failed: {e}")
-    return resp 
+    return resp
+
+async def create_card(current_user: User = Depends(get_current_user)):
+    """Create a new virtual card for the authenticated user."""
+    
+    # First get the customer ID for this user
+    client = BridgeClient()
+    cust_resp = await client.get_or_create_customer(current_user)
+    
+    # Check if we have a valid customer
+    if not cust_resp or "id" not in cust_resp:
+        raise HTTPException(status_code=400, detail="Failed to retrieve Bridge customer record")
+    
+    # Get the user's local currency from their profile
+    local_currency = current_user.profile.currency.lower() if current_user.profile and current_user.profile.currency else "usd"
+    
+    cust_id = cust_resp.get("id")
+    
+    # Create a card using the customer's local currency
+    card = await BridgeClient().create_card(cust_id,{"type":"virtual","currency":local_currency})
+    
+    return card 

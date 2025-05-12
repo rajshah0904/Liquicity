@@ -314,11 +314,9 @@ async def submit_kyc(request: Request, db: Session = Depends(get_db), current_us
         )
         db.commit()
         # Issue card
-        try:
-            card = await client.create_card(bridge_resp.get('id'), {"type":"virtual","currency":"usdb"})
-            db.execute(text("""INSERT INTO card_accounts (user_id, bridge_card_id, last4, state) VALUES (:u,:cid,:l4,:st) ON CONFLICT DO NOTHING"""),{"u":user_id,"cid":card.get('id'),"l4":card.get('last4'),"st":card.get('state')})
-        except Exception:
-            pass
+        local_currency = user.profile.currency.lower() if user.profile and user.profile.currency else "usd"
+        card = await client.create_card(bridge_resp.get('id'), {"type":"virtual","currency":local_currency})
+        db.execute(text("""INSERT INTO card_accounts (user_id, bridge_card_id, last4, state) VALUES (:u,:cid,:l4,:st) ON CONFLICT DO NOTHING"""),{"u":user_id,"cid":card.get('id'),"l4":card.get('last4'),"st":card.get('state')})
     except Exception as e:
         # Log but do not fail submission
         import logging

@@ -80,7 +80,7 @@ export default function RequestPage() {
   const [recipient, setRecipient] = useState(null);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState(userData.currency || 'USD');
   const [requests, setRequests] = useState(mockRequests);
   
   const [userData, setUserData] = useState({
@@ -94,7 +94,8 @@ export default function RequestPage() {
         // In a real app, this would fetch the user's data including their preferred currency
         // For now, we'll use mock data
         setUserData({
-          currency: 'USD'
+          currency: 'USD',
+          balance: 1000.00
         });
         
         // Also fetch the user's requests
@@ -113,6 +114,9 @@ export default function RequestPage() {
     };
     
     fetchUserData();
+    
+    // Always use the user's currency from their profile
+    setCurrency(userData.currency || 'USD');
   }, []);
   
   const handleSearch = (e) => {
@@ -136,22 +140,32 @@ export default function RequestPage() {
   };
   
   const handleCurrencyChange = (newCurrency) => {
-    setCurrency(newCurrency);
+    // Currency cannot be changed - locked to user's local currency
+    console.log("Currency is locked to user's local currency:", userData.currency);
   };
   
-  // Calculate converted amount based on recipient's currency
+  const getCurrencySymbol = (currencyCode) => {
+    switch(currencyCode) {
+      case 'EUR': return '€';
+      case 'GBP': return '£';
+      case 'MXN': return '₱';
+      case 'CAD': return 'C$';
+      default: return '$';
+    }
+  };
+  
   const getConvertedAmount = () => {
     if (!amount || !recipient) return '';
     
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum)) return '';
     
-    // Assuming recipient has a default currency of USD
-    const recipientCurrency = 'USD';
+    // Assuming recipient uses their local currency (not necessarily USD)
+    const recipientCurrency = recipient.currency || currency;
     
     if (currency === recipientCurrency) return amountNum.toFixed(2);
     
-    // Convert from selected currency to recipient's currency
+    // Convert between selected currencies
     const conversionRate = conversionRates[currency] / conversionRates[recipientCurrency];
     return (amountNum / conversionRate).toFixed(2);
   };
@@ -198,7 +212,7 @@ export default function RequestPage() {
       setRecipient(null);
       setAmount('');
       setNote('');
-      setCurrency('USD');
+      setCurrency(userData.currency || 'USD');
       setStep('initial');
     }
   };
@@ -371,7 +385,7 @@ export default function RequestPage() {
         
         <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 2 }}>
           <Typography variant="h5" color="text.secondary" sx={{ ml: 1 }}>
-            {currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency === 'MXN' ? '₱' : '$'}
+            {getCurrencySymbol(userData.currency)}
           </Typography>
           <TextField
             fullWidth
@@ -411,32 +425,22 @@ export default function RequestPage() {
               borderRadius: 1,
               display: 'flex',
               alignItems: 'center',
-              cursor: 'pointer',
               bgcolor: 'rgba(17, 25, 40, 0.7)',
             }}
-            onClick={() => {
-              const currencies = ['USD', 'EUR', 'GBP', 'MXN', 'CAD'];
-              const currentIndex = currencies.indexOf(currency);
-              const nextIndex = (currentIndex + 1) % currencies.length;
-              handleCurrencyChange(currencies[nextIndex]);
-            }}
           >
-            <Typography variant="body2" color="text.primary" mr={0.5}>
-              {currency}
+            <Typography variant="body2" color="text.primary">
+              {userData.currency}
             </Typography>
-            <KeyboardArrowDownIcon fontSize="small" sx={{ color: 'text.secondary' }} />
           </Box>
         </Box>
         
-        {amount && recipient && (
+        {amount && recipient && recipient.currency && recipient.currency !== userData.currency && (
           <Box sx={{ mt: 2, px: 1 }}>
             <Typography variant="caption" color="text.secondary">
-              {recipient.name} will receive {currency !== 'USD' ? `$${getConvertedAmount()} USD` : ''}
-              {currency !== 'USD' && (
-                <Box component="span" sx={{ color: 'primary.light' }}>
-                  {' '}(converted from {currency})
-                </Box>
-              )}
+              {recipient.name} will receive {getCurrencySymbol(recipient.currency)}{getConvertedAmount()} {recipient.currency}
+              <Box component="span" sx={{ color: 'primary.light' }}>
+                {' '}(converted from {userData.currency})
+              </Box>
             </Typography>
           </Box>
         )}
@@ -536,13 +540,13 @@ export default function RequestPage() {
       {/* Amount and details */}
       <Box sx={{ mb: 4, p: 3, bgcolor: 'rgba(17, 25, 40, 0.7)', borderRadius: 2 }}>
         <Typography variant="h4" color="text.primary" sx={{ mb: 3, textAlign: 'center' }}>
-          {currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency === 'MXN' ? '₱' : '$'}
-          {parseFloat(amount).toFixed(2)} {currency}
+          {getCurrencySymbol(userData.currency)}
+          {parseFloat(amount).toFixed(2)} {userData.currency}
         </Typography>
         
-        {currency !== 'USD' && (
+        {userData.currency !== recipient?.currency && recipient?.currency && (
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3, textAlign: 'center' }}>
-            Approximately ${getConvertedAmount()} USD for recipient
+            Approximately {getCurrencySymbol(recipient.currency)}{getConvertedAmount()} {recipient.currency} for recipient
           </Typography>
         )}
         
@@ -641,7 +645,7 @@ export default function RequestPage() {
         </Typography>
         
         <Typography variant="h3" color="text.primary" sx={{ mb: 3 }}>
-          {currency === 'USD' ? '$' : currency === 'EUR' ? '€' : currency === 'GBP' ? '£' : currency === 'MXN' ? '₱' : '$'}
+          {getCurrencySymbol(userData.currency)}
           {parseFloat(amount).toFixed(2)}
         </Typography>
         
@@ -733,7 +737,8 @@ export default function RequestPage() {
               fontWeight="500"
               color="text.primary"
             >
-              ${request.amount?.toFixed(2) || '0.00'}
+              {getCurrencySymbol(userData.currency)}
+              {request.amount?.toFixed(2) || '0.00'}
             </Typography>
             <Typography 
               component="span" 
@@ -801,7 +806,7 @@ export default function RequestPage() {
             }}>
               <Box />
               <Typography variant="body2" color="text.secondary">
-                Balance: <Typography component="span" fontWeight="600" color="#fff">${userData.balance?.toLocaleString() || '0.00'}</Typography>
+                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(userData.currency)}{userData.balance?.toLocaleString() || '0.00'}</Typography>
               </Typography>
             </Box>
             

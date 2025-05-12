@@ -328,21 +328,34 @@ const Navbar = ({ onDrawerToggle, drawerOpen, showMenuIcon = false }) => {
             {isLoading ? (
               <div className="auth-loading">Loading...</div>
             ) : isAuthenticated ? (
-              <div className="auth-container">
-                <div className="user-info">
-                  {user?.picture && (
-                    <img 
-                      src={user.picture} 
-                      alt="Profile" 
-                      className="profile-pic"
-                      width="32"
-                      height="32"
+              <Box sx={{ position: 'relative' }}>
+                <IconButton onClick={() => navigate('/profile')} sx={{ p: 0 }}>
+                  {user?.picture ? (
+                    <Avatar 
+                      src={user.picture}
+                      alt="Profile"
+                      sx={{ 
+                        width: 40, 
+                        height: 40, 
+                        cursor: 'pointer',
+                        border: '2px solid rgba(255, 255, 255, 0.1)'
+                      }}
                     />
+                  ) : (
+                    <Avatar 
+                      sx={{ 
+                        width: 40, 
+                        height: 40, 
+                        bgcolor: 'primary.main',
+                        cursor: 'pointer',
+                        border: '2px solid rgba(255, 255, 255, 0.1)'
+                      }}
+                    >
+                      {user?.name?.charAt(0) || user?.email?.charAt(0) || 'U'}
+                    </Avatar>
                   )}
-                  <span className="welcome-text">Welcome, {user?.name || user?.email}</span>
-                </div>
-                <LogoutButton />
-              </div>
+                </IconButton>
+              </Box>
             ) : (
               <div className="auth-buttons">
                 <LoginButton />

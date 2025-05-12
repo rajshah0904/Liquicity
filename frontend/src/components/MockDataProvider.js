@@ -7,7 +7,7 @@ const MockDataContext = createContext();
 const mockWallets = [
   {
     wallet_id: 'w-001',
-    currency: 'usdb',
+    currency: 'usd',
     balance: 1250.00,
     local_currency: 'usd',
     local_balance: 1250.00,
@@ -31,7 +31,7 @@ const mockTransactions = [
     id: 't-001',
     type: 'DEPOSIT',
     amount: 500.00,
-    currency: 'USDB',
+    currency: 'USD',
     date: new Date(Date.now() - 86400000).toISOString(),
     description: 'Bank deposit',
     status: 'completed'
@@ -40,7 +40,7 @@ const mockTransactions = [
     id: 't-002',
     type: 'SEND',
     amount: 120.00,
-    currency: 'USDB',
+    currency: 'USD',
     date: new Date(Date.now() - 172800000).toISOString(),
     description: 'Payment to Sarah',
     status: 'completed'
@@ -49,7 +49,7 @@ const mockTransactions = [
     id: 't-003',
     type: 'RECEIVE',
     amount: 75.50,
-    currency: 'USDB',
+    currency: 'USD',
     date: new Date(Date.now() - 345600000).toISOString(),
     description: 'Payment from John',
     status: 'completed'
@@ -58,7 +58,7 @@ const mockTransactions = [
     id: 't-004',
     type: 'WITHDRAW',
     amount: 200.00,
-    currency: 'USDB',
+    currency: 'USD',
     date: new Date(Date.now() - 518400000).toISOString(),
     description: 'Withdrawal to bank account',
     status: 'completed'
@@ -67,7 +67,7 @@ const mockTransactions = [
     id: 't-005',
     type: 'EXCHANGE',
     amount: 150.00,
-    currency: 'USDB',
+    currency: 'USD',
     date: new Date(Date.now() - 604800000).toISOString(),
     description: 'Convert to EUR',
     status: 'completed'
@@ -119,7 +119,7 @@ export const MockDataProvider = ({ children }) => {
           id: `t-${Math.floor(Math.random() * 1000)}`,
           type: 'SEND',
           amount: payload.amount,
-          currency: 'USDB',
+          currency: mockData.user.profile.currency,
           date: new Date().toISOString(),
           description: `Payment to user ${payload.recipient_user_id}`,
           status: 'completed'

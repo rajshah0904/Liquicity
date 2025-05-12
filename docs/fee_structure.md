@@ -30,19 +30,41 @@ This option provides the most economical way to send money, undercutting major r
 
 This option provides true instant processing at competitive rates compared to PayPal's 1.5–2.9% card rails.
 
+### Handling Partial Transactions
+
+When a user initiates a transfer but has insufficient wallet balance:
+
+#### Standard Tier Partial Transactions
+- **Wallet portion**: Available balance is sent instantly with 0.50% fee
+- **Bank portion**: Remaining amount is processed with standard deposit (0% fee) plus 0.50% send fee
+- **Timing**: Wallet portion arrives instantly, bank portion in 1-3 business days
+- **Total fee**: Still 0.50% all-in
+
+#### Express Tier Partial Transactions
+- All funds are sent instantly regardless of wallet balance
+- The wallet portion is transferred immediately with a 2.00% fee
+- The bank portion is advanced from treasury with a 2.00% fee
+- **Timing**: All funds arrive instantly (≤15 minutes)
+- **Total fee**: 2.00% all-in
+
 ### Other Operations
 - **Wallet-to-Wallet Transfer**: 0.50% fee
 - **Withdrawals**: 0% (FREE)
 - **Card Spending**: 0% (FREE)
 
-## Implementation Details
+## Mathematical Verification
 
 The actual fee calculations use precise values:
-- Instant Deposit Fee: 1.5076% (displayed as 1.5% in UI)
-- P2P Send Fee: 0.5%
-- Bank Transfer Fee: 2.9%
 
-The all-in Express fee equals: 1 - (1 - 0.015076) × (1 - 0.005) = 2.00%
+### Standard Tier (0.50% all-in)
+Standard = Slow Deposit + P2P Send
+1 - (1 - 0) × (1 - 0.005) = 0.005 = 0.50%
+
+### Express Tier (2.00% all-in)
+Express = Instant Deposit + P2P Send
+1 - (1 - 0.015076) × (1 - 0.005) = 1 - 0.984924 × 0.995 ≈ 1 - 0.98 = 0.02 = 2.00%
+
+For UI display, we round 1.5076% to 1.5% to keep things readable, but calculations use the exact rates with fees always rounded up to the nearest cent.
 
 ## API and Code Constants
 
