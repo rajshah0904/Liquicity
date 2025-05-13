@@ -19,7 +19,8 @@ import {
   ListItemAvatar,
   Tooltip,
   alpha,
-  ListItemIcon
+  ListItemIcon,
+  Button
 } from '@mui/material';
 import { walletAPI } from '../utils/api';
 import { useNavigate, Link as RouterLink } from 'react-router-dom';
@@ -48,6 +49,9 @@ import PaymentsIcon from '@mui/icons-material/Payments';
 import { useAuth0 } from '@auth0/auth0-react';
 import NotificationCenter from '../components/NotificationCenter';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import { getCurrencySymbol } from '../utils/currencyUtils';
+import { resetAppData } from '../reset-storage';
 
 // Import our custom UI components
 import {
@@ -90,6 +94,59 @@ const Dashboard = () => {
   const [stablecoinBalance, setStablecoinBalance] = useState(0);
   const [recentTransactions, setRecentTransactions] = useState([]);
 
+  // Function to fetch wallet data
+  const fetchWalletData = async () => {
+    try {
+      const walletResp = await walletAPI.getOverview();
+      setWallets(walletResp.data.wallets || []);
+      
+      // Get current user's email
+      const userEmail = user?.email || 'user@example.com';
+      console.log("Current user email:", userEmail);
+      
+      // Special case for Hadeer - get data from the EUR wallet
+      if (userEmail === 'hadeermotair@gmail.com') {
+        const eurWallet = walletResp.data.wallets.find(w => w.currency === 'eur');
+        if (eurWallet) {
+          console.log("Hadeer's wallet found:", eurWallet);
+          setMainBalance(eurWallet.balance || 0);
+          setMainCurrency('EUR');
+        }
+      } else {
+        // For other users, get data from the USD wallet
+        const usdWallet = walletResp.data.wallets.find(w => w.currency === 'usd');
+        if (usdWallet) {
+          console.log("USD wallet found:", usdWallet);
+          setMainBalance(usdWallet.balance || 0);
+          setMainCurrency('USD');
+        }
+      }
+      
+      // Fetch transactions 
+      const historyResp = await walletAPI.getAllTransactions();
+      const txns = historyResp.data.transactions || [];
+      setTransactions(txns);
+      const sorted = [...txns].sort((a,b)=> new Date(b.date) - new Date(a.date)).slice(0,5);
+      setRecentTransactions(sorted);
+    } catch (err) {
+      console.error('Failed to fetch wallet data', err);
+    }
+  };
+
+  // Fetch wallet data on mount and periodically
+  useEffect(() => {
+    // Immediately load data
+    fetchWalletData();
+    
+    // Refresh data every 15 seconds
+    const intervalId = setInterval(() => {
+      fetchWalletData();
+      console.log("Dashboard balance refreshed");
+    }, 15000);
+    
+    return () => clearInterval(intervalId);
+  }, [user]);
+
   // Fetch user data
   useEffect(() => {
     setLoading(true);
@@ -97,13 +154,40 @@ const Dashboard = () => {
 
     const fetchData = async () => {
       try {
+        // Fetch user profile to get country
+        const userProfile = await fetch('/api/user/user').then(res => res.json()).catch(() => null);
+        const userCountry = userProfile?.country || null;
+        
         // Fetch wallet overview
         const walletResp = await walletAPI.getOverview();
         setWallets(walletResp.data.wallets || []);
-        // Main balance: sum of local balances
-        const totalLocal = (walletResp.data.wallets || []).reduce((acc,w)=>acc + (w.local_balance||0),0);
-        setMainBalance(totalLocal);
-        setMainCurrency(walletResp.data.wallets[0]?.local_currency?.toUpperCase() || 'USD');
+        
+        // Special case for Hadeer - get data from the EUR wallet
+        if (user && user.email === 'hadeermotair@gmail.com') {
+          const eurWallet = walletResp.data.wallets.find(w => w.currency === 'eur');
+          if (eurWallet) {
+            setMainBalance(eurWallet.balance || 0);
+            setMainCurrency('EUR');
+          } else {
+            setMainBalance(0);
+            setMainCurrency('EUR');
+          }
+        } else {
+          // For other users, get data from the USD wallet
+          const usdWallet = walletResp.data.wallets.find(w => w.currency === 'usd');
+          if (usdWallet) {
+            setMainBalance(usdWallet.balance || 0);
+            setMainCurrency('USD');
+          } else if (walletResp.data.wallets && walletResp.data.wallets.length > 0) {
+            // Fallback to first wallet if no USD wallet
+            setMainBalance(walletResp.data.wallets[0].balance || 0);
+            setMainCurrency(walletResp.data.wallets[0].currency?.toUpperCase() || 'USD');
+          } else {
+            // Default fallback
+            setMainBalance(0);
+            setMainCurrency('USD');
+          }
+        }
 
         // Fetch transactions
         const historyResp = await walletAPI.getAllTransactions();
@@ -111,7 +195,7 @@ const Dashboard = () => {
         setTransactions(txns);
         const sorted = [...txns].sort((a,b)=> new Date(b.date)- new Date(a.date)).slice(0,5);
         setRecentTransactions(sorted);
-        const pendingAmount = txns.filter(tx=> tx.state==='pending').reduce((s,tx)=> s+Number(tx.amount||0),0);
+        const pendingAmount = txns.filter(tx=> tx.status === 'pending').reduce((s,tx)=> s+Number(tx.amount||0),0);
         setPending(pendingAmount);
       } catch (error) {
         console.error("Error fetching data:", error);
@@ -122,11 +206,22 @@ const Dashboard = () => {
     };
 
     fetchData();
+    
+    // Set up an interval to refresh data every 30 seconds
+    const intervalId = setInterval(fetchData, 30000);
+    
+    // Clean up the interval when component unmounts
+    return () => clearInterval(intervalId);
   }, [user]);
 
   // Format currency
   const formatCurrency = (amount, currency = 'USD') => {
     if (amount === undefined || amount === null) return '—';
+    
+    // Special case for Hadeer - always use EUR
+    if (user && user.email === 'hadeermotair@gmail.com') {
+      currency = 'EUR';
+    }
     
     const formatter = new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -303,6 +398,14 @@ const Dashboard = () => {
               >
                 <RefreshIcon fontSize="small" />
               </IconButton>
+              <Button 
+                variant="outlined" 
+                size="small" 
+                sx={{ ml: 1, fontSize: '0.7rem' }}
+                onClick={() => resetAppData()}
+              >
+                Reset Data
+              </Button>
             </Typography>
           </Box>
         </Box>
@@ -328,7 +431,7 @@ const Dashboard = () => {
                     separator=","
                     decimals={2}
                     decimal="."
-                    prefix={mainCurrency === 'USD' ? '$' : (mainCurrency === 'EUR' ? '€' : '')}
+                    prefix={getCurrencySymbol(user && user.email === 'hadeermotair@gmail.com' ? 'EUR' : mainCurrency, user)}
                   />
                 </Typography>
               </Box>
@@ -461,81 +564,11 @@ const Dashboard = () => {
               background: 'rgba(17, 24, 39, 0.7)',
               borderColor: 'rgba(59, 130, 246, 0.1)'
             }}>
-              <List sx={{ p: 0 }}>
-                <ListItem 
-                  sx={{ 
-                    borderBottom: '1px solid rgba(55, 65, 81, 0.2)', 
-                    py: 2,
-                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
-                  }}
-                >
-                  <ListItemAvatar>
-                    <Avatar sx={{ backgroundColor: '#8b5cf6' }}>
-                      <AttachMoneyIcon />
-                    </Avatar>
-                  </ListItemAvatar>
-                  <ListItemText 
-                    primary="You sent Alex Johnson money" 
-                    secondary={<>$150.00 • 2 hours ago</>} 
-                  />
-                  <Box sx={{ 
-                    width: 8, 
-                    height: 8, 
-                    borderRadius: '50%', 
-                    bgcolor: 'primary.main',
-                    boxShadow: '0 0 8px 0 rgba(59, 130, 246, 0.8)'
-                  }} />
-                </ListItem>
-                
-                <ListItem 
-                  sx={{ 
-                    borderBottom: '1px solid rgba(55, 65, 81, 0.2)', 
-                    py: 2,
-                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
-                  }}
-                >
-                  <ListItemAvatar>
-                    <Avatar sx={{ backgroundColor: '#10b981' }}>
-                      <AttachMoneyIcon />
-                    </Avatar>
-                  </ListItemAvatar>
-                  <ListItemText 
-                    primary="Sarah Miller sent you money" 
-                    secondary={<>$75.50 • Yesterday</>} 
-                  />
-                  <Box sx={{ 
-                    width: 8, 
-                    height: 8, 
-                    borderRadius: '50%', 
-                    bgcolor: 'primary.main',
-                    boxShadow: '0 0 8px 0 rgba(59, 130, 246, 0.8)'
-                  }} />
-                </ListItem>
-                
-                <ListItem 
-                  sx={{ 
-                    py: 2,
-                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
-                  }}
-                >
-                  <ListItemAvatar>
-                    <Avatar sx={{ backgroundColor: '#f59e0b' }}>
-                      <AttachMoneyIcon />
-                    </Avatar>
-                  </ListItemAvatar>
-                  <ListItemText 
-                    primary="David Williams requested money" 
-                    secondary={<>$42.99 • Yesterday</>} 
-                  />
-                  <Box sx={{ 
-                    width: 8, 
-                    height: 8, 
-                    borderRadius: '50%', 
-                    bgcolor: 'primary.main',
-                    boxShadow: '0 0 8px 0 rgba(59, 130, 246, 0.8)'
-                  }} />
-                </ListItem>
-              </List>
+              <Box sx={{ p: 3, textAlign: 'center' }}>
+                <Typography variant="body2" color="text.secondary">
+                  Your notifications will appear here
+                </Typography>
+              </Box>
             </FloatingCard>
           </Box>
         </motion.div>
@@ -570,72 +603,58 @@ const Dashboard = () => {
               background: 'rgba(17, 24, 39, 0.7)',
               borderColor: 'rgba(59, 130, 246, 0.1)'
             }}>
-              <List sx={{ p: 0 }}>
-                <ListItem 
-                  sx={{ 
-                    borderBottom: '1px solid rgba(55, 65, 81, 0.2)', 
-                    py: 2,
-                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
-                  }}
-                >
-                  <ListItemIcon>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: 'rgba(59, 130, 246, 0.1)' }}>
-                      <ArrowUpwardIcon color="error" />
-                    </Box>
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={<Box component="span" sx={{ fontWeight: 500 }}>Withdrawal to Bank ****4582</Box>} 
-                    secondary={<>May 10, 2023</>}
-                  />
-                  <Box sx={{ textAlign: 'right' }}>
-                    <Typography variant="body2" color="error.main" fontWeight="600">-$250.00</Typography>
-                    <Typography variant="caption" color="text.secondary">Completed</Typography>
-                  </Box>
-                </ListItem>
-                
-                <ListItem 
-                  sx={{ 
-                    borderBottom: '1px solid rgba(55, 65, 81, 0.2)', 
-                    py: 2,
-                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
-                  }}
-                >
-                  <ListItemIcon>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: 'rgba(139, 92, 246, 0.1)' }}>
-                      <SendIcon color="error" />
-                    </Box>
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={<Box component="span" sx={{ fontWeight: 500 }}>Sent to Alex Johnson</Box>} 
-                    secondary={<>May 9, 2023</>}
-                  />
-                  <Box sx={{ textAlign: 'right' }}>
-                    <Typography variant="body2" color="error.main" fontWeight="600">-$150.00</Typography>
-                    <Typography variant="caption" color="text.secondary">Completed</Typography>
-                  </Box>
-                </ListItem>
-                
-                <ListItem 
-                  sx={{ 
-                    py: 2,
-                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
-                  }}
-                >
-                  <ListItemIcon>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: 'rgba(16, 185, 129, 0.1)' }}>
-                      <ReceiveIcon color="success" />
-                    </Box>
-                  </ListItemIcon>
-                  <ListItemText 
-                    primary={<Box component="span" sx={{ fontWeight: 500 }}>Deposit from Bank ****4582</Box>} 
-                    secondary={<>May 8, 2023</>}
-                  />
-                  <Box sx={{ textAlign: 'right' }}>
-                    <Typography variant="body2" color="success.main" fontWeight="600">+$500.00</Typography>
-                    <Typography variant="caption" color="text.secondary">Completed</Typography>
-                  </Box>
-                </ListItem>
-              </List>
+              {recentTransactions.length > 0 ? (
+                <List sx={{ p: 0 }}>
+                  {recentTransactions.map((transaction, index) => (
+                    <ListItem 
+                      key={transaction.transaction_id || index}
+                      sx={{ 
+                        borderBottom: index < recentTransactions.length - 1 ? '1px solid rgba(55, 65, 81, 0.2)' : 'none', 
+                        py: 2,
+                        '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
+                      }}
+                    >
+                      <ListItemIcon>
+                        <Box sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'center', 
+                          width: 40, 
+                          height: 40, 
+                          borderRadius: '50%', 
+                          bgcolor: getTransactionTypeColor(transaction.type)
+                        }}>
+                          {getTransactionIcon(transaction.type)}
+                        </Box>
+                      </ListItemIcon>
+                      <ListItemText 
+                        primary={<Box component="span" sx={{ fontWeight: 500 }}>{transaction.description}</Box>}
+                        secondary={<>{formatTransactionDate(transaction.date)}</>}
+                      />
+                      <Box sx={{ textAlign: 'right' }}>
+                        <Typography 
+                          variant="body2" 
+                          color={transaction.amount < 0 ? "error.main" : "success.main"} 
+                          fontWeight="600"
+                        >
+                          {transaction.amount < 0 ? '-' : '+'}
+                          {getCurrencySymbol(user && user.email === 'hadeermotair@gmail.com' ? 'EUR' : (transaction.currency || mainCurrency), user)}
+                          {Math.abs(transaction.amount).toFixed(2)}
+                        </Typography>
+                        <Typography variant="caption" color="text.secondary">
+                          {transaction.status || 'Completed'}
+                        </Typography>
+                      </Box>
+                    </ListItem>
+                  ))}
+                </List>
+              ) : (
+                <Box sx={{ p: 3, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Your transaction history will appear here
+                  </Typography>
+                </Box>
+              )}
             </FloatingCard>
           </Box>
         </motion.div>

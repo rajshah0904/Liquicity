@@ -449,3 +449,39 @@ async def get_kyc_status(user_id: str, db: Session = Depends(get_db), current_us
 async def email_exists(email: EmailStr, db: Session = Depends(get_db)):
     row = db.execute(text("SELECT 1 FROM users WHERE lower(email) = lower(:e)"), {"e": email}).first()
     return {"exists": bool(row)}
+
+# === Search users endpoint ===
+@router.get("/search", tags=["user"], summary="Search for users by name or email")
+async def search_users(query: str, db: Session = Depends(get_db), current_user: str = Depends(get_current_user)):
+    """Search for users by name or email (partial match)."""
+    # Look up the current user to ensure they exist
+    current_user_row = _lookup_user_row(db, current_user)
+    if not current_user_row:
+        raise HTTPException(status_code=404, detail="Current user not found")
+    
+    # Search for users by name or email
+    search_q = f"%{query}%"
+    rows = db.execute(
+        text("""
+            SELECT id, email, first_name, last_name, bridge_customer_id
+            FROM users 
+            WHERE (email ILIKE :q OR first_name ILIKE :q OR last_name ILIKE :q)
+            AND bridge_customer_id IS NOT NULL
+            LIMIT 10
+        """),
+        {"q": search_q}
+    ).fetchall()
+    
+    # Format the results
+    results = []
+    for row in rows:
+        user_id, email, first_name, last_name, bridge_id = row
+        name = f"{first_name} {last_name}" if first_name and last_name else email.split('@')[0]
+        results.append({
+            "id": user_id,
+            "email": email,
+            "name": name,
+            "has_wallet": bool(bridge_id)
+        })
+    
+    return {"users": results}

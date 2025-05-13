@@ -114,7 +114,13 @@ export const authAPI = {
   updateProfile: (userId, profileData) => api.put(`/user/update-profile/${userId}`, profileData),
   
   // Update user metadata (KYC info)
-  updateMetadata: (userId, metadata) => api.post(`/user/${userId}/metadata`, metadata)
+  updateMetadata: (userId, metadata) => api.post(`/user/${userId}/metadata`, metadata),
+  
+  // Search users by name or email
+  searchUsers: (query) => withMockFallback(
+    () => api.get(`/user/search?query=${encodeURIComponent(query)}`),
+    'authAPI.searchUsers'
+  )(),
 };
 
 // Export API endpoints for wallet operations

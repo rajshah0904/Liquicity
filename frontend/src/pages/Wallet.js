@@ -19,9 +19,11 @@ import {
   Button
 } from '@mui/material';
 import { walletAPI, bridgeAPI } from '../utils/api';
+import { getUserCurrency, getCurrencySymbol } from '../utils/currencyUtils';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
+import { useAuth0 } from '@auth0/auth0-react';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import RefreshIcon from '@mui/icons-material/Refresh';
@@ -64,41 +66,90 @@ export default function Wallet() {
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const { user } = useAuth0();
 
   useEffect(() => {
     async function fetchOverview() {
       setLoading(true);
       setError(null);
       try {
+        // Force refresh balances first to ensure data is current
+        if (window.localStorage) {
+          console.log("Wallet: Direct localStorage check");
+          try {
+            const storedBalances = localStorage.getItem('mockUserBalances');
+            if (storedBalances) {
+              const balances = JSON.parse(storedBalances);
+              console.log("Wallet: Found stored balances:", balances);
+            } else {
+              console.log("Wallet: No balances found in localStorage");
+            }
+          } catch (e) {
+            console.error("Wallet: Error checking localStorage", e);
+          }
+        }
+        
         const resp = await walletAPI.getOverview();
+        console.log("Wallet API response:", resp.data);
         setData(resp.data);
+        
+        // Fetch transactions
+        const historyResp = await walletAPI.getAllTransactions();
+        const transactions = historyResp.data.transactions || [];
+        setData(prev => ({ ...prev, transactions }));
       } catch (err) {
-        console.error(err);
+        console.error("Wallet fetch error:", err);
         setError(err?.response?.data?.detail || err.message || 'Failed to load wallet');
       } finally {
         setLoading(false);
       }
     }
     fetchOverview();
+    
+    // Set up an interval to refresh data every 15 seconds
+    const intervalId = setInterval(fetchOverview, 15000);
+    
+    // Clean up the interval when component unmounts
+    return () => clearInterval(intervalId);
   }, []);
 
   const totalLocalBalance = useMemo(() => {
-    return data.wallets.reduce((acc, w) => acc + (w.local_balance || 0), 0);
-  }, [data.wallets]);
+    // Special case for Hadeer - use EUR wallet balance
+    if (user && user.email === 'hadeermotair@gmail.com') {
+      const eurWallet = data.wallets.find(w => w.currency === 'eur');
+      return eurWallet ? eurWallet.balance : 0;
+    }
+    
+    // For other users, use USD wallet balance
+    const usdWallet = data.wallets.find(w => w.currency === 'usd');
+    return usdWallet ? usdWallet.balance : 0;
+  }, [data.wallets, user]);
 
   const pendingBalance = useMemo(() => {
-    // This is a mock value, in a real app you would calculate this from transactions
-    return 364.33;
-  }, []);
+    // Get pending transactions
+    const pendingTxns = data.transactions.filter(t => t.status === 'pending');
+    return pendingTxns.reduce((sum, t) => sum + parseFloat(t.amount || 0), 0);
+  }, [data.transactions]);
 
   const lockedBalance = useMemo(() => {
+    // Special case for Hadeer - always show zero
+    if (user && user.email === 'hadeermotair@gmail.com') {
+      return 0;
+    }
     // This is a mock value, in a real app you would calculate this from transactions
     return 0.00;
-  }, []);
+  }, [user]);
 
   const currency = useMemo(() => {
-    return data.wallets[0]?.local_currency?.toUpperCase() || 'USD';
-  }, [data.wallets]);
+    // Handle special case for Hadeer
+    if (user && user.email === 'hadeermotair@gmail.com') {
+      return 'EUR';
+    }
+    
+    // For other users, prefer USD
+    const usdWallet = data.wallets.find(w => w.currency === 'usd');
+    return usdWallet ? 'USD' : (data.wallets[0]?.currency?.toUpperCase() || 'USD');
+  }, [data.wallets, user]);
   
   // Animation variants
   const pageVariants = {
@@ -206,7 +257,7 @@ export default function Wallet() {
                     separator=","
                     decimals={2}
                     decimal="."
-                    prefix={currency === 'USD' ? '$' : (currency === 'EUR' ? '€' : '')}
+                    prefix={getCurrencySymbol(currency)}
                   />
                 </Typography>
               </Box>

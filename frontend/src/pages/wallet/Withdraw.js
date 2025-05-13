@@ -19,7 +19,13 @@ import {
   useMediaQuery,
   IconButton,
   Divider,
-  Paper
+  Paper,
+  FormControl,
+  FormLabel,
+  Stepper,
+  Step,
+  StepLabel,
+  InputAdornment
 } from '@mui/material';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
@@ -33,6 +39,8 @@ import VerifiedIcon from '@mui/icons-material/Verified';
 import PaymentsIcon from '@mui/icons-material/Payments';
 import BoltIcon from '@mui/icons-material/Bolt';
 import AddIcon from '@mui/icons-material/Add';
+import { useAuth0 } from '@auth0/auth0-react';
+import { getCurrencySymbol, getUserCurrency } from '../../utils/currencyUtils';
 
 import {
   FloatingCard,
@@ -51,6 +59,11 @@ import {
 
 // Replace the region detection with a function that gets the user's region directly from profile
 const getUserRegion = (userData) => {
+  // Special case for Hadeer
+  if (userData?.email === 'hadeermotair@gmail.com') {
+    return { region: 'eu', currency: 'eur' };
+  }
+  
   // Get the user's country from their profile
   const country = userData?.profile?.country || 'US';
   
@@ -62,25 +75,13 @@ const getUserRegion = (userData) => {
   const EU_COUNTRIES = [
     'AT','BE','BG','CH','CY','CZ','DE','DK','EE','ES','FI','FR','GB',
     'GR','HR','HU','IE','IS','IT','LI','LT','LU','LV','MT','NL','NO',
-    'PL','PT','RO','SE','SI','SK'
+    'PL','PT','RO','SE','SI','SK', 'EU'
   ];
   
   if (EU_COUNTRIES.includes(country)) return { region: 'eu', currency: 'eur' };
   
   // Default to US if unknown
   return { region: 'us', currency: 'usd' };
-};
-
-// Add a helper function to get the correct currency symbol
-const getCurrencySymbol = (currencyCode) => {
-  const code = currencyCode?.toUpperCase() || 'USD';
-  switch(code) {
-    case 'EUR': return '€';
-    case 'GBP': return '£';
-    case 'MXN': return '₱';
-    case 'CAD': return 'C$';
-    default: return '$';
-  }
 };
 
 export default function Withdraw() {
@@ -101,16 +102,53 @@ export default function Withdraw() {
     account_type: 'checking',
     holder_name: ''
   });
+  const [userData, setUserData] = useState(null);
   
   const [balanceData, setBalanceData] = useState({
-    total: 4256.78,
-    available: 3892.45,
+    total: 0,
+    available: 0,
     currency: 'USD'
   });
   
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const { user } = useAuth0();
+
+  // Fetch wallet data
+  const fetchWalletData = async () => {
+    try {
+      const resp = await walletAPI.getOverview();
+      if (resp.data && resp.data.wallets && resp.data.wallets.length > 0) {
+        // Special case for Hadeer - use EUR wallet
+        if (user && user.email === 'hadeermotair@gmail.com') {
+          const eurWallet = resp.data.wallets.find(w => w.currency === 'eur') || resp.data.wallets[0];
+          setBalanceData({
+            total: eurWallet.balance || 0,
+            available: eurWallet.balance || 0,
+            currency: 'EUR'
+          });
+          setUserRegion({ region: 'eu', currency: 'eur' });
+        } else {
+          // For other users, use USD wallet
+          const usdWallet = resp.data.wallets.find(w => w.currency === 'usd') || resp.data.wallets[0];
+          
+          setBalanceData({
+            total: usdWallet.balance || 0,
+            available: usdWallet.balance || 0,
+            currency: usdWallet.currency?.toUpperCase() || 'USD'
+          });
+          
+          // Set region based on user's data
+          if (userData) {
+            setUserRegion(getUserRegion(userData));
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Failed to fetch wallet data', err);
+    }
+  };
 
   useEffect(() => {
     // Fetch linked accounts when component mounts
@@ -136,32 +174,25 @@ export default function Withdraw() {
     fetchLinkedAccounts();
     
     // Fetch wallet data and user profile
-    const fetchWalletData = async () => {
+    const fetchUserAndWallet = async () => {
       try {
-        const resp = await walletAPI.getOverview();
-        if (resp.data && resp.data.wallets && resp.data.wallets.length > 0) {
-          const mainWallet = resp.data.wallets[0];
-          
-          // Also fetch user profile to get country for region/currency
-          const userResp = await authAPI.getCurrentUser();
-          if (userResp.data) {
-            // Set region based on user's country from profile
-            setUserRegion(getUserRegion(userResp.data));
-          }
-          
-          setBalanceData({
-            total: mainWallet.total_balance || 0,
-            available: mainWallet.available_balance || 0,
-            currency: mainWallet.local_currency?.toUpperCase() || 'USD'
-          });
-        }
+        const userResp = await authAPI.getCurrentUser();
+        setUserData(userResp.data);
+        
+        // Now fetch wallet data
+        fetchWalletData();
       } catch (err) {
-        console.error('Failed to fetch wallet data', err);
+        console.error('Failed to fetch user profile', err);
       }
     };
     
-    fetchWalletData();
-  }, []);
+    fetchUserAndWallet();
+    
+    // Refresh data every 30 seconds
+    const intervalId = setInterval(fetchWalletData, 30000);
+    
+    return () => clearInterval(intervalId);
+  }, [user]);
 
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -231,6 +262,10 @@ export default function Withdraw() {
       });
       
       setSuccess(resp.data);
+      
+      // Refresh wallet data to get updated balance
+      fetchWalletData();
+      
       // Reset form but keep the selected account
       setForm(prev => ({ 
         amount: '', 
@@ -318,7 +353,7 @@ export default function Withdraw() {
                 )}
               </Box>
               <Typography variant="body2" color="text.secondary">
-                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(balanceData.currency)}{balanceData.available.toLocaleString()}</Typography>
+                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(balanceData.currency, user)}{balanceData.available.toLocaleString()}</Typography>
               </Typography>
             </Box>
             
