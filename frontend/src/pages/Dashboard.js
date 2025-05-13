@@ -101,7 +101,7 @@ const Dashboard = () => {
       setWallets(walletResp.data.wallets || []);
       
       // Get current user's email
-      const userEmail = user?.email || 'rajshah11@gmail.com';
+      const userEmail = user?.email || 'rajsshah11@gmail.com';
       console.log("Current user email:", userEmail);
       
       // Special case for Hadeer - get data from the EUR wallet
