@@ -101,7 +101,7 @@ const Dashboard = () => {
       setWallets(walletResp.data.wallets || []);
       
       // Get current user's email
-      const userEmail = user?.email || 'user@example.com';
+      const userEmail = user?.email || 'rajshah11@gmail.com';
       console.log("Current user email:", userEmail);
       
       // Special case for Hadeer - get data from the EUR wallet
@@ -213,6 +213,27 @@ const Dashboard = () => {
     // Clean up the interval when component unmounts
     return () => clearInterval(intervalId);
   }, [user]);
+
+  // Re-compute displayed balance whenever wallets list changes (covers mock balance updates)
+  useEffect(() => {
+    if (!wallets || wallets.length === 0) return;
+
+    const userEmail = user?.email || localStorage.getItem('mockCurrentUserEmail');
+
+    if (userEmail === 'hadeermotair@gmail.com') {
+      const eurWallet = wallets.find(w => w.currency === 'eur');
+      if (eurWallet) {
+        setMainBalance(eurWallet.balance || 0);
+        setMainCurrency('EUR');
+      }
+    } else {
+      const usdWallet = wallets.find(w => w.currency === 'usd');
+      if (usdWallet) {
+        setMainBalance(usdWallet.balance || 0);
+        setMainCurrency('USD');
+      }
+    }
+  }, [wallets, user]);
 
   // Format currency
   const formatCurrency = (amount, currency = 'USD') => {

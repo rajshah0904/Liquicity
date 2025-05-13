@@ -10,4 +10,14 @@ module.exports = function(app) {
       pathRewrite: { '^/api': '' }
     })
   );
+  
+  // Proxy mock wallet endpoints
+  app.use(
+    '/mock',
+    createProxyMiddleware({
+      target: 'http://127.0.0.1:8000',
+      changeOrigin: true,
+      pathRewrite: { '^/mock': '/mock' }
+    })
+  );
 }; 

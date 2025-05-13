@@ -49,10 +49,8 @@ import {
 
 // Mock data for recipients and transactions
 const mockRecipients = [
-  { id: 1, name: 'Sarah', avatar: '/avatars/avatar1.jpg' },
-  { id: 2, name: 'Michael', avatar: '/avatars/avatar2.jpg' },
-  { id: 3, name: 'Emma', avatar: '/avatars/avatar3.jpg' },
-  { id: 4, name: 'Alex', avatar: '/avatars/avatar4.jpg' }
+  { id: 'user-1', name: 'Hadeer Motair', avatar: '/avatars/avatar1.jpg', email: 'hadeermotair@gmail.com' },
+  { id: 'user-raj', name: 'Raj Shah', avatar: '/avatars/avatar2.jpg', email: 'rajshah11@gmail.com' }
 ];
 
 const mockTransactions = [
@@ -109,10 +107,23 @@ export default function Send() {
   ]);
   const [selectedBankAccount, setSelectedBankAccount] = useState('');
   
-  // Updated fee structure based on new requirements
-  // P2P Send fee: 0.50%
-  const balanceFee = amount ? calculateFee(parseFloat(amount), STANDARD_SEND_FEE_RATE) : 0;
-  const bankFee = amount ? calculateFee(parseFloat(amount), EXPRESS_ALL_IN_FEE_RATE) : 0;
+  // ------- Helper functions must be defined before we compute fees --------
+  // (amountFromBalance / amountFromBank already defined below)
+
+  // --- Fee computation helper ---
+  const computeFees = () => {
+    const amt = amount ? parseFloat(amount) : 0;
+    const w = Math.min(amt, balanceData.available);
+    const b = Math.max(0, amt - balanceData.available);
+    const walletFee = w * STANDARD_SEND_FEE_RATE;
+    const bankRateCalc = speedOption === 'express' ? 0.02 : 0.005;
+    const bankFeeCalc = b * bankRateCalc;
+    const standardFeeValue = (w + b) * STANDARD_SEND_FEE_RATE;
+    const expressFeeValue = w * STANDARD_SEND_FEE_RATE + b * 0.02;
+    return { walletPart: w, bankPart: b, walletFee: walletFee, bankFee: bankFeeCalc, bankRate: bankRateCalc, standardFeeValue, expressFeeValue };
+  };
+
+  const { walletPart, bankPart, walletFee: balanceFee, bankFee, bankRate, standardFeeValue, expressFeeValue } = computeFees();
   
   const amountFromBalance = () => {
     if (!amount) return 0;
@@ -136,11 +147,7 @@ export default function Send() {
     return 0;
   };
   
-  const totalFee = () => {
-    const balanceAmount = amountFromBalance();
-    const bankAmount = amountFromBank();
-    return calculateFee(balanceAmount, STANDARD_SEND_FEE_RATE) + calculateFee(bankAmount, EXPRESS_ALL_IN_FEE_RATE);
-  };
+  const totalFee = () => balanceFee + bankFee;
   
   const totalAmount = () => {
     if (!amount) return 0;
@@ -150,11 +157,10 @@ export default function Send() {
   useEffect(() => {
     // Auto-select payment method based on balance vs amount
     if (amount && parseFloat(amount) > 0) {
-      if (parseFloat(amount) <= balanceData.available) {
+      const amt=parseFloat(amount);
+      if(amt<=balanceData.available){
         setSpeedOption('standard');
-      } else if (balanceData.available > 0) {
-        setSpeedOption('express');
-      } else {
+      }else{
         setSpeedOption('express');
       }
     }
@@ -325,6 +331,7 @@ export default function Send() {
       // Prepare payload based on payment method
       const payload = {
         recipient_user_id: recipient.id,
+        recipient_email: recipient.email,
         amount: amount,
         memo: note || undefined,
         speed_option: speedOption
@@ -705,23 +712,6 @@ export default function Send() {
               }
             }}
           />
-          <Box 
-            sx={{ 
-              border: '1px solid rgba(255, 255, 255, 0.1)',
-              px: 1.5,
-              py: 0.5,
-              borderRadius: 1,
-              display: 'flex',
-              alignItems: 'center',
-              cursor: 'pointer',
-              bgcolor: 'rgba(17, 25, 40, 0.7)',
-            }}
-          >
-            <Typography variant="body2" color="text.primary" mr={0.5}>
-              {user && user.email === 'hadeermotair@gmail.com' ? 'EUR' : balanceData.currency}
-            </Typography>
-            <KeyboardArrowDownIcon fontSize="small" sx={{ color: 'text.secondary' }} />
-          </Box>
         </Box>
         
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, px: 1 }}>
@@ -787,9 +777,17 @@ export default function Send() {
             Transaction fee
           </Typography>
           <Typography variant="body2" color="text.primary">
-            {getCurrencySymbol(balanceData.currency, user)}{amount ? totalFee().toFixed(2) : '0.00'} <IconButton size="small"><QrCodeIcon fontSize="inherit" /></IconButton>
+            {getCurrencySymbol(balanceData.currency, user)}{amount ? totalFee().toFixed(2) : '0.00'}
           </Typography>
         </Box>
+        {amount && (
+          <Typography variant="caption" color="text.secondary">
+            Wallet fee (0.5%): {getCurrencySymbol(balanceData.currency, user)}{balanceFee.toFixed(2)}
+            {bankPart > 0 && ` • Bank fee (${
+              (bankRate * 100).toFixed((bankRate * 100) < 1 ? 1 : 0)
+            }%): ${getCurrencySymbol(balanceData.currency, user)}${bankFee.toFixed(2)}`}
+          </Typography>
+        )}
         <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
           <Typography variant="body1" fontWeight="bold" color="text.primary">
             Total
@@ -807,71 +805,79 @@ export default function Send() {
             Delivery Speed
           </Typography>
           
-          <RadioGroup
-            value={speedOption}
-            onChange={handleSpeedOptionChange}
-            sx={{ width: '100%' }}
-          >
-            {/* Standard option */}
-            <FormControlLabel 
-              value="standard"
-              control={<Radio />}
-              label={
-                <Box sx={{ ml: 1 }}>
-                  <Typography variant="body2" color="text.primary">
-                    Standard
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {UI_STANDARD_ALL_IN_FEE} fee ({getCurrencySymbol(balanceData.currency, user)}{calculateFee(parseFloat(amount || '0'), STANDARD_SEND_FEE_RATE).toFixed(2)})
-                  </Typography>
-                  {parseFloat(amount) > balanceData.available && (
-                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                      {getCurrencySymbol(balanceData.currency, user)}{Math.min(parseFloat(amount), balanceData.available).toFixed(2)} sent instantly, {getCurrencySymbol(balanceData.currency, user)}{(parseFloat(amount) - balanceData.available).toFixed(2)} in 1-3 business days
-                    </Typography>
-                  )}
-                </Box>
-              }
-              sx={{ 
-                p: 2, 
-                borderRadius: 2,
-                bgcolor: 'rgba(17, 25, 40, 0.7)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                mb: 2,
-                width: '100%',
-                m: 0
-              }}
-            />
-            
-            {/* Express option */}
-            <FormControlLabel 
-              value="express"
-              control={<Radio />}
-              label={
-                <Box sx={{ ml: 1 }}>
-                  <Typography variant="body2" color="text.primary">
-                    Express
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary">
-                    {UI_EXPRESS_ALL_IN_FEE} fee ({getCurrencySymbol(balanceData.currency, user)}{calculateFee(parseFloat(amount || '0'), EXPRESS_ALL_IN_FEE_RATE).toFixed(2)})
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-                    Funds available instantly (≤15 minutes)
-                  </Typography>
-                  <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.7rem', mt: 0.5, opacity: 0.7 }}>
-                    *Includes {UI_INSTANT_DEPOSIT_FEE} deposit fee + {UI_STANDARD_SEND_FEE} send fee
-                  </Typography>
-                </Box>
-              }
-              sx={{ 
-                p: 2, 
-                borderRadius: 2,
-                bgcolor: 'rgba(17, 25, 40, 0.7)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                width: '100%',
-                m: 0
-              }}
-            />
-          </RadioGroup>
+          {(() => {
+            const showExpress = parseFloat(amount) > balanceData.available;
+            const showStandard = true;
+            return (
+            <RadioGroup
+              value={speedOption}
+              onChange={handleSpeedOptionChange}
+              sx={{ width: '100%' }}
+            >
+              {/* Standard option */}
+              {showStandard && (
+                <FormControlLabel 
+                  value="standard"
+                  control={<Radio />}
+                  label={
+                    <Box sx={{ ml: 1 }}>
+                      <Typography variant="body2" color="text.primary">
+                        Standard
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {UI_STANDARD_ALL_IN_FEE} fee ({getCurrencySymbol(balanceData.currency, user)}{calculateFee(parseFloat(amount || '0'), STANDARD_SEND_FEE_RATE).toFixed(2)})
+                      </Typography>
+                      {parseFloat(amount) > balanceData.available && (
+                        <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                          {getCurrencySymbol(balanceData.currency, user)}{Math.min(parseFloat(amount), balanceData.available).toFixed(2)} sent instantly, {getCurrencySymbol(balanceData.currency, user)}{(parseFloat(amount) - balanceData.available).toFixed(2)} in 1-3 business days
+                        </Typography>
+                      )}
+                    </Box>
+                  }
+                  sx={{ 
+                    p: 2, 
+                    borderRadius: 2,
+                    bgcolor: 'rgba(17, 25, 40, 0.7)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    mb: showExpress ? 2 : 0,
+                    width: '100%',
+                    m: 0
+                  }}
+                />
+              )}
+              {/* Express option */}
+              {showExpress && (
+                <FormControlLabel 
+                  value="express"
+                  control={<Radio />}
+                  label={
+                    <Box sx={{ ml: 1 }}>
+                      <Typography variant="body2" color="text.primary">
+                        Express
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {UI_EXPRESS_ALL_IN_FEE} fee ({getCurrencySymbol(balanceData.currency, user)}{expressFeeValue.toFixed(2)})
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
+                        Funds available instantly (≤15 minutes)
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.7rem', mt: 0.5, opacity: 0.7 }}>
+                        *Includes {UI_INSTANT_DEPOSIT_FEE} deposit fee + {UI_STANDARD_SEND_FEE} send fee
+                      </Typography>
+                    </Box>
+                  }
+                  sx={{ 
+                    p: 2, 
+                    borderRadius: 2,
+                    bgcolor: 'rgba(17, 25, 40, 0.7)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    width: '100%',
+                    m: 0
+                  }}
+                />
+              )}
+            </RadioGroup>
+            ); })()}
         </Box>
       )}
       
@@ -1043,13 +1049,10 @@ export default function Send() {
         {showCurrencyConversion && (
           <Box sx={{ mb: 2 }}>
             <Typography variant="body2" color="text.secondary" sx={{ mb: 1 }}>
-              Currency Conversion
+              Recipient will receive
             </Typography>
-            <Typography variant="body1" color="text.primary">
-              USD to EUR (2% conversion fee)
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Recipient will receive approximately €{((parseFloat(amount) * 0.98 * 0.85)).toFixed(2)}
+            <Typography variant="h6" color="text.primary">
+              €{(((parseFloat(amount || '0') - totalFee()) * 0.9)).toFixed(2)}
             </Typography>
           </Box>
         )}
@@ -1172,13 +1175,7 @@ export default function Send() {
         {showCurrencyConversion && (
           <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(59, 130, 246, 0.05)', borderRadius: 1, width: '100%' }}>
             <Typography variant="body2" color="text.primary" fontWeight="medium">
-              Currency Conversion:
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              USD to EUR with 2% conversion fee
-            </Typography>
-            <Typography variant="body2" color="text.primary" fontWeight="medium" sx={{ mt: 1 }}>
-              Recipient received: €{((parseFloat(amount) * 0.98 * 0.85)).toFixed(2)}
+              Recipient received: €{(((parseFloat(amount || '0') - totalFee()) * 0.9)).toFixed(2)}
             </Typography>
           </Box>
         )}

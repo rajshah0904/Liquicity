@@ -91,11 +91,14 @@ export default function Wallet() {
         
         const resp = await walletAPI.getOverview();
         console.log("Wallet API response:", resp.data);
-        setData(resp.data);
+        setData(prev => ({
+          ...prev,
+          wallets: resp.data.wallets || []
+        }));
         
         // Fetch transactions
         const historyResp = await walletAPI.getAllTransactions();
-        const transactions = historyResp.data.transactions || [];
+        const transactions = (historyResp.data && historyResp.data.transactions) ? historyResp.data.transactions : [];
         setData(prev => ({ ...prev, transactions }));
       } catch (err) {
         console.error("Wallet fetch error:", err);

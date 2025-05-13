@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
 from app.routers import user, wallet, bridge, transfer, notifications, requests, demo
+from app.routers.mock import wallet as mock_wallet
 from app.database import engine, Base, get_db
 from app.dependencies.auth import get_current_user
 from sqlalchemy import text
@@ -48,6 +49,7 @@ app.include_router(bridge, prefix="/bridge", tags=["bridge"])
 app.include_router(transfer, prefix="/transfer", tags=["transfer"])
 app.include_router(notifications, prefix="/notifications", tags=["notifications"])
 app.include_router(requests, prefix="/requests", tags=["requests"])
+app.include_router(mock_wallet.router, tags=["mock"])
 
 if DEMO_MODE:
     app.include_router(demo, prefix="/demo", tags=["demo"])
