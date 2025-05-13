@@ -28,13 +28,10 @@ export const WITHDRAW_FEE_RATE = 0.0;  // Free withdrawal to bank
 // Card Spend (no fee)
 export const CARD_SPEND_FEE_RATE = 0.0;  // Free card spending
 
-// Bank transfer fee (when using bank account directly for sending money)
-export const BANK_TRANSFER_FEE_RATE = 0.029;  // 2.9% fee for bank-funded transfers
 
 // For UI display (rounded to nearest tenth)
 export const UI_INSTANT_DEPOSIT_FEE = '1.5%';  // Display as 1.5% in UI
 export const UI_STANDARD_SEND_FEE = '0.5%';  // Display as 0.5% in UI
-export const UI_BANK_TRANSFER_FEE = '2.9%';  // Display as 2.9% in UI
 export const UI_EXPRESS_ALL_IN_FEE = '2.0%';  // Display as 2.0% in UI
 export const UI_STANDARD_ALL_IN_FEE = '0.5%';  // Display as 0.5% in UI
 

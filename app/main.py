@@ -2,12 +2,13 @@ from fastapi import FastAPI, Depends, Request, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from dotenv import load_dotenv
-from app.routers import user, wallet, bridge, transfer, notifications, requests
+from app.routers import user, wallet, bridge, transfer, notifications, requests, demo
 from app.database import engine, Base, get_db
 from app.dependencies.auth import get_current_user
 from sqlalchemy import text
 import logging
 import os
+from app.services.bridge import DEMO_MODE
 
 # Load environment variables explicitly
 load_dotenv()
@@ -47,6 +48,9 @@ app.include_router(bridge, prefix="/bridge", tags=["bridge"])
 app.include_router(transfer, prefix="/transfer", tags=["transfer"])
 app.include_router(notifications, prefix="/notifications", tags=["notifications"])
 app.include_router(requests, prefix="/requests", tags=["requests"])
+
+if DEMO_MODE:
+    app.include_router(demo, prefix="/demo", tags=["demo"])
 
 @app.get("/", tags=["status"])
 async def root():

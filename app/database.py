@@ -42,6 +42,13 @@ with engine.connect() as conn:
         state VARCHAR(20),
         created_at TIMESTAMP DEFAULT now()
     );
+    CREATE TABLE IF NOT EXISTS demo_wallets (
+        user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
+        wallet_id VARCHAR(64) UNIQUE,
+        balance NUMERIC(18,2) DEFAULT 0,
+        currency VARCHAR(3) DEFAULT 'usd',
+        updated_at TIMESTAMP DEFAULT now()
+    );
     """))
 
 def get_db():
