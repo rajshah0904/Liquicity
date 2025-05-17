@@ -67,14 +67,14 @@ export default function Transactions() {
                 const displayCurrency = user?.email === 'hadeermotair@gmail.com' ? 'EUR' : t.currency.toUpperCase();
                 
                 return (
-                  <TableRow key={t.transaction_id}>
-                    <TableCell>{new Date(t.date).toLocaleString()}</TableCell>
-                    <TableCell>{t.description || t.transaction_id}</TableCell>
+                <TableRow key={t.transaction_id}>
+                  <TableCell>{new Date(t.date).toLocaleString()}</TableCell>
+                  <TableCell>{t.description || t.transaction_id}</TableCell>
                     <TableCell>
                       {getCurrencySymbol(displayCurrency, user)}{Number(t.amount).toLocaleString()}
                     </TableCell>
                     <TableCell>{displayCurrency}</TableCell>
-                  </TableRow>
+                </TableRow>
                 );
               })}
             </TableBody>

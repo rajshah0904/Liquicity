@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { Box, Typography, CircularProgress, Alert, List, ListItem, ListItemText } from '@mui/material';
-import api from '../utils/api';
+import { notificationsAPI } from '../utils/api';
 
 export default function NotificationCenter() {
   const [loading, setLoading] = useState(true);
@@ -12,7 +12,7 @@ export default function NotificationCenter() {
       setLoading(true);
       setError(null);
       try {
-        const resp = await api.get('/notifications');
+        const resp = await notificationsAPI.list();
         setNotifications(resp.data.notifications || []);
       } catch (err) {
         console.error(err);
@@ -38,17 +38,15 @@ export default function NotificationCenter() {
     );
   }
 
-  if (notifications.length === 0) {
+  const displayNotifs = notifications.slice(0,7);
+  if (displayNotifs.length === 0) {
     return null;
   }
 
   return (
     <Box sx={{ mt: 3, p: 2, border: (theme) => `1px solid ${theme.palette.divider}`, borderRadius: 1 }}>
-      <Typography variant="h6" gutterBottom>
-        Notifications
-      </Typography>
       <List dense>
-        {notifications.map((n) => (
+        {displayNotifs.map((n) => (
           <ListItem key={n.id} divider>
             <ListItemText
               primary={n.message}

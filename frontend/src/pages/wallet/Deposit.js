@@ -182,7 +182,7 @@ export default function Deposit() {
     // Also fetch user profile to get country for region/currency
     const fetchUserAndWallet = async () => {
       try {
-        const userResp = await authAPI.getCurrentUser();
+          const userResp = await authAPI.getCurrentUser();
         setUserData(userResp.data);
         
         // Now fetch wallet data
@@ -357,7 +357,7 @@ export default function Deposit() {
                 )}
               </Box>
               <Typography variant="body2" color="text.secondary">
-                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(balanceData.currency, user)}{balanceData.available.toLocaleString()}</Typography>
+                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(balanceData.currency, user)}{Number(balanceData.available || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</Typography>
               </Typography>
             </Box>
             

@@ -176,7 +176,7 @@ export default function Withdraw() {
     // Fetch wallet data and user profile
     const fetchUserAndWallet = async () => {
       try {
-        const userResp = await authAPI.getCurrentUser();
+          const userResp = await authAPI.getCurrentUser();
         setUserData(userResp.data);
         
         // Now fetch wallet data
@@ -353,7 +353,7 @@ export default function Withdraw() {
                 )}
               </Box>
               <Typography variant="body2" color="text.secondary">
-                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(balanceData.currency, user)}{balanceData.available.toLocaleString()}</Typography>
+                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(balanceData.currency, user)}{Number(balanceData.available || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</Typography>
               </Typography>
             </Box>
             

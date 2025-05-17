@@ -105,7 +105,7 @@ async def wallet_transactions(db: Session = Depends(get_db), current_user: str =
                 "date": tx.get("date"),
             })
     txns.sort(key=lambda t: t.get("date"), reverse=True)
-    return {"transactions": txns[:500]}
+    return {"transactions": txns[:500]} 
 
 @router.put("/update/{user_id}", tags=["wallet"])
 async def update_wallet(

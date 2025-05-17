@@ -17,48 +17,13 @@ import {
   List,
   ListItem
 } from '@mui/material';
-import { requestsAPI, walletAPI } from '../../utils/api';
+import { requestsAPI, authAPI, walletAPI } from '../../utils/api';
 import { motion } from 'framer-motion';
 import { Search as SearchIcon, QrCode as QrCodeIcon, Add as AddIcon } from '@mui/icons-material';
 import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { AnimatedBackground } from '../../components/ui/ModernUIComponents';
 import { format } from 'date-fns';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
-
-// Mock data for recipients and requests
-const mockRecipients = [
-  { id: 1, name: 'Sarah', avatar: '/avatars/avatar1.jpg' },
-  { id: 2, name: 'Michael', avatar: '/avatars/avatar2.jpg' },
-  { id: 3, name: 'Emma', avatar: '/avatars/avatar3.jpg' },
-  { id: 4, name: 'Alex', avatar: '/avatars/avatar4.jpg' }
-];
-
-const mockRequests = [
-  { 
-    id: 1, 
-    requestee: { id: 1, name: 'Sarah Johnson', avatar: '/avatars/avatar1.jpg' },
-    date: new Date('2025-05-12'),
-    amount: 55.00,
-    status: 'pending',
-    note: 'For dinner last night'
-  },
-  { 
-    id: 2, 
-    requestee: { id: 2, name: 'Michael Chen', avatar: '/avatars/avatar2.jpg' },
-    date: new Date('2025-05-08'),
-    amount: 120.00,
-    status: 'completed',
-    note: 'Concert tickets'
-  },
-  { 
-    id: 3, 
-    requestee: { id: 3, name: 'Emma Wilson', avatar: '/avatars/avatar3.jpg' },
-    date: new Date('2025-05-05'),
-    amount: 42.50,
-    status: 'pending',
-    note: 'Your share of utilities'
-  }
-];
 
 // Currency conversion mock rates
 const conversionRates = {
@@ -69,6 +34,16 @@ const conversionRates = {
   CAD: 1.35
 };
 
+const mockRequests = [
+  { id: 1, requestee: { id: 1, name: 'Demo', avatar: null }, date:new Date(), amount:50, status:'pending', note:'' }
+];
+
+// Same hard-coded recent contacts used in Send page
+const mockRecipients = [
+  { id: 'user-1', name: 'Hadeer Motair', avatar: '/avatars/avatar1.jpg', email: 'hadeermotair@gmail.com' },
+  { id: 'user-raj', name: 'Raj Shah', avatar: '/avatars/avatar2.jpg', email: 'rajshah11@gmail.com' }
+];
+
 export default function RequestPage() {
   const theme = useTheme();
   const [step, setStep] = useState('initial'); // initial, confirm, success
@@ -77,15 +52,17 @@ export default function RequestPage() {
   const [success, setSuccess] = useState(null);
   
   const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [showDropdown,setShowDropdown]=useState(false);
   const [recipient, setRecipient] = useState(null);
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [currency, setCurrency] = useState(userData.currency || 'USD');
+  const [userData, setUserData] = useState({ currency: 'USD', balance: 0 });
+  const [currency, setCurrency] = useState('USD');
   const [requests, setRequests] = useState(mockRequests);
-  
-  const [userData, setUserData] = useState({
-    currency: 'USD'
-  });
+  const [balanceData,setBalanceData]=useState({available:0,currency:'USD'});
+  const currentUserEmail = localStorage.getItem('mockCurrentUserEmail') || (typeof window!== 'undefined' && JSON.parse(localStorage.getItem('current_user')||'{}').email) || '';
+  const allowedRecipientEmail = currentUserEmail === 'hadeermotair@gmail.com' ? 'rajsshah11@gmail.com' : 'hadeermotair@gmail.com';
   
   // Fetch user data and requests
   useEffect(() => {
@@ -93,12 +70,6 @@ export default function RequestPage() {
       try {
         // In a real app, this would fetch the user's data including their preferred currency
         // For now, we'll use mock data
-        setUserData({
-          currency: 'USD',
-          balance: 1000.00
-        });
-        
-        // Also fetch the user's requests
         const resp = await requestsAPI.list();
         if (resp.data && resp.data.requests) {
           setRequests(resp.data.requests);
@@ -106,6 +77,13 @@ export default function RequestPage() {
           // Use mock data if the API call doesn't return real data
           setRequests(mockRequests);
         }
+        const email = localStorage.getItem('mockCurrentUserEmail') || 'rajshah11@gmail.com';
+        const newData = {
+          currency: email === 'hadeermotair@gmail.com' ? 'EUR' : 'USD',
+          balance: 1000.00
+        };
+        setUserData(newData);
+        setCurrency(newData.currency || 'USD');
       } catch (err) {
         console.error('Failed to fetch user data', err);
         // Use mock data as fallback
@@ -114,17 +92,49 @@ export default function RequestPage() {
     };
     
     fetchUserData();
-    
-    // Always use the user's currency from their profile
-    setCurrency(userData.currency || 'USD');
   }, []);
   
-  const handleSearch = (e) => {
+  // fetch wallet balance similar to Send page
+  useEffect(() => {
+    const fetchBalance = async () => {
+      try {
+        const walletResp = await walletAPI.getOverview();
+        if (walletResp.data && walletResp.data.wallets && walletResp.data.wallets.length > 0) {
+          const email = localStorage.getItem('mockCurrentUserEmail');
+          if (email === 'hadeermotair@gmail.com') {
+            const eurWallet = walletResp.data.wallets.find((w) => w.currency === 'eur') || walletResp.data.wallets[0];
+            setBalanceData({ available: eurWallet.balance || 0, currency: 'EUR' });
+          } else {
+            const usdWallet = walletResp.data.wallets.find((w) => w.currency === 'usd') || walletResp.data.wallets[0];
+            setBalanceData({
+              available: usdWallet.balance || 0,
+              currency: usdWallet.currency?.toUpperCase() || 'USD'
+            });
+          }
+        }
+      } catch (e) {
+        console.error('wallet fetch', e);
+      }
+    };
+
+    fetchBalance();
+  }, []);
+  
+  const handleSearch = async (e) => {
     setSearchQuery(e.target.value);
+    if(!e.target.value){setShowDropdown(false);return;}
+    try{
+      const resp = await authAPI.searchUsers(e.target.value);
+      const filtered = (resp.data.users || []).filter(u=>u.email===allowedRecipientEmail);
+      setSearchResults(filtered);
+      setShowDropdown(true);
+    }catch(err){console.error(err);setSearchResults([]);}
   };
   
   const selectRecipient = (person) => {
     setRecipient(person);
+    setSearchQuery(person.name);
+    setShowDropdown(false);
   };
   
   const handleAmountChange = (e) => {
@@ -228,6 +238,13 @@ export default function RequestPage() {
     }
   };
   
+  const handlePay = async(id)=>{
+    try{await requestsAPI.pay(id);const r=await requestsAPI.list();setRequests(r.data.requests);}catch(e){console.error(e);}
+  };
+  const handleDecline = async(id)=>{
+    try{await requestsAPI.decline(id);const r=await requestsAPI.list();setRequests(r.data.requests);}catch(e){console.error(e);}
+  };
+  
   // Animation variants
   const pageVariants = {
     initial: { opacity: 0 },
@@ -310,7 +327,7 @@ export default function RequestPage() {
           </Typography>
           
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            {mockRecipients.map((person) => (
+            {mockRecipients.filter(p=>p.email===allowedRecipientEmail).map((person) => (
               <Box
                 key={person.id}
                 sx={{ 
@@ -385,7 +402,7 @@ export default function RequestPage() {
         
         <Box sx={{ position: 'relative', display: 'flex', alignItems: 'center', gap: 2 }}>
           <Typography variant="h5" color="text.secondary" sx={{ ml: 1 }}>
-            {getCurrencySymbol(userData.currency)}
+            {getCurrencySymbol(currency)}
           </Typography>
           <TextField
             fullWidth
@@ -429,21 +446,10 @@ export default function RequestPage() {
             }}
           >
             <Typography variant="body2" color="text.primary">
-              {userData.currency}
+              {currency}
             </Typography>
           </Box>
         </Box>
-        
-        {amount && recipient && recipient.currency && recipient.currency !== userData.currency && (
-          <Box sx={{ mt: 2, px: 1 }}>
-            <Typography variant="caption" color="text.secondary">
-              {recipient.name} will receive {getCurrencySymbol(recipient.currency)}{getConvertedAmount()} {recipient.currency}
-              <Box component="span" sx={{ color: 'primary.light' }}>
-                {' '}(converted from {userData.currency})
-              </Box>
-            </Typography>
-          </Box>
-        )}
       </Box>
       
       {/* Note section */}
@@ -540,15 +546,9 @@ export default function RequestPage() {
       {/* Amount and details */}
       <Box sx={{ mb: 4, p: 3, bgcolor: 'rgba(17, 25, 40, 0.7)', borderRadius: 2 }}>
         <Typography variant="h4" color="text.primary" sx={{ mb: 3, textAlign: 'center' }}>
-          {getCurrencySymbol(userData.currency)}
-          {parseFloat(amount).toFixed(2)} {userData.currency}
+          {getCurrencySymbol(currency)}
+          {parseFloat(amount).toFixed(2)} {currency}
         </Typography>
-        
-        {userData.currency !== recipient?.currency && recipient?.currency && (
-          <Typography variant="body2" color="text.secondary" sx={{ mb: 3, textAlign: 'center' }}>
-            Approximately {getCurrencySymbol(recipient.currency)}{getConvertedAmount()} {recipient.currency} for recipient
-          </Typography>
-        )}
         
         {note && (
           <Box sx={{ mb: 3, p: 2, bgcolor: 'rgba(255, 255, 255, 0.05)', borderRadius: 1 }}>
@@ -645,7 +645,7 @@ export default function RequestPage() {
         </Typography>
         
         <Typography variant="h3" color="text.primary" sx={{ mb: 3 }}>
-          {getCurrencySymbol(userData.currency)}
+          {getCurrencySymbol(currency)}
           {parseFloat(amount).toFixed(2)}
         </Typography>
         
@@ -710,18 +710,18 @@ export default function RequestPage() {
         >
           <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
             <Avatar 
-              src={request.requestee?.avatar || '/avatars/default.jpg'} 
-              alt={request.requestee?.name || 'User'}
+              src={'/avatars/default.jpg'} 
+              alt={currentUserEmail===request.requester_email?request.recipient_name:request.requester_name}
               sx={{ width: 40, height: 40 }}
             >
               {!request.requestee?.avatar && <AccountCircleIcon />}
             </Avatar>
             <Box>
               <Typography variant="body2" color="text.primary">
-                {request.requestee?.name || 'Unknown User'}
+                {currentUserEmail===request.requester_email?request.recipient_name:request.requester_name}
               </Typography>
               <Typography variant="caption" color="text.secondary">
-                {request.date ? format(new Date(request.date), 'MMM d, yyyy') : 'Unknown date'}
+                {request.created_at ? format(new Date(request.created_at), 'MMM d, yyyy') : ''}
               </Typography>
               {request.note && (
                 <Typography variant="caption" color="text.secondary" sx={{ display: 'block' }}>
@@ -737,7 +737,7 @@ export default function RequestPage() {
               fontWeight="500"
               color="text.primary"
             >
-              {getCurrencySymbol(userData.currency)}
+              {getCurrencySymbol(request.currency)}
               {request.amount?.toFixed(2) || '0.00'}
             </Typography>
             <Typography 
@@ -765,6 +765,12 @@ export default function RequestPage() {
             >
               {request.status || 'unknown'}
             </Typography>
+            {currentUserEmail===request.recipient_email && request.status==='pending' && (
+              <Box sx={{mt:1,display:'flex',gap:1}}>
+                <Button size="small" variant="contained" onClick={()=>handlePay(request.id)}>Pay</Button>
+                <Button size="small" color="error" onClick={()=>handleDecline(request.id)}>Decline</Button>
+              </Box>
+            )}
           </Box>
         </Box>
       ))}
@@ -806,7 +812,7 @@ export default function RequestPage() {
             }}>
               <Box />
               <Typography variant="body2" color="text.secondary">
-                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(userData.currency)}{userData.balance?.toLocaleString() || '0.00'}</Typography>
+                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(balanceData.currency)}{Number(balanceData.available||0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</Typography>
               </Typography>
             </Box>
             

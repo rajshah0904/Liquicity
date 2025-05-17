@@ -216,12 +216,20 @@ export const transferAPI = {
 // New Requests helper
 export const requestsAPI = {
   create: (payload, options = {}) => withMockFallback(
-    () => api.post('/requests', payload, options),
+    (p = payload) => api.post('/requests', p, options),
     'requestsAPI.create'
-  )(),
+  )(payload),
   list: (options = {}) => withMockFallback(
     () => api.get('/requests', options),
     'requestsAPI.list'
+  )(),
+};
+
+// === Notifications ===
+export const notificationsAPI = {
+  list: (options = {}) => withMockFallback(
+    () => api.get('/notifications', options),
+    'notificationsAPI.list'
   )(),
 };
 

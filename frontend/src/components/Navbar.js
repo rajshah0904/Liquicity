@@ -48,6 +48,8 @@ import {
   GradientText
 } from './ui/ModernUIComponents';
 
+import LogoSVG from './LogoSVG';
+
 const StyledAppBar = styled(AppBar)(({ theme }) => ({
   background: '#000000',
   backdropFilter: 'blur(10px)',
@@ -197,12 +199,7 @@ const Navbar = ({ onDrawerToggle, drawerOpen, showMenuIcon = false }) => {
     <>
       <DrawerHeader>
         <Logo>
-          <LogoIcon>
-            <Typography variant="body1" fontWeight={700}>TF</Typography>
-          </LogoIcon>
-          <GradientText variant="h6">
-            Liquicity
-          </GradientText>
+          <LogoSVG size={120} />
         </Logo>
       </DrawerHeader>
       
@@ -299,24 +296,10 @@ const Navbar = ({ onDrawerToggle, drawerOpen, showMenuIcon = false }) => {
           <Box onClick={() => navigate('/')} sx={{ 
             display: 'flex', 
             alignItems: 'center',
-            cursor: 'pointer'
+            cursor: 'pointer',
+            gap: 1
           }}>
-            <Box 
-              component="div"
-              sx={{ 
-                border: '2px solid #FFFFFF',
-                color: '#FFFFFF',
-                fontWeight: 'bold',
-                display: 'flex',
-                justifyContent: 'center',
-                alignItems: 'center',
-                width: 32, 
-                height: 32,
-                mr: 1
-              }}
-            >
-              TF
-            </Box>
+            <LogoSVG size={32} />
             <Typography variant="h6" noWrap component="div" sx={{ display: { xs: 'none', sm: 'block' } }}>
               Liquicity
             </Typography>

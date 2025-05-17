@@ -86,7 +86,7 @@ const generateWallets = (email, balancesObj) => {
   // For Hadeer, we want to show only EUR wallet
   if (email === 'hadeermotair@gmail.com') {
     return [
-      {
+  {
         wallet_id: 'w-eur-' + email,
         currency: 'eur',
         balance: userBalance.eur,
@@ -168,6 +168,8 @@ export const MockDataProvider = ({ children }) => {
     walletAPI.getOverview = mockAPI.walletAPI.getOverview;
     walletAPI.getAllTransactions = mockAPI.walletAPI.getAllTransactions;
     transferAPI.send = mockAPI.transferAPI.send;
+    transferAPI.deposit = mockAPI.transferAPI.deposit;
+    transferAPI.withdraw = mockAPI.transferAPI.withdraw;
     authAPI.searchUsers = mockAPI.authAPI.searchUsers;
   }, []);
 
@@ -374,6 +376,22 @@ export const MockDataProvider = ({ children }) => {
         // Persist balances
         updateBalances(currentBalances);
 
+        // ---------- Notifications ----------
+        const emailToName = {
+          'hadeermotair@gmail.com': 'Hadeer Motair',
+          'rajsshah11@gmail.com': 'Raj Shah',
+          'rajsshah11@gmail.com': 'Raj Shah'
+        };
+        const senderName = emailToName[senderEmail] || senderEmail.split('@')[0];
+        const recipientName = emailToName[recipientEmail] || recipientEmail.split('@')[0];
+
+        addNotification(senderEmail,`You sent $${amount.toFixed(2)} to ${recipientName}`);
+        if(recipientEmail=== 'hadeermotair@gmail.com'){
+           addNotification(recipientEmail,`You received €${(netAmount*0.9).toFixed(2)} from ${senderName}`);
+        } else {
+           addNotification(recipientEmail,`You received $${netAmount.toFixed(2)} from ${senderName}`);
+        }
+
         // ---------- Record transaction (sender side only for brevity) ----------
         const timestamp = new Date().toISOString();
         const transactionId = `t-${Math.floor(Math.random() * 1000000)}`;
@@ -385,7 +403,7 @@ export const MockDataProvider = ({ children }) => {
           amount: -amount,
           currency: 'USD',
           date: timestamp,
-          description: payload.memo || `Payment to ${recipientEmail}`,
+          description: payload.memo || `Payment to ${recipientName}`,
           status: 'completed',
           user_email: senderEmail,
         };
@@ -398,7 +416,7 @@ export const MockDataProvider = ({ children }) => {
           amount: netAmount * (recipientEmail === 'hadeermotair@gmail.com' ? 0.9 : 1), // amount credited in recipient currency
           currency: recipientEmail === 'hadeermotair@gmail.com' ? 'EUR' : 'USD',
           date: timestamp,
-          description: payload.memo || `Payment from ${senderEmail}`,
+          description: payload.memo || `Payment from ${senderName}`,
           status: 'completed',
           user_email: recipientEmail,
         };
@@ -411,16 +429,142 @@ export const MockDataProvider = ({ children }) => {
 
         return Promise.resolve({ data: senderTransaction });
       },
+      /**
+       * Simulate a bank deposit (standard or instant) by crediting the current
+       * user's wallet immediately. A transaction/notification pair is also
+       * recorded.
+       */
+      deposit: async (payload) => {
+        const email = localStorage.getItem('mockCurrentUserEmail') || mockData.user?.email;
+        const amount = parseFloat(payload.amount);
+        const currency = (payload.currency || 'usd').toLowerCase();
+
+        const currentBalances = getUserBalancesSync();
+        if (!currentBalances[email]) currentBalances[email] = { usd: 0, eur: 0 };
+
+        let status = 'pending';
+        let netAmount = amount;
+        let fee = 0;
+        if (payload.instant) {
+          // Apply 1.5 % instant-deposit fee (not credited to wallet)
+          fee = parseFloat((amount * 0.015).toFixed(2));
+          netAmount = parseFloat((amount - fee).toFixed(2));
+
+          // Credit net amount
+          currentBalances[email][currency] = (currentBalances[email][currency] || 0) + netAmount;
+          updateBalances(currentBalances);
+          status = 'completed';
+        }
+
+        // Notification wording
+        if (payload.instant) {
+          addNotification(
+            email,
+            `Instant deposit of ${currency === 'eur' ? '€' : '$'}${amount.toFixed(2)} received. `+
+            `${currency === 'eur' ? '€' : '$'}${fee.toFixed(2)} fee applied. ${currency === 'eur' ? '€' : '$'}${netAmount.toFixed(2)} credited to your wallet.`
+          );
+        } else {
+          addNotification(
+            email,
+            `Deposit of ${currency === 'eur' ? '€' : '$'}${amount.toFixed(2)} received. These funds will be available in 1-3 business days.`
+          );
+        }
+
+        // Transaction record - record net credited amount
+        const timestamp = new Date().toISOString();
+        const transactionId = `dep-${Date.now()}`;
+        const txn = {
+          id: transactionId,
+          transaction_id: transactionId,
+          type: 'DEPOSIT',
+          amount: netAmount,
+          currency: currency.toUpperCase(),
+          date: timestamp,
+          description: payload.instant ? `Instant deposit (fee ${currency === 'eur' ? '€' : '$'}${fee.toFixed(2)})` : 'Standard deposit',
+          status: status,
+          user_email: email,
+        };
+
+        const newTransactions = [txn, ...transactions];
+        setTransactions(newTransactions);
+        localStorage.setItem('mockTransactions', JSON.stringify(newTransactions));
+
+        return Promise.resolve({ data: txn });
+      },
+      /**
+       * Simulate a withdrawal by debiting the user's wallet immediately while
+       * the underlying bank transfer may still take 1-3 days.
+       */
+      withdraw: async (payload) => {
+        const email = localStorage.getItem('mockCurrentUserEmail') || mockData.user?.email;
+        const amount = parseFloat(payload.amount);
+        const currency = (payload.currency || 'usd').toLowerCase();
+
+        const currentBalances = getUserBalancesSync();
+        if (!currentBalances[email]) currentBalances[email] = { usd: 0, eur: 0 };
+
+        // Debit balance – ensure it doesn't go negative for mock safety
+        currentBalances[email][currency] = Math.max(0, (currentBalances[email][currency] || 0) - amount);
+        updateBalances(currentBalances);
+
+        // Notification
+        addNotification(email, `Withdrawal of ${currency === 'eur' ? '€' : '$'}${amount.toFixed(2)} initiated. Funds will reach your bank in 1-3 business days.`);
+
+        // Transaction record
+        const timestamp = new Date().toISOString();
+        const transactionId = `wd-${Date.now()}`;
+        const txn = {
+          id: transactionId,
+          transaction_id: transactionId,
+          type: 'WITHDRAW',
+          amount: -amount,
+          currency: currency.toUpperCase(),
+          date: timestamp,
+          description: 'Withdrawal to bank',
+          status: 'completed',
+          user_email: email,
+        };
+
+        const newTransactions = [txn, ...transactions];
+        setTransactions(newTransactions);
+        localStorage.setItem('mockTransactions', JSON.stringify(newTransactions));
+
+        return Promise.resolve({ data: txn });
+      },
     },
     requestsAPI: {
       create: (payload) => {
+        const requesterEmail = localStorage.getItem('mockCurrentUserEmail') || mockData.user?.email;
+        const requesterNameMap = {
+          'rajsshah11@gmail.com':'Raj Shah',
+          'hadeermotair@gmail.com':'Hadeer Motair'
+        };
+        const requesterName = requesterNameMap[requesterEmail] || requesterEmail.split('@')[0];
+
+        // map id→email
+        const idMap = {
+          'user-1':'hadeermotair@gmail.com',
+          'user-hadeer':'hadeermotair@gmail.com',
+          '1':'hadeermotair@gmail.com',
+          'user-raj':'rajsshah11@gmail.com',
+          'user-2':'rajsshah11@gmail.com',
+          '2':'rajsshah11@gmail.com'
+        };
+        let recipientEmail = payload.recipient_email || payload.requestee_user_id || payload.requestee_email || 'unknown@example.com';
+        if(!recipientEmail.includes('@')) recipientEmail = idMap[recipientEmail] || 'unknown@example.com';
+        const recipientName = requesterNameMap[recipientEmail] || recipientEmail.split('@')[0];
+
         const newRequest = {
           id: `r-${Math.floor(Math.random() * 1000)}`,
-          amount: payload.amount,
-          currency: 'USD',
+          amount: parseFloat(payload.amount),
+          currency: (payload.currency || 'USD').toUpperCase(),
           status: 'pending',
           created_at: new Date().toISOString(),
-          note: payload.note || ''
+          note: payload.note || '',
+          requester_email: requesterEmail,
+          requester_name: requesterName,
+          recipient_email: recipientEmail,
+          recipient_name: recipientName
         };
         
         setMockData(prev => ({
@@ -428,11 +572,78 @@ export const MockDataProvider = ({ children }) => {
           requests: [newRequest, ...prev.requests]
         }));
         
+        // Notify recipient & requester
+        addNotification(recipientEmail, `${requesterName} requested ${payload.currency && payload.currency.toUpperCase()==='EUR' ? '€' : '$'}${parseFloat(payload.amount).toFixed(2)} from you.`);
+        addNotification(requesterEmail, `You requested ${payload.currency && payload.currency.toUpperCase()==='EUR' ? '€' : '$'}${parseFloat(payload.amount).toFixed(2)} from ${recipientName}.`);
+        
         return Promise.resolve({ data: newRequest });
       },
+      /** Pay a pending request (current user is recipient) */
+      pay: async (requestId) => {
+        const email = localStorage.getItem('mockCurrentUserEmail') || mockData.user?.email;
+        const reqIdx = mockData.requests.findIndex(r=>r.id===requestId);
+        if(reqIdx===-1) return Promise.reject('Request not found');
+        const req = mockData.requests[reqIdx];
+        if(req.status!=='pending') return Promise.reject('Already processed');
+
+        // Build payload for send mock
+        await mockAPI.transferAPI.send({
+          recipient_user_id: 'user-1', // Hadeer
+          recipient_email: req.requester_email,
+          amount: req.amount.toString(),
+          memo: `Payment for request ${requestId}`,
+          speed_option: 'standard'
+        });
+
+        // Update request status
+        req.status='completed';
+        setMockData(prev=>({...prev,requests:[...prev.requests]}));
+
+        const sym = req.currency==='EUR'?'€':'$';
+        addNotification(req.requester_email,`${req.recipient_name||'Someone'} paid your request of ${sym}${req.amount.toFixed(2)}.`);
+        addNotification(email,`You paid ${sym}${req.amount.toFixed(2)} to ${req.requester_name}.`);
+
+        return Promise.resolve({data:req});
+      },
+      /** Decline a pending request */
+      decline: async (requestId) => {
+        const email = localStorage.getItem('mockCurrentUserEmail') || mockData.user?.email;
+        const reqIdx = mockData.requests.findIndex(r=>r.id===requestId);
+        if(reqIdx===-1) return Promise.reject('Request not found');
+        const req = mockData.requests[reqIdx];
+        if(req.status!=='pending') return Promise.reject('Already processed');
+        req.status='declined';
+        setMockData(prev=>({...prev,requests:[...prev.requests]}));
+        const sym = req.currency==='EUR'?'€':'$';
+        addNotification(req.requester_email,`${req.recipient_name||'Someone'} declined your request for ${sym}${req.amount.toFixed(2)}.`);
+        addNotification(email,`You declined the request for ${sym}${req.amount.toFixed(2)} from ${req.requester_name}.`);
+        return Promise.resolve({data:req});
+      },
       list: () => Promise.resolve({ data: { requests: mockData.requests } })
+    },
+    notificationsAPI: {
+      list: async ()=>{
+        const email= localStorage.getItem('mockCurrentUserEmail') || mockData.user?.email;
+        return Promise.resolve({data:{notifications:getNotifications().filter(n=>n.user_email===email)}});
+      }
     }
   };
+
+  /* ------------------------------------------------------------
+   * Ensure the mock endpoints are wired up BEFORE any child
+   * components mount and run their own effects. This guarantees
+   * that pages like Deposit/Withdraw fetch the mocked balances on
+   * their very first request instead of hitting the (empty) real
+   * backend and displaying $0.00.
+   * ---------------------------------------------------------- */
+  walletAPI.getOverview = mockAPI.walletAPI.getOverview;
+  walletAPI.getAllTransactions = mockAPI.walletAPI.getAllTransactions;
+  transferAPI.send = mockAPI.transferAPI.send;
+  transferAPI.deposit = mockAPI.transferAPI.deposit;
+  transferAPI.withdraw = mockAPI.transferAPI.withdraw;
+  authAPI.searchUsers = mockAPI.authAPI.searchUsers;
+  // Expose full mock for any other ad-hoc calls
+  window.mockOverrides = mockAPI;
 
   // Update mock data when user changes
   useEffect(() => {
@@ -443,6 +654,16 @@ export const MockDataProvider = ({ children }) => {
       user: user
     });
   }, [user, transactions, balances]);
+
+  const getNotifications = () => JSON.parse(localStorage.getItem('mockNotifications')||'[]');
+  const [notifications,setNotifications]=useState(getNotifications());
+
+  const addNotification = (email,message)=>{
+     const entry={id:`n-${Date.now()}-${Math.floor(Math.random()*1000)}`,user_email:email,message,created_at:new Date().toISOString()};
+     const updated=[entry,...getNotifications()];
+     localStorage.setItem('mockNotifications',JSON.stringify(updated));
+     setNotifications(updated);
+  };
 
   useEffect(() => {
     // Override the global API calls with our mock functions

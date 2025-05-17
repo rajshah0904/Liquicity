@@ -327,7 +327,7 @@ async def submit_kyc(request: Request, db: Session = Depends(get_db), current_us
 # === New Helper Models ===
 class UserProfileOut(BaseModel):
     """Shape returned for current user profile requests."""
-    id: int
+    id: str
     email: EmailStr
     first_name: str | None = None
     last_name: str | None = None
@@ -373,7 +373,7 @@ async def get_current_user_profile(db: Session = Depends(get_db), current_user: 
         raise HTTPException(status_code=404, detail="User not found")
     user_dict = dict(row._mapping)
     return {
-        "id": user_dict["id"],
+        "id": str(user_dict["id"]),
         "email": user_dict["email"],
         "first_name": user_dict.get("first_name"),
         "last_name": user_dict.get("last_name"),

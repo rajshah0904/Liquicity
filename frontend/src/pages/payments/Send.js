@@ -107,6 +107,11 @@ export default function Send() {
   ]);
   const [selectedBankAccount, setSelectedBankAccount] = useState('');
   
+  const currentUserEmail = localStorage.getItem('mockCurrentUserEmail') || (typeof window!== 'undefined' && JSON.parse(localStorage.getItem('current_user')||'{}').email) || '';
+  
+  // Determine who the OTHER party is
+  const allowedRecipientEmail = currentUserEmail === 'hadeermotair@gmail.com' ? 'rajsshah11@gmail.com' : 'hadeermotair@gmail.com';
+  
   // ------- Helper functions must be defined before we compute fees --------
   // (amountFromBalance / amountFromBank already defined below)
 
@@ -266,7 +271,8 @@ export default function Send() {
     setSearching(true);
     try {
       const resp = await authAPI.searchUsers(e.target.value);
-      setSearchResults(resp.data.users);
+      const filtered = (resp.data.users || []).filter(u=>u.email===allowedRecipientEmail);
+      setSearchResults(filtered);
     } catch (err) {
       console.error('Failed to search users', err);
       setSearchResults([]);
@@ -605,7 +611,7 @@ export default function Send() {
           </Typography>
           
           <Box sx={{ display: 'flex', gap: 2, flexWrap: 'wrap' }}>
-            {mockRecipients.map((person) => (
+            {mockRecipients.filter(p=>p.email===allowedRecipientEmail).map((person) => (
               <Box
                 key={person.id}
                 sx={{ 
@@ -716,7 +722,7 @@ export default function Send() {
         
         <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 1, px: 1 }}>
           <Typography variant="caption" color="text.secondary">
-            Available: {getCurrencySymbol(balanceData.currency, user)}{balanceData.available.toLocaleString()}
+            Available: {getCurrencySymbol(balanceData.currency, user)}{Number(balanceData.available || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}
           </Typography>
           <Typography 
             variant="caption" 
@@ -993,7 +999,7 @@ export default function Send() {
           </Typography>
           {showCurrencyConversion && (
             <Typography variant="caption" sx={{ display: 'block', color: 'primary.main', mt: 0.5 }}>
-              EUR Account (Currency conversion applies)
+              EUR Account
             </Typography>
           )}
         </Box>
@@ -1021,17 +1027,9 @@ export default function Send() {
             Payment Method
           </Typography>
           
-          {speedOption === 'standard' && (
-            <Typography variant="body1" color="text.primary">
-              Standard (1-3 business days)
-            </Typography>
-          )}
-          
-          {speedOption === 'express' && (
-            <Typography variant="body1" color="text.primary">
-              Express (≤15 minutes)
-            </Typography>
-          )}
+          <Typography variant="body1" color="text.primary">
+            {bankPart === 0 ? 'Instant (wallet transfer)' : (speedOption === 'standard' ? 'Standard (1-3 business days)' : 'Express (≤15 minutes)')}
+          </Typography>
         </Box>
         
         <Box sx={{ mb: 2 }}>
@@ -1041,8 +1039,8 @@ export default function Send() {
           <Typography variant="body1" color="text.primary">
             {getCurrencySymbol(balanceData.currency, user)}{totalFee().toFixed(2)} 
             {speedOption === 'standard' 
-              ? `(${UI_STANDARD_ALL_IN_FEE} - Standard)` 
-              : `(${UI_EXPRESS_ALL_IN_FEE} - Express)`}
+              ? ` (${UI_STANDARD_ALL_IN_FEE} - Standard)` 
+              : ` (${UI_EXPRESS_ALL_IN_FEE} - Express)`}
           </Typography>
         </Box>
 
@@ -1062,10 +1060,10 @@ export default function Send() {
             Delivery
           </Typography>
           <Typography variant="body1" color="text.primary">
-            {speedOption === 'standard' && parseFloat(amount) <= balanceData.available && 'Funds available in 1-3 business days'}
-            {speedOption === 'standard' && parseFloat(amount) > balanceData.available && (
-              `${getCurrencySymbol(balanceData.currency, user)}${Math.min(parseFloat(amount), balanceData.available).toFixed(2)} instantly, 
-               ${getCurrencySymbol(balanceData.currency, user)}${(parseFloat(amount) - balanceData.available).toFixed(2)} in 1-3 business days`
+            {bankPart === 0 && 'Funds available instantly'}
+            {bankPart > 0 && speedOption === 'standard' && (
+              `${getCurrencySymbol(balanceData.currency, user)}${walletPart.toFixed(2)} instantly, 
+               ${getCurrencySymbol(balanceData.currency, user)}${bankPart.toFixed(2)} in 1-3 business days`
             )}
             {speedOption === 'express' && 'All funds available instantly (≤15 minutes)'}
           </Typography>
@@ -1193,13 +1191,13 @@ export default function Send() {
             Delivery Speed
           </Typography>
           <Typography variant="body1" color="text.primary">
-            {speedOption === 'standard' ? 'Standard (1-3 business days)' : 'Express (≤15 minutes)'}
+            {bankPart === 0 ? 'Instant (wallet transfer)' : (speedOption === 'standard' ? 'Standard (1-3 business days)' : 'Express (≤15 minutes)')}
           </Typography>
           
-          {speedOption === 'standard' && parseFloat(amount) > balanceData.available && (
+          {bankPart > 0 && speedOption === 'standard' && (
             <Typography variant="caption" color="text.secondary" sx={{ display: 'block', mt: 0.5 }}>
-              {getCurrencySymbol(balanceData.currency, user)}{Math.min(parseFloat(amount), balanceData.available).toFixed(2)} sent instantly, 
-              {getCurrencySymbol(balanceData.currency, user)}{(parseFloat(amount) - balanceData.available).toFixed(2)} will arrive in 1-3 business days
+              {getCurrencySymbol(balanceData.currency, user)}{walletPart.toFixed(2)} sent instantly, 
+              {getCurrencySymbol(balanceData.currency, user)}{bankPart.toFixed(2)} will arrive in 1-3 business days
             </Typography>
           )}
         </Box>
@@ -1336,7 +1334,7 @@ export default function Send() {
             }}>
               <Box />
               <Typography variant="body2" color="text.secondary">
-                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(balanceData.currency, user)}{balanceData.total.toLocaleString()}</Typography>
+                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(balanceData.currency, user)}{Number(balanceData.total || 0).toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2})}</Typography>
                 <IconButton 
                   size="small" 
                   onClick={() => fetchWalletData()}

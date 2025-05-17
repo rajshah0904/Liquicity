@@ -419,14 +419,6 @@ const Dashboard = () => {
               >
                 <RefreshIcon fontSize="small" />
               </IconButton>
-              <Button 
-                variant="outlined" 
-                size="small" 
-                sx={{ ml: 1, fontSize: '0.7rem' }}
-                onClick={() => resetAppData()}
-              >
-                Reset Data
-              </Button>
             </Typography>
           </Box>
         </Box>
@@ -569,28 +561,10 @@ const Dashboard = () => {
               <Typography variant="h6" fontWeight="600">
                 Notifications
               </Typography>
-              <Typography 
-                variant="body2" 
-                color="primary" 
-                sx={{ cursor: 'pointer' }}
-                onClick={() => navigate('/notifications')}
-              >
-                View all
-              </Typography>
             </Box>
             
-            <FloatingCard sx={{ 
-              p: 0, 
-              overflow: 'hidden',
-              background: 'rgba(17, 24, 39, 0.7)',
-              borderColor: 'rgba(59, 130, 246, 0.1)'
-            }}>
-              <Box sx={{ p: 3, textAlign: 'center' }}>
-                <Typography variant="body2" color="text.secondary">
-                  Your notifications will appear here
-                </Typography>
-              </Box>
-            </FloatingCard>
+            {/* Live notifications */}
+            <NotificationCenter />
           </Box>
         </motion.div>
 
@@ -625,17 +599,17 @@ const Dashboard = () => {
               borderColor: 'rgba(59, 130, 246, 0.1)'
             }}>
               {recentTransactions.length > 0 ? (
-                <List sx={{ p: 0 }}>
+              <List sx={{ p: 0 }}>
                   {recentTransactions.map((transaction, index) => (
-                    <ListItem 
+                <ListItem 
                       key={transaction.transaction_id || index}
-                      sx={{ 
+                  sx={{ 
                         borderBottom: index < recentTransactions.length - 1 ? '1px solid rgba(55, 65, 81, 0.2)' : 'none', 
-                        py: 2,
-                        '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
-                      }}
-                    >
-                      <ListItemIcon>
+                    py: 2,
+                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
+                  }}
+                >
+                  <ListItemIcon>
                         <Box sx={{ 
                           display: 'flex', 
                           alignItems: 'center', 
@@ -646,13 +620,13 @@ const Dashboard = () => {
                           bgcolor: getTransactionTypeColor(transaction.type)
                         }}>
                           {getTransactionIcon(transaction.type)}
-                        </Box>
-                      </ListItemIcon>
-                      <ListItemText 
+                    </Box>
+                  </ListItemIcon>
+                  <ListItemText 
                         primary={<Box component="span" sx={{ fontWeight: 500 }}>{transaction.description}</Box>}
                         secondary={<>{formatTransactionDate(transaction.date)}</>}
-                      />
-                      <Box sx={{ textAlign: 'right' }}>
+                  />
+                  <Box sx={{ textAlign: 'right' }}>
                         <Typography 
                           variant="body2" 
                           color={transaction.amount < 0 ? "error.main" : "success.main"} 
@@ -665,8 +639,8 @@ const Dashboard = () => {
                         <Typography variant="caption" color="text.secondary">
                           {transaction.status || 'Completed'}
                         </Typography>
-                      </Box>
-                    </ListItem>
+                  </Box>
+                </ListItem>
                   ))}
                 </List>
               ) : (
@@ -674,7 +648,7 @@ const Dashboard = () => {
                   <Typography variant="body2" color="text.secondary">
                     Your transaction history will appear here
                   </Typography>
-                </Box>
+                    </Box>
               )}
             </FloatingCard>
           </Box>
