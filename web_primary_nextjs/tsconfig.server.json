@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "outDir": "server_bff/dist",
+    "module": "commonjs",
+    // Ensure these are suitable for your server environment
+    "target": "es2020", // Or a newer version if your Node.js supports it
+    "sourceMap": true, // Optional: for easier debugging
+    "declaration": false // Optional: usually not needed for server executable
+  },
+  "include": [
+    "server_bff/**/*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "client_nextjs",
+    "**/*.spec.ts",
+    "**/*.test.ts"
+  ]
+}
