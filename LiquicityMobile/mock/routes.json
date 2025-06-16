@@ -1,0 +1,4 @@
+{
+  "/customers/:id": "/customersStatus/:id",
+  "/customers/tos_links": "/tos_links"
+} 
