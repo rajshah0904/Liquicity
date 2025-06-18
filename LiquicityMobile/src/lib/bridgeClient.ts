@@ -1,72 +1,62 @@
-import axios from 'axios';
+import axios, { Method, AxiosRequestConfig } from 'axios';
 import { v4 as uuidv4 } from 'uuid';
 import Config from 'react-native-config';
 
 const USE_MOCKS = Config.USE_MOCKS === 'true';
-const BASE_URL = USE_MOCKS
-  ? 'http://192.168.86.26:3000'
-  : process.env.BRIDGE_API_URL || 'https://sandbox-api.bridge.xyz/v0';
 const API_KEY = USE_MOCKS
   ? 'MOCK_KEY'
-  : process.env.BRIDGE_API_KEY || '';
+  : Config.BRIDGE_API_KEY || 'sk-test-b68d29ce02c83ffb0353d9dfa6f84530';
+const BASE_URL = USE_MOCKS
+  ? 'http://192.168.86.26:3000'
+  : Config.BRIDGE_API_URL || 'https://api.sandbox.bridge.xyz/v0';
 
-// NOTE: When USE_MOCKS is true, make sure your mock server is running at http://localhost:3000
-// and accessible from your simulator/device. You may need to use your machine's IP address instead of localhost for iOS/Android simulators.
+console.log('[bridgeClient] BASE_URL:', BASE_URL);
+console.log('[bridgeClient] API_KEY:', API_KEY);
 
-export const bridge = axios.create({
+const client = axios.create({
   baseURL: BASE_URL,
   headers: {
-    'Api-Key': API_KEY,
     'Content-Type': 'application/json',
-    'Idempotency-Key': uuidv4(),
+    'Api-Key': API_KEY,
   },
 });
 
-// Helper for POST requests with idempotency
-export async function postWithIdempotency(url: string, data: any, config = {}) {
-  try {
-    return await bridge.post(url, data, {
-      ...config,
-      headers: {
-        'Api-Key': API_KEY,
-        'Content-Type': 'application/json',
-        'Idempotency-Key': uuidv4(),
-      },
-    });
-  } catch (e) {
-    const err = e as any;
-    console.error('postWithIdempotency error:', err, err.response, err.request, err.config);
-    throw err;
+export async function bridgeRequest<T = any>(
+  method: Method,
+  path: string,
+  data?: any,
+  config?: AxiosRequestConfig
+): Promise<T> {
+  const headers: Record<string, string> = {
+    'Api-Key': API_KEY,
+    'Content-Type': 'application/json',
+  };
+  if (method.toUpperCase() === 'POST') {
+    headers['Idempotency-Key'] = uuidv4();
   }
+  const resp = await client.request<T>({
+    method,
+    url: path,
+    data,
+    headers,
+    ...config,
+  });
+  return resp.data;
 }
 
-// Request a TOS link for the customer
+// convenience wrapper for TOS link
 export async function requestTosLink(): Promise<string> {
-  try {
-    if (USE_MOCKS) {
-      // Use GET for mock mode
-      const response = await bridge.get('/tos_links', {
-        headers: {
-          'Api-Key': API_KEY,
-          'Content-Type': 'application/json',
-        },
-      });
-      // Return the first url in the array
-      return response.data[0]?.url;
-    } else {
-      // Use POST for real/sandbox mode
-      const response = await bridge.post('/tos_links', {}, {
-        headers: {
-          'Api-Key': API_KEY,
-          'Content-Type': 'application/json',
-          'Idempotency-Key': uuidv4(),
-        },
-      });
-      return response.data.url;
-    }
-  } catch (e) {
-    const err = e as any;
-    console.error('requestTosLink error:', err, err.response, err.request, err.config);
-    throw err;
+  if (USE_MOCKS) {
+    // Use GET for mock mode
+    const response = await client.get('/customers/tos_links');
+    return response.data[0]?.url;
+  } else {
+    // Use POST for real/sandbox mode
+    const { url } = await bridgeRequest<{ url: string }>(
+      'POST',
+      '/customers/tos_links',
+      {} // no body
+    );
+    return url;
   }
 } 

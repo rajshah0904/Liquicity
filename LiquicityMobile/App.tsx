@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { NavigationContainer, useNavigation } from '@react-navigation/native';
+import { NavigationContainer, useNavigation, RouteProp } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Auth0Provider } from 'react-native-auth0';
 import config from './src/auth0-configuration';
@@ -15,21 +15,16 @@ import { ActivityIndicator, View, Alert } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import { fetchKycStatus } from './src/utils/kyc';
 import { createNavigationContainerRef, StackActions } from '@react-navigation/native';
+import { RootStackParamList } from './src/RootStackParamList';;
+import TermsOfServiceScreen from './src/components/TermsOfServiceScreen';
+import KYCStart from './src/components/KYCStart';
 
 const Tab = createBottomTabNavigator();
-const Stack = createNativeStackNavigator();
-
-type RootStackParamList = {
-  Home: undefined;
-  KYCStart: undefined;
-  Dashboard: undefined;
-  Wallet: undefined;
-  Send: undefined;
-  Receive: undefined;
-  Activity: undefined;
-};
+const Stack = createNativeStackNavigator<RootStackParamList>();
 
 export const navigationRef = createNavigationContainerRef<RootStackParamList>();
+
+type KYCStartRouteProp = RouteProp<RootStackParamList, 'KYCStart'>;
 
 const MainTabs = () => (
   <Tab.Navigator
@@ -91,7 +86,8 @@ const MainTabs = () => (
 const AuthStack = () => (
   <Stack.Navigator screenOptions={{ headerShown: false }}>
     <Stack.Screen name="Home" component={Home} />
-    <Stack.Screen name="KYCStart" component={require('./src/components/KYCStart').default} />
+    <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
+    <Stack.Screen name="KYCStart" component={KYCStart} />
   </Stack.Navigator>
 );
 
@@ -103,7 +99,7 @@ const App = () => {
       if (user && user.id) {
         const status = await fetchKycStatus(user.id);
         if (status !== 'approved' && navigationRef.isReady()) {
-          navigationRef.navigate('KYCStart');
+          navigationRef.navigate('KYCStart', { signed_agreement_id: 'dummy' });
         }
       }
     };
