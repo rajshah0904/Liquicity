@@ -11,6 +11,7 @@
     "mock:server": "json-server --watch mock/db.json --routes mock/routes.json --port 3000"
   },
   "dependencies": {
+    "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-native-picker/picker": "^2.11.0",
     "@react-navigation/bottom-tabs": "^7.3.14",
     "@react-navigation/native": "^7.1.10",
@@ -21,6 +22,7 @@
     "react-native-auth0": "^5.0.0-beta.1",
     "react-native-config": "^1.5.5",
     "react-native-get-random-values": "^1.11.0",
+    "react-native-image-picker": "^8.2.1",
     "react-native-safe-area-context": "^5.4.1",
     "react-native-screens": "^4.11.1",
     "react-native-vector-icons": "^10.2.0",

@@ -61,5 +61,9 @@
 	<array>
 		<string>MaterialCommunityIcons.ttf</string>
 	</array>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>myapp</string>
+	</array>
 </dict>
 </plist>

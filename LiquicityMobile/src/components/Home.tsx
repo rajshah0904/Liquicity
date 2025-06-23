@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -13,6 +13,7 @@ import {
 } from 'react-native';
 import { useAuth0 } from 'react-native-auth0';
 import Icon from 'react-native-vector-icons/FontAwesome';
+import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityIcons';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import KYCStart from './KYCStart';
@@ -26,6 +27,12 @@ type RootStackParamList = {
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
+function appendRedirectUri(url: string, redirectUri: string): string {
+  return url.includes('?')
+    ? `${url}&redirect_uri=${encodeURIComponent(redirectUri)}`
+    : `${url}?redirect_uri=${encodeURIComponent(redirectUri)}`;
+}
+
 const Home = () => {
   const navigation = useNavigation<HomeScreenNavigationProp & { navigate: (screen: string, params?: any) => void }>();
   const route = useRoute();
@@ -34,6 +41,9 @@ const Home = () => {
   const [emailLoading, setEmailLoading] = useState(false);
   const [tosModalVisible, setTosModalVisible] = useState(false);
   const [tosUrl, setTosUrl] = useState<string | null>(null);
+  const [showTosWebView, setShowTosWebView] = useState(false);
+  const [canGoBackBridgeTos, setCanGoBackBridgeTos] = useState(false);
+  const bridgeTosWebViewRef = useRef<WebView>(null);
 
   if (isLoading) {
     return (
@@ -114,7 +124,7 @@ const Home = () => {
         <TouchableOpacity style={styles.outlineButton} onPress={async () => {
           try {
             const url = await requestTosLink();
-            setTosUrl(url);
+            setTosUrl(appendRedirectUri(url, 'https://myapp.local/kyc'));
             setTosModalVisible(true);
           } catch (e: any) {
             console.log('Bridge API Error:', e, e.response, e.request, e.config);
@@ -129,33 +139,87 @@ const Home = () => {
           onRequestClose={() => setTosModalVisible(false)}
         >
           <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
-            {tosUrl && (
-              <WebView
-                source={{ uri: tosUrl }}
-                style={{ flex: 1 }}
-                onNavigationStateChange={(navState: any) => {
-                  // If the user accepts TOS and Bridge redirects, close modal and go to KYCStart
-                  if (navState.url.includes('signed_agreement_id')) {
+            <View style={{ flex: 1, position: 'relative', pointerEvents: 'box-none' }}>
+              <TouchableOpacity
+                style={styles.backArrowButton}
+                onPress={() => {
+                  if (canGoBackBridgeTos && bridgeTosWebViewRef.current) {
+                    bridgeTosWebViewRef.current.goBack();
+                  } else {
                     setTosModalVisible(false);
-                    setTimeout(() => navigation.navigate('KYCStart'), 300);
                   }
                 }}
-              />
-            )}
-            <TouchableOpacity style={[styles.outlineButton, { margin: 16 }]} onPress={() => setTosModalVisible(false)}>
-              <Text style={styles.outlineButtonText}>Close</Text>
-            </TouchableOpacity>
+                hitSlop={{ top: 20, left: 20, right: 20, bottom: 20 }}
+              >
+                <MaterialCommunityIcons name="arrow-left" size={28} color="#fff" />
+              </TouchableOpacity>
+              {tosUrl && (() => {
+                console.log('Bridge ToS URL:', tosUrl);
+                return (
+                  <WebView
+                    ref={bridgeTosWebViewRef}
+                    source={{ uri: tosUrl }}
+                    style={{ flex: 1 }}
+                    onNavigationStateChange={navState => {
+                      if (navState.url && navState.url.startsWith('https://myapp.local/kyc')) {
+                        const match = navState.url.match(/signed_agreement_id=([^&]+)/);
+                        if (match) {
+                          setTosModalVisible(false);
+                          setTimeout(() => navigation.navigate('KYCStart', { signed_agreement_id: match[1] }), 300);
+                        }
+                        return;
+                      }
+                      setCanGoBackBridgeTos(navState.canGoBack);
+                    }}
+                    onShouldStartLoadWithRequest={event => {
+                      const url = event.url || event.mainDocumentURL;
+                      if (url && url.startsWith('https://myapp.local/kyc')) {
+                        const match = url.match(/signed_agreement_id=([^&]+)/);
+                        if (match) {
+                          setTosModalVisible(false);
+                          setTimeout(() => navigation.navigate('KYCStart', { signed_agreement_id: match[1] }), 300);
+                        }
+                        return false;
+                      }
+                      return true;
+                    }}
+                  />
+                );
+              })()}
+            </View>
           </SafeAreaView>
         </Modal>
         <Text style={styles.termsText}>
           By clicking continue, you agree to our{' '}
-          <Text style={styles.link} onPress={() => Linking.openURL('https://your-terms-url.com')}>Terms of Service</Text>
+          <Text style={styles.link} onPress={() => setShowTosWebView(true)}>Terms of Service</Text>
           {' '}and{' '}
           <Text style={styles.link} onPress={() => Linking.openURL('https://your-privacy-url.com')}>Privacy Policy</Text>
         </Text>
         {isLoading && <ActivityIndicator color="#fff" style={{ marginTop: 16 }} />}
         {error && <Text style={styles.error}>{error.message}</Text>}
       </View>
+      {/* TOS WebView Modal for Terms of Service link */}
+      <Modal
+        visible={showTosWebView}
+        animationType="slide"
+        onRequestClose={() => setShowTosWebView(false)}
+      >
+        <SafeAreaView style={{ flex: 1, backgroundColor: '#000' }}>
+          <View style={{ flex: 1, position: 'relative', pointerEvents: 'box-none' }}>
+            <TouchableOpacity
+              style={styles.backArrowButton}
+              onPress={() => setShowTosWebView(false)}
+              hitSlop={{ top: 20, left: 20, right: 20, bottom: 20 }}
+            >
+              <MaterialCommunityIcons name="arrow-left" size={28} color="#fff" />
+            </TouchableOpacity>
+            <WebView
+              source={{ uri: 'https://your-terms-url.com' }}
+              style={{ flex: 1 }}
+            />
+          </View>
+        </SafeAreaView>
+      </Modal>
     </View>
   );
 };
@@ -274,6 +338,15 @@ const styles = StyleSheet.create({
     color: 'red',
     marginTop: 12,
     textAlign: 'center',
+  },
+  backArrowButton: {
+    position: 'absolute',
+    top: 16,
+    left: 16,
+    zIndex: 10,
+    backgroundColor: 'rgba(30,30,30,0.7)',
+    borderRadius: 20,
+    padding: 8,
   },
 });
 

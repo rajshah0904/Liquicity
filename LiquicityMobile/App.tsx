@@ -18,6 +18,7 @@ import { createNavigationContainerRef, StackActions } from '@react-navigation/na
 import { RootStackParamList } from './src/RootStackParamList';;
 import TermsOfServiceScreen from './src/components/TermsOfServiceScreen';
 import KYCStart from './src/components/KYCStart';
+import KYCUploadID from './src/components/KYCUploadID';
 
 const Tab = createBottomTabNavigator();
 const Stack = createNativeStackNavigator<RootStackParamList>();
@@ -88,6 +89,7 @@ const AuthStack = () => (
     <Stack.Screen name="Home" component={Home} />
     <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
     <Stack.Screen name="KYCStart" component={KYCStart} />
+    <Stack.Screen name="KYCUploadID" component={KYCUploadID} />
   </Stack.Navigator>
 );
 

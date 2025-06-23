@@ -59,4 +59,9 @@ export async function requestTosLink(): Promise<string> {
     );
     return url;
   }
+}
+
+// Create a customer with Bridge
+export async function createCustomer(data: any) {
+  return bridgeRequest('POST', '/customers', data);
 } 
