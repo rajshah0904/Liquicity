@@ -94,7 +94,12 @@ const AuthStack = () => (
 );
 
 const App = () => {
-  const { user, isLoading } = useAuth0();
+  const { user, isLoading, clearSession } = useAuth0();
+
+  useEffect(() => {
+    // Force logout on app start (for dev/testing)
+    clearSession().catch(() => {});
+  }, []);
 
   useEffect(() => {
     const checkKyc = async () => {

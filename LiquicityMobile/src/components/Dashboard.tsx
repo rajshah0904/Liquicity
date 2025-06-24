@@ -2,6 +2,7 @@ import React from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, SafeAreaView, Alert } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useAuth0 } from 'react-native-auth0';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const actions = [
   { label: 'Add Funds', icon: 'plus-circle' },
@@ -17,6 +18,7 @@ const activityData = [
 
 const Dashboard = () => {
   const { clearSession } = useAuth0();
+  const insets = useSafeAreaInsets();
 
   const handleLogout = async () => {
     try {
@@ -29,8 +31,8 @@ const Dashboard = () => {
   return (
     <SafeAreaView style={styles.container}>
       {/* Logout Button Top Left */}
-      <TouchableOpacity style={styles.logoutButton} onPress={handleLogout}>
-        <Icon name="log-out" size={22} color="#fff" />
+      <TouchableOpacity style={[styles.logoutButton, { top: insets.top + 10 }]} onPress={handleLogout}>
+        <Text style={styles.logoutText}>Logout</Text>
       </TouchableOpacity>
       {/* Top: Greeting and Balance */}
       <View style={styles.header}>
@@ -94,6 +96,12 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(30,30,30,0.7)',
     borderRadius: 20,
     padding: 8,
+  },
+  logoutText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
+    letterSpacing: 1,
   },
   header: {
     alignItems: 'center',
