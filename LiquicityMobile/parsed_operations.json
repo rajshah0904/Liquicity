@@ -1,0 +1,2169 @@
+[
+  {
+    "method": "GET",
+    "path": "/wallets",
+    "parameters": [
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a bridge wallet id. If this is specified, the next page that starts with a bridge wallet right AFTER the specified bridge wallet id on the bridge wallet timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that bridge wallets older than the specified bridge wallet id will be returned (shouldn't be set if ending_before is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a bridge wallet id. If this is specified, the previous page that ends with a bridge wallet right BEFORE the specified bridge wallet id on the bridge wallet timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that bridge wallets newer than the specified bridge wallet id will be returned (shouldn't be set if starting_after is set)"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/wallets/total_balances",
+    "parameters": []
+  },
+  {
+    "method": "GET",
+    "path": "/wallets/{bridgeWalletID}/history",
+    "parameters": [
+      {
+        "name": "bridgeWalletID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "updated_after_ms",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "This is a unix timestamp in milliseconds. If this is specified, objects updated AFTER the specified timestamp will be returned"
+      },
+      {
+        "name": "updated_before_ms",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "This is a unix timestamp in milliseconds. If this is specified, objects updated BEFORE the specified timestamp will be returned"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers",
+    "parameters": [
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a customer id. If this is specified, the next page that starts with a customer right AFTER the specified customer id on the customer timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that customers older than the specified customer id will be returned (shouldn't be set if ending_before is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a customer id. If this is specified, the previous page that ends with a customer right BEFORE the specified customer id on the customer timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that customers newer than the specified customer id will be returned (shouldn't be set if starting_after is set)"
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/customers/{customerID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/customers/{customerID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/external_accounts",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/external_accounts",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/external_accounts/{externalAccountID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "externalAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/customers/{customerID}/external_accounts/{externalAccountID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "externalAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/customers/{customerID}/external_accounts/{externalAccountID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "externalAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/associated_persons",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/associated_persons",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/associated_persons/{associatedPersonID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "associatedPersonID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": "Unique identifier for an associated person"
+      }
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/customers/{customerID}/associated_persons/{associatedPersonID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "associatedPersonID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": "Unique identifier for an associated person"
+      }
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/customers/{customerID}/associated_persons/{associatedPersonID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "associatedPersonID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": "Unique identifier for an associated person"
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/external_accounts/{externalAccountID}/reactivate",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      },
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "externalAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/tos_acceptance_link",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/kyc_link",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "endorsement",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "An endorsement is the approval required for a customer to use a particular product or service offered by Bridge"
+      },
+      {
+        "name": "redirect_uri",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "An optional url encoded link that users will be redirected to after completing the hosted KYC flow."
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/transfers",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a transfer id. If this is specified, the next page that starts with a transfer right AFTER the specified transfer id on the transfer timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that transfers older than the specified transfer id will be returned (shouldn't be set if ending_before is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a transfer id. If this is specified, the previous page that ends with a transfer right BEFORE the specified transfer id on the transfer timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that transfers newer than the specified transfer id will be returned (shouldn't be set if starting_after is set)"
+      },
+      {
+        "name": "tx_hash",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "The hash of the transaction"
+      },
+      {
+        "name": "updated_after_ms",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "This is a unix timestamp in milliseconds. If this is specified, objects updated AFTER the specified timestamp will be returned"
+      },
+      {
+        "name": "updated_before_ms",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "This is a unix timestamp in milliseconds. If this is specified, objects updated BEFORE the specified timestamp will be returned"
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/tos_links",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/plaid_link_requests",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      },
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/plaid_exchange_public_token/{link_token}",
+    "parameters": [
+      {
+        "name": "link_token",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "Plaid Link token"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/transfers",
+    "parameters": [
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a transfer id. If this is specified, the next page that starts with a transfer right AFTER the specified transfer id on the transfer timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that transfers older than the specified transfer id will be returned (shouldn't be set if ending_before is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a transfer id. If this is specified, the previous page that ends with a transfer right BEFORE the specified transfer id on the transfer timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that transfers newer than the specified transfer id will be returned (shouldn't be set if starting_after is set)"
+      },
+      {
+        "name": "tx_hash",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "The hash of the transaction"
+      },
+      {
+        "name": "updated_after_ms",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "This is a unix timestamp in milliseconds. If this is specified, objects updated AFTER the specified timestamp will be returned"
+      },
+      {
+        "name": "updated_before_ms",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "This is a unix timestamp in milliseconds. If this is specified, objects updated BEFORE the specified timestamp will be returned"
+      },
+      {
+        "name": "template_id",
+        "in": "query",
+        "required": false,
+        "type": "Id",
+        "description": "This is a template id. If this is specified, the transfers with the specified template id will be returned."
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/transfers",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/transfers/{transferID}",
+    "parameters": [
+      {
+        "name": "transferID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/transfers/{transferID}",
+    "parameters": [
+      {
+        "name": "transferID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/transfers/{transferID}",
+    "parameters": [
+      {
+        "name": "transferID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/prefunded_accounts",
+    "parameters": []
+  },
+  {
+    "method": "GET",
+    "path": "/prefunded_accounts/{prefundedAccountID}",
+    "parameters": [
+      {
+        "name": "prefundedAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/prefunded_accounts/{prefundedAccountID}/history",
+    "parameters": [
+      {
+        "name": "prefundedAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a prefunded event id. If this is specified, the next page that starts with an event right AFTER the specified event id on the event timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that events older than the specified event id will be returned (shouldn't be set if ending_before is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a prefunded event id. If this is specified, the previous page that ends with an event right BEFORE the specified event id on the event timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that events newer than the specified event id will be returned (shouldn't be set if starting_after is set)"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/wallets",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a bridge wallet id. If this is specified, the next page that starts with a bridge wallet right AFTER the specified bridge wallet id on the bridge wallet timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that bridge wallets older than the specified bridge wallet id will be returned (shouldn't be set if ending_before is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a bridge wallet id. If this is specified, the previous page that ends with a bridge wallet right BEFORE the specified bridge wallet id on the bridge wallet timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that bridge wallets newer than the specified bridge wallet id will be returned (shouldn't be set if starting_after is set)"
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/wallets",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/wallets/{bridgeWalletID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "bridgeWalletID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/liquidation_addresses",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a liquidation address id. If this is specified, the next page that starts with a liquidation address right AFTER the specified liquidation address id on the liquidation address timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that liquidation address older than the specified liquidation address id will be returned (shouldn't be set if ending_before is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a liquidation address id. If this is specified, the previous page that ends with a liquidation address right BEFORE the specified liquidation address id on the liquidation address timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that liquidation address newer than the specified liquidation address id will be returned (shouldn't be set if starting_after is set)"
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/liquidation_addresses",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/liquidation_addresses/{liquidationAddressID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "liquidationAddressID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/customers/{customerID}/liquidation_addresses/{liquidationAddressID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "liquidationAddressID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/liquidation_addresses/{liquidationAddressID}/drains",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "liquidationAddressID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a drain id. If this is specified, the next page that starts with a drain right AFTER the specified drain id on the drain timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that drains older than the specified drain id will be returned (shouldn't be set if ending_before is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a drain id. If this is specified, the previous page that ends with a drain right BEFORE the specified drain id on the drain timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that drains newer than the specified drain id will be returned (shouldn't be set if starting_after is set)"
+      },
+      {
+        "name": "updated_after_ms",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "This is a unix timestamp in milliseconds. If this is specified, objects updated AFTER the specified timestamp will be returned"
+      },
+      {
+        "name": "updated_before_ms",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "This is a unix timestamp in milliseconds. If this is specified, objects updated BEFORE the specified timestamp will be returned"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/liquidation_addresses/{liquidationAddressID}/balances",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "liquidationAddressID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/virtual_accounts",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "type": "VirtualAccountActivationStatus",
+        "description": "Limit results to those with the given activation status"
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/virtual_accounts",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      },
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/virtual_accounts/{virtualAccountID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "virtualAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/customers/{customerID}/virtual_accounts/{virtualAccountID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "virtualAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/virtual_accounts/{virtualAccountID}/deactivate",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      },
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "virtualAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/virtual_accounts/{virtualAccountID}/reactivate",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      },
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "virtualAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/virtual_accounts/{virtualAccountID}/history",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "virtualAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "tx_hash",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "The hash of the transaction"
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is an event id. If this is specified, the next page that starts with an event right AFTER the specified event id on the event timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that events older than the specified event id will be returned (shouldn't be set if ending_before is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is an event id. If this is specified, the previous page that ends with an event right BEFORE the specified event id on the event timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that events newer than the specified event id will be returned (shouldn't be set if starting_after is set)"
+      },
+      {
+        "name": "event_type",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Filter history by event type"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/static_memos",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "type": "VirtualAccountActivationStatus",
+        "description": "Limit results to those with the given activation status"
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/static_memos",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      },
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/static_memos/{staticMemoID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "staticMemoID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/customers/{customerID}/static_memos/{staticMemoID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "staticMemoID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/card_accounts/{cardAccountID}/pin",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      },
+      {
+        "name": "cardAccountID",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The ID of the card account"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/static_memos/{staticMemoID}/history",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "staticMemoID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "tx_hash",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "The hash of the transaction"
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is an event id. If this is specified, the next page that starts with an event right AFTER the specified event id on the event timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that events older than the specified event id will be returned (shouldn't be set if ending_before is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is an event id. If this is specified, the previous page that ends with an event right BEFORE the specified event id on the event timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that events newer than the specified event id will be returned (shouldn't be set if starting_after is set)"
+      },
+      {
+        "name": "event_type",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Filter history by event type"
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/batch_settlement_schedules",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/virtual_accounts/history",
+    "parameters": [
+      {
+        "name": "tx_hash",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "The hash of the transaction"
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is an event id. If this is specified, the next page that starts with an event right AFTER the specified event id on the event timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that events older than the specified event id will be returned (shouldn't be set if ending_before is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is an event id. If this is specified, the previous page that ends with an event right BEFORE the specified event id on the event timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that events newer than the specified event id will be returned (shouldn't be set if starting_after is set)"
+      },
+      {
+        "name": "event_type",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Filter history by event type"
+      },
+      {
+        "name": "updated_after_ms",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "This is a unix timestamp in milliseconds. If this is specified, objects updated AFTER the specified timestamp will be returned"
+      },
+      {
+        "name": "updated_before_ms",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "This is a unix timestamp in milliseconds. If this is specified, objects updated BEFORE the specified timestamp will be returned"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/developer/fees",
+    "parameters": []
+  },
+  {
+    "method": "POST",
+    "path": "/developer/fees",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/developer/fee_external_account",
+    "parameters": []
+  },
+  {
+    "method": "POST",
+    "path": "/developer/fee_external_account",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/kyc_links",
+    "parameters": [
+      {
+        "name": "customer_id",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "If included, filters to KYC links for the customer with the given id"
+      },
+      {
+        "name": "email",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "If included, filters to KYC links for the customer with the given email"
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/kyc_links",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/kyc_links/{kycLinkID}",
+    "parameters": [
+      {
+        "name": "kycLinkID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/static_memos/history",
+    "parameters": [
+      {
+        "name": "tx_hash",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "The hash of the transaction"
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is an event id. If this is specified, the next page that starts with an event right AFTER the specified event id on the event timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that events older than the specified event id will be returned (shouldn't be set if ending_before is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is an event id. If this is specified, the previous page that ends with an event right BEFORE the specified event id on the event timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that events newer than the specified event id will be returned (shouldn't be set if starting_after is set)"
+      },
+      {
+        "name": "event_type",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "Filter history by event type"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/webhooks",
+    "parameters": []
+  },
+  {
+    "method": "POST",
+    "path": "/webhooks",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/webhooks/{webhookID}",
+    "parameters": [
+      {
+        "name": "webhookID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/webhooks/{webhookID}",
+    "parameters": [
+      {
+        "name": "webhookID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/webhooks/{webhookID}/events",
+    "parameters": [
+      {
+        "name": "webhookID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/webhooks/{webhookID}/logs",
+    "parameters": [
+      {
+        "name": "webhookID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/webhooks/{webhookID}/send",
+    "parameters": [
+      {
+        "name": "webhookID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/associated_persons/{associatedPersonID}",
+    "parameters": [
+      {
+        "name": "associatedPersonID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": "Unique identifier for an associated person"
+      }
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/associated_persons/{associatedPersonID}",
+    "parameters": [
+      {
+        "name": "associatedPersonID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": "Unique identifier for an associated person"
+      }
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/associated_persons/{associatedPersonID}",
+    "parameters": [
+      {
+        "name": "associatedPersonID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": "Unique identifier for an associated person"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/exchange_rates",
+    "parameters": [
+      {
+        "name": "from",
+        "in": "query",
+        "required": true,
+        "type": "string",
+        "description": "The currency code to convert from."
+      },
+      {
+        "name": "to",
+        "in": "query",
+        "required": true,
+        "type": "string",
+        "description": "The currency code to convert to."
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/lists/occupation_codes",
+    "parameters": []
+  },
+  {
+    "method": "GET",
+    "path": "/lists/countries",
+    "parameters": []
+  },
+  {
+    "method": "GET",
+    "path": "/crypto_return_policies",
+    "parameters": []
+  },
+  {
+    "method": "POST",
+    "path": "/crypto_return_policies",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "PUT",
+    "path": "/crypto_return_policies/{policyID}",
+    "parameters": [
+      {
+        "name": "policyID",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "DELETE",
+    "path": "/crypto_return_policies/{policyID}",
+    "parameters": [
+      {
+        "name": "policyID",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/card_accounts/{cardAccountID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "cardAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/card_accounts",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/card_accounts",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      },
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/card_accounts/{cardAccountID}/freeze",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      },
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "cardAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/card_accounts/{cardAccountID}/unfreeze",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      },
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "cardAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/card_accounts/{cardAccountID}/create_mobile_wallet_provisioning_request",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      },
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "cardAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/card_accounts/{cardAccountID}/authorizations",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "cardAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of pending card authorizations to return, with a max of 200. The default is 100"
+      },
+      {
+        "name": "starting_time",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "The starting time in ISO8601 format"
+      },
+      {
+        "name": "ending_time",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "The exclusive ending time in ISO8601 format"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/card_accounts/{cardAccountID}/transactions",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "cardAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of transactions to return, with a max of 200. The default is 100"
+      },
+      {
+        "name": "starting_time",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "The starting time in ISO8601 format"
+      },
+      {
+        "name": "ending_time",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "The exclusive ending time in ISO8601 format"
+      },
+      {
+        "name": "page_size",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "The max number of items to return for the requested page, with a max of 200. The default is 100"
+      },
+      {
+        "name": "page",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "A specific page to fetch. If omitted, the first page (starting at 1) will be returned. Note that this is only supported for navigating posted transactions."
+      },
+      {
+        "name": "status",
+        "in": "query",
+        "required": false,
+        "type": "array",
+        "description": "A status to filter the transactions by. If not provided, will default to `posted`."
+      },
+      {
+        "name": "pagination_token",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "A pagination token to fetch the next page of transactions."
+      },
+      {
+        "name": "category_family",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "A category family to filter the transactions by. If set to `cards`, only card purchase related transactions will be returned. If set to `crypto`, only funding related transactions will be returned.` If not provided, all posted transactions will be returned."
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/card_accounts/{cardAccountID}/transactions/{transactionID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "cardAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "transactionID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/card_accounts/{cardAccountID}/withdrawals",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "cardAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a withdrawal id. If this is specified, the next page that starts with a withdrawal right AFTER the specified id on the timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that withdrawals older than the specified id will be returned (shouldn't be set if `ending_before` is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a withdrawal id. If this is specified, the previous page that ends with a withdrawal right BEFORE the specified id on the timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that withdrawals newer than the specified id will be returned (shouldn't be set if `starting_after` is set)"
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/card_accounts/{cardAccountID}/withdrawals",
+    "parameters": [
+      {
+        "name": "Idempotency-Key",
+        "in": "header",
+        "required": false,
+        "type": "string",
+        "description": ""
+      },
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "cardAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/customers/{customerID}/card_accounts/{cardAccountID}/withdrawals/{cardWithdrawalID}",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "cardAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "cardWithdrawalID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "POST",
+    "path": "/customers/{customerID}/card_accounts/{cardAccountID}/statements/{period}.pdf",
+    "parameters": [
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "cardAccountID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      },
+      {
+        "name": "period",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "A string in the `YYYYMM` format representing a card statement period"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/liquidation_addresses/drains",
+    "parameters": [
+      {
+        "name": "limit",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "The number of items to return (default of 10, max of 100)"
+      },
+      {
+        "name": "starting_after",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a drain id. If this is specified, the next page that starts with a drain right AFTER the specified drain id on the drain timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that drains older than the specified drain id will be returned (shouldn't be set if ending_before is set)"
+      },
+      {
+        "name": "ending_before",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "This is a drain id. If this is specified, the previous page that ends with a drain right BEFORE the specified drain id on the drain timeline, which is always ordered from the newest to the oldest by creation time, will be returned. This also implies that drains newer than the specified drain id will be returned (shouldn't be set if starting_after is set)"
+      },
+      {
+        "name": "updated_after_ms",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "This is a unix timestamp in milliseconds. If this is specified, objects updated AFTER the specified timestamp will be returned"
+      },
+      {
+        "name": "updated_before_ms",
+        "in": "query",
+        "required": false,
+        "type": "integer",
+        "description": "This is a unix timestamp in milliseconds. If this is specified, objects updated BEFORE the specified timestamp will be returned"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/rewards/rates",
+    "parameters": [
+      {
+        "name": "since",
+        "in": "query",
+        "required": false,
+        "type": "string",
+        "description": "The starting time in ISO8601 format"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/rewards/{currency}",
+    "parameters": [
+      {
+        "name": "currency",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The stablecoin symbol"
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/rewards/{currency}/customer/{customerID}",
+    "parameters": [
+      {
+        "name": "currency",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The stablecoin symbol"
+      },
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  },
+  {
+    "method": "GET",
+    "path": "/rewards/{currency}/customer/{customerID}/history",
+    "parameters": [
+      {
+        "name": "currency",
+        "in": "path",
+        "required": true,
+        "type": "string",
+        "description": "The stablecoin symbol"
+      },
+      {
+        "name": "customerID",
+        "in": "path",
+        "required": true,
+        "type": "Id",
+        "description": ""
+      }
+    ]
+  }
+]
