@@ -30,7 +30,6 @@ import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
 import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
-import CreditCardIcon from '@mui/icons-material/CreditCard';
 import AttachMoneyIcon from '@mui/icons-material/AttachMoney';
 import AccessTimeIcon from '@mui/icons-material/AccessTime';
 import TrendingUpIcon from '@mui/icons-material/TrendingUp';
@@ -48,6 +47,8 @@ import PaymentsIcon from '@mui/icons-material/Payments';
 import { useAuth0 } from '@auth0/auth0-react';
 import NotificationCenter from '../components/NotificationCenter';
 import RefreshIcon from '@mui/icons-material/Refresh';
+import useBridgeWallet from '../hooks/useBridgeWallet';
+import useBridgeTransactions from '../hooks/useBridgeTransactions';
 
 // Import our custom UI components
 import {
@@ -76,9 +77,7 @@ import {
 
 const Dashboard = () => {
   const { user, isAuthenticated } = useAuth0();
-  const [wallets, setWallets] = useState([]);
-  const [transactions, setTransactions] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [pending, setPending] = useState(0);
   const navigate = useNavigate();
@@ -90,39 +89,30 @@ const Dashboard = () => {
   const [stablecoinBalance, setStablecoinBalance] = useState(0);
   const [recentTransactions, setRecentTransactions] = useState([]);
 
-  // Fetch user data
+  // Bridge wallet hook
+  const { wallet: bridgeWallet, loading: walletLoading, refetch: refetchWallet } = useBridgeWallet();
+
+  // Hook for live transactions
+  const { txns: transactions, loading: txLoading, refetch: refetchTx } = useBridgeTransactions();
+
+  // Derive pending, recent, etc. whenever transactions update
   useEffect(() => {
-    setLoading(true);
-    setError(null);
+    if (!transactions) return;
+    const sorted = [...transactions].sort((a,b)=> new Date(b.created_at)- new Date(a.created_at));
+    setRecentTransactions(sorted.slice(0,5));
+    const pendingAmount = transactions.filter(tx=> tx.status==='pending').reduce((s,tx)=> s+Number(tx.amount||0),0);
+    setPending(pendingAmount);
+  }, [transactions]);
 
-    const fetchData = async () => {
-      try {
-        // Fetch wallet overview
-        const walletResp = await walletAPI.getOverview();
-        setWallets(walletResp.data.wallets || []);
-        // Main balance: sum of local balances
-        const totalLocal = (walletResp.data.wallets || []).reduce((acc,w)=>acc + (w.local_balance||0),0);
-        setMainBalance(totalLocal);
-        setMainCurrency(walletResp.data.wallets[0]?.local_currency?.toUpperCase() || 'USD');
-
-        // Fetch transactions
-        const historyResp = await walletAPI.getAllTransactions();
-        const txns = historyResp.data.transactions || [];
-        setTransactions(txns);
-        const sorted = [...txns].sort((a,b)=> new Date(b.date)- new Date(a.date)).slice(0,5);
-        setRecentTransactions(sorted);
-        const pendingAmount = txns.filter(tx=> tx.state==='pending').reduce((s,tx)=> s+Number(tx.amount||0),0);
-        setPending(pendingAmount);
-      } catch (error) {
-        console.error("Error fetching data:", error);
-        setError("Unable to load your data. Please try again later.");
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    fetchData();
-  }, [user]);
+  // Update balances whenever live wallet changes
+  useEffect(() => {
+    if (bridgeWallet && bridgeWallet.balances) {
+      // Sum USD-equivalent balances (assuming balance field is numeric string)
+      const total = bridgeWallet.balances.reduce((acc, b) => acc + parseFloat(b.balance || 0), 0);
+      setMainBalance(total);
+      setMainCurrency('USD');
+    }
+  }, [bridgeWallet]);
 
   // Format currency
   const formatCurrency = (amount, currency = 'USD') => {
@@ -146,6 +136,11 @@ const Dashboard = () => {
   const handleHistory = () => navigate('/transactions');
   const handleSwap = () => navigate('/wallet');
   const handleLink = () => navigate('/wallet');
+
+  // Manual refresh via icon
+  const handleRefresh = async () => {
+    await refetchWallet();
+  };
 
   // Helper functions for transactions
   const getTransactionTypeColor = (type) => {
@@ -243,10 +238,10 @@ const Dashboard = () => {
   };
 
   // Get wallet for the current user
-  const wallet = wallets.length > 0 ? wallets[0] : null;
+  const wallet = bridgeWallet;
 
   // Dashboard rendering
-  if (loading) {
+  if (walletLoading || txLoading) {
     return (
       <Container sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
         <CircularProgress color="primary" />
@@ -299,7 +294,7 @@ const Dashboard = () => {
               <IconButton 
                 size="small" 
                 sx={{ ml: 1 }}
-                onClick={() => window.location.reload()}
+                onClick={handleRefresh}
               >
                 <RefreshIcon fontSize="small" />
               </IconButton>
@@ -376,10 +371,10 @@ const Dashboard = () => {
                   bgColor: 'rgba(139, 92, 246, 0.1)'
                 },
                 { 
-                  title: 'Card', 
-                  icon: <CreditCardIcon />, 
+                  title: 'Virtual Account', 
+                  icon: <AccountBalanceIcon />, 
                   color: '#f59e0b', 
-                  onClick: () => navigate('/card'),
+                  onClick: () => navigate('/virtual-account'),
                   bgColor: 'rgba(245, 158, 11, 0.1)'
                 }
               ].map((action, index) => (

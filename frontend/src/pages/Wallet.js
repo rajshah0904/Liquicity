@@ -18,14 +18,13 @@ import {
   useMediaQuery,
   Button
 } from '@mui/material';
-import { walletAPI, bridgeAPI } from '../utils/api';
+import { walletAPI, externalAccountsAPI } from '../utils/api';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
 import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import RefreshIcon from '@mui/icons-material/Refresh';
-import CreditCardIcon from '@mui/icons-material/CreditCard';
 import BoltIcon from '@mui/icons-material/Bolt';
 import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import VerifiedIcon from '@mui/icons-material/Verified';
@@ -53,38 +52,46 @@ import {
   StaggerItem
 } from '../components/animations/AnimatedComponents';
 
+import useBridgeWallet from '../hooks/useBridgeWallet';
+
 export default function Wallet() {
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [data, setData] = useState({ wallets: [], transactions: [] });
-  const [linkedAccounts, setLinkedAccounts] = useState([
-    { id: 1, name: 'Chase Bank', accountNumber: '****4582', status: 'verified' },
-    { id: 2, name: 'Bank of America', accountNumber: '****7891', status: 'verified' }
-  ]);
+  const [data] = useState({ wallets: [], transactions: [] });
+  const [linkedAccounts, setLinkedAccounts] = useState([]);
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
+  // Live Bridge wallet hook
+  const { wallet: bridgeWallet, loading: walletLoading, refetch: refetchWallet } = useBridgeWallet();
+
   useEffect(() => {
-    async function fetchOverview() {
-      setLoading(true);
-      setError(null);
+    // No overview endpoint on clean backend – everything comes from hooks now
+    
+    // Fetch linked accounts
+    async function fetchLinkedAccounts() {
       try {
-        const resp = await walletAPI.getOverview();
-        setData(resp.data);
+        // First sync accounts with Bridge to get latest status and balance
+        await externalAccountsAPI.syncAccounts();
+        
+        // Then fetch the updated accounts
+        const response = await externalAccountsAPI.getAccounts();
+        setLinkedAccounts(response.data.accounts || []);
       } catch (err) {
-        console.error(err);
-        setError(err?.response?.data?.detail || err.message || 'Failed to load wallet');
-      } finally {
-        setLoading(false);
+        console.error('Error fetching linked accounts:', err);
+        // Don't set the main error state to avoid blocking the whole page
       }
     }
-    fetchOverview();
+    fetchLinkedAccounts();
   }, []);
 
   const totalLocalBalance = useMemo(() => {
-    return data.wallets.reduce((acc, w) => acc + (w.local_balance || 0), 0);
-  }, [data.wallets]);
+    if (bridgeWallet?.balances?.length) {
+      return bridgeWallet.balances.reduce((acc, b) => acc + parseFloat(b.balance || 0), 0);
+    }
+    return 0;
+  }, [bridgeWallet]);
 
   const pendingBalance = useMemo(() => {
     // This is a mock value, in a real app you would calculate this from transactions
@@ -97,8 +104,8 @@ export default function Wallet() {
   }, []);
 
   const currency = useMemo(() => {
-    return data.wallets[0]?.local_currency?.toUpperCase() || 'USD';
-  }, [data.wallets]);
+    return 'USD';
+  }, []);
   
   // Animation variants
   const pageVariants = {
@@ -120,10 +127,10 @@ export default function Wallet() {
 
   const handleDeposit = () => navigate('/wallet/deposit');
   const handleWithdraw = () => navigate('/wallet/withdraw');
-  const handleCardManagement = () => navigate('/card');
-  const handleAddAccount = () => alert('Add new account functionality would open here');
+  const handleCardManagement = () => navigate('/virtual-account');
+  const handleAddAccount = () => navigate('/wallet/deposit?action=link-account');
 
-  if (loading) {
+  if (walletLoading) {
     return (
       <Container sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '80vh' }}>
         <CircularProgress color="primary" />
@@ -177,7 +184,7 @@ export default function Wallet() {
               <IconButton 
                 size="small" 
                 sx={{ ml: 1 }}
-                onClick={() => window.location.reload()}
+                onClick={refetchWallet}
               >
                 <RefreshIcon fontSize="small" />
               </IconButton>
@@ -285,25 +292,16 @@ export default function Wallet() {
                   mb: 2 
                 }}>
                   <Typography variant="h6" fontWeight="600">
-                    Card
+                    Virtual Account
                   </Typography>
-                  <Button
-                    size="small"
-                    variant="text"
-                    onClick={handleCardManagement}
-                    endIcon={<CreditCardIcon />}
-                    sx={{ color: 'primary.main' }}
-                  >
-                    Manage Card
-                  </Button>
                 </Box>
                 <Typography variant="body2" color="text.secondary">
-                  Use your wallet funds for purchases anywhere with our card. Instantly convert your balance to spend at millions of locations worldwide.
+                  View your bank details to receive funds directly into your wallet via ACH or wire transfers.
                 </Typography>
                 <Button
                   variant="contained"
                   fullWidth
-                  startIcon={<CreditCardIcon />}
+                  startIcon={<AccountBalanceIcon />}
                   onClick={handleCardManagement}
                   sx={{ 
                     mt: 2,
@@ -315,7 +313,7 @@ export default function Wallet() {
                     }
                   }}
                 >
-                  Go to Card Page
+                  View Account Details
                 </Button>
               </FloatingCard>
             </motion.div>

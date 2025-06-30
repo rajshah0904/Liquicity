@@ -23,19 +23,26 @@ import {
   useMediaQuery,
   IconButton,
   Divider,
-  Paper
+  Paper,
+  InputAdornment,
+  MenuItem,
+  Tooltip,
+  Stepper,
+  Step,
+  StepLabel
 } from '@mui/material';
 import { motion } from 'framer-motion';
 import { format } from 'date-fns';
-import { transferAPI, bridgeAPI, walletAPI, authAPI } from '../../utils/api';
-import { useNavigate } from 'react-router-dom';
+import { transferAPI, bridgeAPI, authAPI, externalAccountsAPI } from '../../utils/api';
+import useBridgeWallet from '../../hooks/useBridgeWallet';
+import { useNavigate, useLocation } from 'react-router-dom';
 import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import BoltIcon from '@mui/icons-material/Bolt';
 import VerifiedIcon from '@mui/icons-material/Verified';
 import AddIcon from '@mui/icons-material/Add';
-import CreditCardIcon from '@mui/icons-material/CreditCard';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import { 
   INSTANT_DEPOSIT_FEE_RATE, 
   UI_INSTANT_DEPOSIT_FEE,
@@ -60,7 +67,7 @@ import {
 // Replace the region detection with a function that gets the user's region directly from profile
 const getUserRegion = (userData) => {
   // Get the user's country from their profile
-  const country = userData?.profile?.country || 'US';
+  const country = userData?.country || 'US';
   
   // Map country to region and currency
   if (country === 'MX') return { region: 'mx', currency: 'mxn' };
@@ -104,72 +111,99 @@ export default function Deposit() {
   const [linkedAccounts, setLinkedAccounts] = useState([]);
   const [userRegion, setUserRegion] = useState({ region: 'us', currency: 'usd' });
   const [newAccountForm, setNewAccountForm] = useState({ 
+    bank_name: '',
+    account_owner_name: '',
     account_number: '', 
     routing_number: '', 
+    iban: '',
     account_type: 'checking',
-    holder_name: ''
+    account_name: '',
+    address: {
+      street_line_1: '',
+      street_line_2: '',
+      city: '',
+      state: '',
+      postal_code: '',
+      country: ''
+    }
   });
   
-  const [balanceData, setBalanceData] = useState({
-    total: 4256.78,
-    available: 3892.45,
-    currency: 'USD'
-  });
+  const [plaidLinkToken, setPlaidLinkToken] = useState(null);
+  
+  const { wallet: bridgeWallet, loading: walletLoading } = useBridgeWallet();
+  const [balanceData, setBalanceData] = useState({ total: 0, available: 0, currency: 'USD' });
   
   const navigate = useNavigate();
+  const location = useLocation();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const isLinkBankMode = location.pathname.includes('/link-bank');
 
+  // If deposit page is opened with ?action=link-account, just show link-bank step
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    if (params.get('action') === 'link-account' || isLinkBankMode) {
+      setStep('link-bank');
+    }
+  }, [location.pathname, location.search]);
+
+  const fetchLinkedAccounts = async () => {
+    setLoading(true);
+    try {
+      // First sync accounts with Bridge to get latest status and balance
+      await externalAccountsAPI.syncAccounts();
+      
+      // Then fetch the updated accounts
+      const response = await externalAccountsAPI.getAccounts();
+      setLinkedAccounts(response.data.accounts || []);
+    } catch (err) {
+      console.error('Error fetching linked accounts:', err);
+      setError('Failed to load your linked bank accounts');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
   useEffect(() => {
     // Fetch linked accounts when component mounts
-    const fetchLinkedAccounts = async () => {
-      setLoading(true);
-      try {
-        // In a real app, this would be an API call to get user's linked accounts
-        // For now, let's simulate it with mock data
-        setTimeout(() => {
-          setLinkedAccounts([
-            { id: 'ext-001', name: 'Chase Bank', accountNumber: '****4582', status: 'verified' },
-            { id: 'ext-002', name: 'Bank of America', accountNumber: '****7891', status: 'verified' }
-          ]);
-          setLoading(false);
-        }, 500);
-      } catch (err) {
-        console.error(err);
-        setError('Failed to load linked accounts');
-        setLoading(false);
-      }
-    };
-    
     fetchLinkedAccounts();
     
-    // Fetch wallet data and user profile
-    const fetchWalletData = async () => {
+    // Set region from profile once
+    (async () => {
       try {
-        const resp = await walletAPI.getOverview();
-        if (resp.data && resp.data.wallets && resp.data.wallets.length > 0) {
-          const mainWallet = resp.data.wallets[0];
-          
-          // Also fetch user profile to get country for region/currency
-          const userResp = await authAPI.getCurrentUser();
-          if (userResp.data) {
-            // Set region based on user's country from profile
-            setUserRegion(getUserRegion(userResp.data));
-          }
-          
-          setBalanceData({
-            total: mainWallet.total_balance || 0,
-            available: mainWallet.available_balance || 0,
-            currency: mainWallet.local_currency?.toUpperCase() || 'USD'
-          });
+        const userResp = await authAPI.getCurrentUser();
+        if (userResp.data) {
+          const region = getUserRegion(userResp.data);
+          setUserRegion(region);
         }
+      } catch (e) {}
+    })();
+  }, [location.search, userRegion.region]);
+
+  // Update balance when bridgeWallet changes
+  useEffect(() => {
+    if (bridgeWallet) {
+      const total = bridgeWallet.balances?.reduce((s,b)=>s+parseFloat(b.balance||0),0) || 0;
+      setBalanceData({ total, available: total, currency: 'USD' });
+    }
+  }, [bridgeWallet]);
+
+  // Load Plaid script once based on user region
+  useEffect(() => {
+    if (userRegion.region === 'us' && !window.Plaid) {
+      try {
+        const script = document.createElement('script');
+        script.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+        script.async = true;
+        script.onerror = () => {
+          console.error('Failed to load Plaid script');
+        };
+        document.body.appendChild(script);
       } catch (err) {
-        console.error('Failed to fetch wallet data', err);
+        console.error('Error loading Plaid script:', err);
       }
-    };
-    
-    fetchWalletData();
-  }, []);
+    }
+  }, [userRegion.region]);
 
   const handleChange = (e) => {
     const { name, value, type, checked } = e.target;
@@ -195,29 +229,129 @@ export default function Deposit() {
     setStep('deposit-form');
   };
 
-  const handleLinkNewAccount = async () => {
+  // Function to initialize Plaid Link
+  const initializePlaidLink = async () => {
+    try {
+      // Ensure Plaid script is present
+      if (!window.Plaid) {
+        // Try to load script dynamically and wait for it
+        await new Promise((resolve, reject) => {
+          const existing = document.querySelector('script[src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"]');
+          if (existing) {
+            existing.addEventListener('load', resolve);
+            existing.addEventListener('error', () => reject(new Error('Plaid script failed to load')));
+          } else {
+            const script = document.createElement('script');
+            script.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+            script.async = true;
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('Plaid script failed to load'));
+            document.body.appendChild(script);
+          }
+        });
+        if (!window.Plaid) {
+          throw new Error('Plaid script not available after load');
+        }
+      }
+      
+      setLoading(true);
+      const response = await externalAccountsAPI.getPlaidLinkToken();
+      
+      if (response && response.data && response.data.link_token) {
+        // Open Plaid Link automatically once we have the token
+        openPlaidLink(response.data.link_token);
+      } else {
+        throw new Error('Failed to get Plaid link token');
+      }
+    } catch (err) {
+      console.error('Error initializing Plaid Link:', err);
+      setError('Failed to initialize Plaid Link. Please try manual entry instead.');
+      // Fall back to manual entry if Plaid fails
+      setStep('link-bank');
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  // Function to open Plaid Link
+  const openPlaidLink = async (token) => {
+    if (!token) return;
+    
+    const linkTokenUsed = token;  // pass same token back to server per Bridge docs
+    const handler = window.Plaid.create({
+      token,
+      onSuccess: async (publicToken, metadata) => {
+        try {
+          setLoading(true);
+          // Exchange the public token via Bridge
+          await externalAccountsAPI.exchangePlaidToken(linkTokenUsed, publicToken);
+          
+          // Fetch updated list of accounts after linking
+          fetchLinkedAccounts();
+          // Move to deposit form
+          setStep('deposit-form');
+        } catch (err) {
+          console.error('Error exchanging Plaid token:', err);
+          setError('Failed to link your bank account. Please try again.');
+        } finally {
+          setLoading(false);
+        }
+      },
+      onExit: (err) => {
+        if (err) {
+          console.error('Plaid Link exit with error:', err);
+          setError('There was an issue connecting to your bank. Please try manual entry.');
+          setStep('link-bank');
+        } else {
+          // User closed Plaid Link without completing
+          setStep('select-method');
+        }
+      },
+      onEvent: (eventName, metadata) => {
+        console.log('Plaid Link Event:', eventName, metadata);
+      }
+    });
+    
+    handler.open();
+  };
+
+  const handleLinkNewAccount = async (e) => {
+    e.preventDefault();
     setLoading(true);
     setError(null);
     
     try {
-      // In a real app, you'd call an API here
-      // For now, let's simulate it
-      setTimeout(() => {
-        const newAccount = {
-          id: `ext-${Math.floor(Math.random() * 1000)}`,
-          name: 'New Bank Account',
-          accountNumber: `****${newAccountForm.account_number.slice(-4)}`,
-          status: 'verified'
-        };
-        
-        setLinkedAccounts(prev => [...prev, newAccount]);
-        setForm(prev => ({ ...prev, external_account_id: newAccount.id }));
-        setStep('deposit-form');
-        setLoading(false);
-      }, 1000);
+      // Create payload for API call
+      const payload = {
+        bank_name: newAccountForm.bank_name,
+        account_owner_name: newAccountForm.account_owner_name,
+        account_name: newAccountForm.account_name,
+        account_type: newAccountForm.account_type,
+        currency: userRegion.currency,
+        address: newAccountForm.address
+      };
+      
+      // Add account number and routing number for US accounts
+      if (userRegion.region === 'us') {
+        payload.account_number = newAccountForm.account_number;
+        payload.routing_number = newAccountForm.routing_number;
+      } else {
+        // Add IBAN for EU accounts
+        payload.iban = newAccountForm.iban;
+      }
+      
+      const response = await externalAccountsAPI.createAccount(payload);
+      
+      // Refresh the accounts list
+      fetchLinkedAccounts();
+      
+      // Move to deposit form with the new account selected
+      setForm(prev => ({ ...prev, external_account_id: response.data.id }));
+      setStep('deposit-form');
     } catch (err) {
-      console.error(err);
-      setError('Failed to link new account');
+      console.error('Error linking bank account:', err);
+      setError('Failed to link your bank account. Please check your information and try again.');
+    } finally {
       setLoading(false);
     }
   };
@@ -287,6 +421,17 @@ export default function Deposit() {
     }
   };
 
+  // Set up the "Add Account" click handler to automatically direct users based on region
+  const handleAddAccount = () => {
+    if (userRegion.region === 'us') {
+      // US users go to Plaid
+      initializePlaidLink();
+    } else {
+      // Non-US users go to manual entry
+      setStep('link-bank');
+    }
+  };
+
   return (
     <Box 
       component={motion.div}
@@ -324,7 +469,7 @@ export default function Deposit() {
                 )}
               </Box>
               <Typography variant="body2" color="text.secondary">
-                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(balanceData.currency)}{balanceData.available.toLocaleString()}</Typography>
+                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(balanceData.currency)}{balanceData.available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
               </Typography>
             </Box>
             
@@ -341,10 +486,10 @@ export default function Deposit() {
             >
               <Box sx={{ mb: 4 }}>
                 <Typography variant="h4" component="h1" fontWeight="600" color="#fff">
-                  Deposit Funds
+                  {(isLinkBankMode || step==='link-bank') ? 'Link Bank Account' : 'Deposit Funds'}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  Add money to your Liquicity account
+                  {(isLinkBankMode || step==='link-bank') ? 'Securely connect your bank account' : 'Add money to your Liquicity account'}
                 </Typography>
               </Box>
               
@@ -360,106 +505,66 @@ export default function Deposit() {
                       <CircularProgress />
                     </Box>
                   ) : linkedAccounts.length > 0 ? (
-                    <List sx={{ p: 0 }}>
-                      {linkedAccounts.map((account) => (
+                    <List disablePadding>
+                      {linkedAccounts.map(account => (
                         <ListItem 
                           key={account.id}
                           sx={{ 
-                            p: 2, 
                             mb: 2, 
-                            borderRadius: 2,
-                            background: 'rgba(17, 24, 39, 0.5)',
-                            border: '1px solid rgba(55, 65, 81, 0.5)',
+                            p: 2, 
+                            borderRadius: 2, 
                             cursor: 'pointer',
-                            transition: 'all 0.2s',
+                            border: '1px solid rgba(255, 255, 255, 0.1)',
                             '&:hover': {
-                              background: 'rgba(59, 130, 246, 0.1)',
-                              borderColor: 'rgba(59, 130, 246, 0.3)',
+                              borderColor: 'primary.main',
+                              bgcolor: 'rgba(59, 130, 246, 0.1)'
                             }
                           }}
                           onClick={() => handleSelectAccount(account.id)}
                         >
-                          <ListItemIcon sx={{ minWidth: 40 }}>
-                            <Box sx={{ 
-                              borderRadius: '50%', 
-                              width: 40, 
-                              height: 40, 
-                              display: 'flex', 
-                              alignItems: 'center', 
-                              justifyContent: 'center',
-                              backgroundColor: 'rgba(59, 130, 246, 0.1)'
-                            }}>
-                              <AccountBalanceIcon color="primary" />
-                            </Box>
+                          <ListItemIcon sx={{ minWidth: 42 }}>
+                            <AccountBalanceIcon color="primary" />
                           </ListItemIcon>
                           <ListItemText 
-                            primary={
-                              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                                <Typography variant="subtitle1" fontWeight={500}>
-                                  {account.name}
-                                </Typography>
-                                {account.status === 'verified' && (
-                                  <Box sx={{ 
-                                    display: 'flex', 
-                                    alignItems: 'center', 
-                                    ml: 1,
-                                    color: 'success.main',
-                                    fontSize: '0.75rem'
-                                  }}>
-                                    <VerifiedIcon fontSize="inherit" sx={{ mr: 0.5 }} />
-                                    <Typography variant="caption" color="success.main">Verified</Typography>
-                                  </Box>
-                                )}
-                              </Box>
-                            }
-                            secondary={`Account ${account.accountNumber}`}
+                            primary={account.bank_name || account.name} 
+                            secondary={account.last4 ? `****${account.last4}` : account.accountNumber}
+                            primaryTypographyProps={{ fontWeight: 600 }}
                           />
                         </ListItem>
                       ))}
-                      
-                      <Button
-                        fullWidth
-                        variant="outlined"
-                        startIcon={<AddIcon />}
-                        onClick={() => setStep('link-bank')}
-                        sx={{ 
-                          mt: 2,
-                          py: 2,
-                          borderColor: 'rgba(59, 130, 246, 0.3)',
-                          color: 'primary.main',
-                          borderStyle: 'dashed',
-                          borderWidth: '1px',
-                          '&:hover': {
-                            borderColor: 'primary.main',
-                            background: 'rgba(59, 130, 246, 0.05)',
-                          }
-                        }}
-                      >
-                        Link New Bank Account
-                      </Button>
                     </List>
                   ) : (
-                    <Box sx={{ py: 3, textAlign: 'center' }}>
-                      <Typography color="text.secondary" sx={{ mb: 3 }}>
-                        You don't have any linked bank accounts
+                    <Box sx={{ 
+                      p: 3, 
+                      borderRadius: 2, 
+                      textAlign: 'center',
+                      border: '1px dashed rgba(255, 255, 255, 0.2)',
+                      mb: 3
+                    }}>
+                      <Typography color="text.secondary" sx={{ mb: 1 }}>
+                        No bank accounts linked yet
                       </Typography>
-                      <Button
-                        variant="contained"
-                        startIcon={<AddIcon />}
-                        onClick={() => setStep('link-bank')}
-                        sx={{ 
-                          py: 1.5,
-                          backgroundColor: 'primary.main',
-                          '&:hover': {
-                            backgroundColor: 'primary.dark',
-                            boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)'
-                          }
-                        }}
-                      >
-                        Link Bank Account
-                      </Button>
                     </Box>
                   )}
+                  
+                    <Button
+                      startIcon={<AddIcon />}
+                      variant="outlined"
+                      fullWidth
+                    onClick={() => navigate('/wallet/link-bank')}
+                      sx={{ 
+                        py: 1.5, 
+                        mt: 2,
+                        borderColor: 'rgba(255, 255, 255, 0.2)',
+                        color: 'white',
+                        '&:hover': {
+                          borderColor: 'primary.main',
+                          bgcolor: 'rgba(59, 130, 246, 0.05)'
+                        }
+                      }}
+                    >
+                    Link Bank Account
+                    </Button>
                 </>
               )}
               
@@ -467,99 +572,202 @@ export default function Deposit() {
               {step === 'link-bank' && (
                 <>
                   <Typography variant="h6" fontWeight="600" sx={{ mb: 3 }}>
-                    Link New Bank Account
+                    Add Bank Account
                   </Typography>
                   
-                  <form>
-                    <Grid container spacing={2}>
-                      <Grid item xs={12}>
-                        <TextField
-                          fullWidth
-                          label="Account Holder Name"
-                          name="holder_name"
-                          value={newAccountForm.holder_name}
-                          onChange={handleNewAccountChange}
-                          variant="outlined"
-                          required
-                          sx={{
-                            '& .MuiOutlinedInput-root': {
-                              borderRadius: '12px',
-                            }
-                          }}
-                        />
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <TextField
-                          fullWidth
-                          label="Account Number"
-                          name="account_number"
-                          value={newAccountForm.account_number}
-                          onChange={handleNewAccountChange}
-                          variant="outlined"
-                          required
-                          sx={{
-                            '& .MuiOutlinedInput-root': {
-                              borderRadius: '12px',
-                            }
-                          }}
-                        />
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <TextField
-                          fullWidth
-                          label="Routing Number"
-                          name="routing_number"
-                          value={newAccountForm.routing_number}
-                          onChange={handleNewAccountChange}
-                          variant="outlined"
-                          required
-                          sx={{
-                            '& .MuiOutlinedInput-root': {
-                              borderRadius: '12px',
-                            }
-                          }}
-                        />
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <TextField
-                          select
-                          fullWidth
-                          label="Account Type"
-                          name="account_type"
-                          value={newAccountForm.account_type}
-                          onChange={handleNewAccountChange}
-                          variant="outlined"
-                          SelectProps={{
-                            native: true,
-                          }}
-                          sx={{
-                            '& .MuiOutlinedInput-root': {
-                              borderRadius: '12px',
-                            }
-                          }}
-                        >
-                          <option value="checking">Checking</option>
-                          <option value="savings">Savings</option>
-                        </TextField>
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <Typography variant="caption" color="text.secondary">
-                          By linking your account, you authorize Liquicity to verify your account details and process funds transfers as requested.
+                  {userRegion.region === 'us' && (
+                    <Box sx={{ mb: 4, p: 3, borderRadius: 2, bgcolor: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
+                      <Typography variant="subtitle1" fontWeight="600" sx={{ mb: 1 }}>
+                          Recommended: Connect with Plaid
                         </Typography>
+                      <Typography variant="body2" color="text.secondary" gutterBottom>
+                        Securely connect your US bank account with Plaid for faster verification and setup.
+                      </Typography>
+                      <Button 
+                        variant="contained" 
+                        color="primary" 
+                        fullWidth 
+                        onClick={initializePlaidLink}
+                        sx={{ mt: 2 }}
+                      >
+                        Connect with Plaid
+                      </Button>
+                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
+                        Or continue with manual entry below if your bank isn't supported
+                      </Typography>
+                    </Box>
+                  )}
+                  
+                  <form onSubmit={handleLinkNewAccount}>
+                    <Grid container spacing={3}>
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          label="Bank Name"
+                          name="bank_name"
+                          value={newAccountForm.bank_name}
+                          onChange={(e) => setNewAccountForm({...newAccountForm, bank_name: e.target.value})}
+                          required
+                          variant="outlined"
+                        />
+                      </Grid>
+                      
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          label="Account Owner Name"
+                          name="account_owner_name"
+                          value={newAccountForm.account_owner_name}
+                          onChange={(e) => setNewAccountForm({...newAccountForm, account_owner_name: e.target.value})}
+                          required
+                          variant="outlined"
+                        />
+                      </Grid>
+                      
+                      <Grid item xs={12}>
+                        <TextField
+                          fullWidth
+                          label="Account Name (optional)"
+                          name="account_name"
+                          value={newAccountForm.account_name}
+                          onChange={(e) => setNewAccountForm({...newAccountForm, account_name: e.target.value})}
+                          variant="outlined"
+                          helperText="A nickname for your account, e.g., 'Personal Checking'"
+                        />
+                      </Grid>
+                      
+                      {userRegion.region === 'us' ? (
+                        // US account fields
+                        <>
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              fullWidth
+                              label="Account Number"
+                              name="account_number"
+                              value={newAccountForm.account_number}
+                              onChange={(e) => setNewAccountForm({...newAccountForm, account_number: e.target.value})}
+                              required
+                              variant="outlined"
+                            />
+                          </Grid>
+                          
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              fullWidth
+                              label="Routing Number"
+                              name="routing_number"
+                              value={newAccountForm.routing_number}
+                              onChange={(e) => setNewAccountForm({...newAccountForm, routing_number: e.target.value})}
+                              required
+                              variant="outlined"
+                            />
+                          </Grid>
+                        </>
+                      ) : (
+                        // EU account fields
+                        <Grid item xs={12}>
+                          <TextField
+                            fullWidth
+                            label="IBAN"
+                            name="iban"
+                            value={newAccountForm.iban}
+                            onChange={(e) => setNewAccountForm({...newAccountForm, iban: e.target.value})}
+                            required
+                            variant="outlined"
+                          />
+                        </Grid>
+                      )}
+                      
+                      <Grid item xs={12}>
+                        <Typography variant="subtitle2" sx={{ mb: 2 }}>
+                          Account Address
+                        </Typography>
+                        
+                        <Grid container spacing={2}>
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              label="Street Address"
+                              name="street_line_1"
+                              value={newAccountForm.address.street_line_1}
+                              onChange={(e) => setNewAccountForm({
+                                ...newAccountForm, 
+                                address: {...newAccountForm.address, street_line_1: e.target.value}
+                              })}
+                              required
+                              variant="outlined"
+                            />
+                          </Grid>
+                          
+                          <Grid item xs={12}>
+                            <TextField
+                              fullWidth
+                              label="Street Address Line 2 (optional)"
+                              name="street_line_2"
+                              value={newAccountForm.address.street_line_2}
+                              onChange={(e) => setNewAccountForm({
+                                ...newAccountForm, 
+                                address: {...newAccountForm.address, street_line_2: e.target.value}
+                              })}
+                              variant="outlined"
+                            />
+                          </Grid>
+                          
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              fullWidth
+                              label="City"
+                              name="city"
+                              value={newAccountForm.address.city}
+                              onChange={(e) => setNewAccountForm({
+                                ...newAccountForm, 
+                                address: {...newAccountForm.address, city: e.target.value}
+                              })}
+                              required
+                              variant="outlined"
+                            />
+                          </Grid>
+                          
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              fullWidth
+                              label={userRegion.region === 'us' ? "State" : "Province/Region"}
+                              name="state"
+                              value={newAccountForm.address.state}
+                              onChange={(e) => setNewAccountForm({
+                                ...newAccountForm, 
+                                address: {...newAccountForm.address, state: e.target.value}
+                              })}
+                              required
+                              variant="outlined"
+                            />
+                          </Grid>
+                          
+                          <Grid item xs={12} sm={6}>
+                            <TextField
+                              fullWidth
+                              label={userRegion.region === 'us' ? "ZIP Code" : "Postal Code"}
+                              name="postal_code"
+                              value={newAccountForm.address.postal_code}
+                              onChange={(e) => setNewAccountForm({
+                                ...newAccountForm, 
+                                address: {...newAccountForm.address, postal_code: e.target.value}
+                              })}
+                              required
+                              variant="outlined"
+                            />
+                          </Grid>
+                        </Grid>
                       </Grid>
                       
                       <Grid item xs={12}>
                         <Button
+                          type="submit"
                           fullWidth
                           variant="contained"
-                          disabled={!newAccountForm.account_number || !newAccountForm.routing_number || !newAccountForm.holder_name || loading}
-                          onClick={handleLinkNewAccount}
+                          disabled={loading}
                           sx={{ 
-                            py: 1.5,
+                            py: 1.8,
                             backgroundColor: 'primary.main',
                             '&:hover': {
                               backgroundColor: 'primary.dark',
@@ -567,7 +775,7 @@ export default function Deposit() {
                             }
                           }}
                         >
-                          {loading ? <CircularProgress size={24} color="inherit" /> : 'Link Bank Account'}
+                          {loading ? <CircularProgress size={24} color="inherit" /> : 'Link Account'}
                         </Button>
                       </Grid>
                     </Grid>

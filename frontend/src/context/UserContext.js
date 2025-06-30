@@ -12,11 +12,22 @@ export const UserProvider = ({ children }) => {
 
   // Load user from localStorage on initial render
   useEffect(() => {
-    const loadUser = () => {
+    const loadUser = async () => {
       try {
-        const userData = getCurrentUser();
-        if (userData) {
-          setUser(userData);
+        // 1. Seed from localStorage so UI renders immediately
+        const cached = getCurrentUser();
+        if (cached) {
+          setUser(cached);
+        }
+
+        // 2. If we have an auth token, pull a fresh copy from the API so we get fields like full_name
+        const token = localStorage.getItem('auth_token');
+        if (token) {
+          const resp = await api.get('/user');
+          if (resp.status === 200) {
+            setUser(resp.data);
+            setCurrentUser(resp.data);
+          }
         }
       } catch (error) {
         console.error('Error loading user:', error);
@@ -31,7 +42,7 @@ export const UserProvider = ({ children }) => {
   // Fetch user data from API
   const fetchUserData = async () => {
     try {
-      const response = await api.get('/user/user/');
+      const response = await api.get('/user');
       if (response.status === 200) {
         const userData = response.data;
         setUser(userData);

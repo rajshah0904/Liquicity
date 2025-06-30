@@ -23,6 +23,10 @@ import PersonIcon from '@mui/icons-material/Person';
 // Custom components
 import { AnimatedBackground } from '../components/ui/ModernUIComponents';
 
+// Helpers / constants that were missing
+const validateEmail = (email) => /.+@.+\..+/.test(email);
+const API_URL = process.env.REACT_APP_API_URL || '';
+
 const SignUpContainer = styled(Container)(({ theme }) => ({
   display: 'flex',
   flexDirection: 'column',
@@ -105,7 +109,7 @@ const DividerWithText = styled(Box)(({ theme }) => ({
 }));
 
 const SignUp = () => {
-  const { loginWithPopup, getAccessTokenSilently, isAuthenticated, logout } = useAuth0();
+  const { loginWithPopup, getAccessTokenSilently, isAuthenticated, logout, user } = useAuth0();
   const navigate = useNavigate();
   const location = useLocation();
   const [email, setEmail] = useState('');
@@ -138,11 +142,26 @@ const SignUp = () => {
   const checkExists = async (token) => {
     try {
       const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
+
+      // If the user record does not yet exist, explicitly register it now
+      if (!res.data.exists) {
+        try {
+          const regResp = await api.post('/onboard/register', undefined, { headers: { Authorization: `Bearer ${token}` } });
+          if (regResp.data.tos_url) {
+            const cb = encodeURIComponent(`${window.location.origin}/tos-callback`);
+            window.location.href = `${regResp.data.tos_url}&redirect_uri=${cb}`;
+            return true; // browser navigation triggered – abort remaining flow
+          }
+        } catch (regErr) {
+          console.error('Registration failed', regErr);
+          setError('Unable to complete registration. Please try again.');
+        }
+      }
+
+      // If the user already exists, prompt them to log in instead of signing up
       if (res.data.exists) {
-        // User already exists – sign them out locally and show error on this screen
         setError('Account already exists. Please log in.');
         await logout({ logoutParams: { returnTo: `${window.location.origin}/signup?existing=true` } });
-        return true;
       }
     } catch (e) {
       console.error('check user error', e);
@@ -178,29 +197,27 @@ const SignUp = () => {
     }
   };
 
-  const handleEmailSignUp = async e => {
+  const handleEmailSignUp = async (e) => {
     e.preventDefault();
-    if (!email || !/\S+@\S+\.\S+/.test(email)) {
-      setError('Please enter a valid email address');
+    if (!validateEmail(email)) {
+      setError("Please enter a valid email address");
       return;
     }
 
-    // Early duplicate check to avoid hitting Auth0 signup flow
-    const already = await checkEmailExistsPublic(email);
-    if (already) {
-      setError('Account already exists. Please log in.');
-      // add query param so page refresh still shows error
-      navigate('/signup?existing=true', { replace: true });
-      return; // do NOT open Auth0 popup
-    }
-
-    // Mark flow as new signup so other guards know
-    localStorage.setItem('isNewSignup', 'true');
-
-    setError('');
-    setLoading(true);
     try {
-      // Trigger Auth0 hosted signup page (popup) pre-filled with the email
+      setLoading(true);
+      setError(null);
+
+      // Check if account exists (public endpoint without auth)
+      const emailExists = await checkEmailExistsPublic(email);
+      if (emailExists) {
+        setError("An account with this email already exists");
+        setLoading(false);
+        return;
+      }
+
+      // Register with Auth0 using popup
+      localStorage.setItem('isNewSignup', 'true');
       await loginWithPopup({
         authorizationParams: {
           screen_hint: 'signup',
@@ -208,40 +225,121 @@ const SignUp = () => {
         },
       });
 
-      // Get token and set API header for subsequent calls
+      // Get token for API calls
       const token = await getAccessTokenSilently();
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
-      // It is safe to go straight to the KYC route after successful signup
-      navigate('/kyc-verification');
+      // Ask backend where the user is in the onboarding funnel
+      const { data: check } = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
+
+      const goToStep = async (stepData) => {
+        switch (stepData.next_step) {
+          case 'register': {
+            // brand-new user → create DB row and obtain ToS link
+            const reg = await api.post(
+              '/onboard/register',
+              { email: user?.email || email },
+              { headers: { Authorization: `Bearer ${token}` } },
+            );
+            localStorage.setItem('tos_url', reg.data.tos_url);
+            navigate('/select-country');
+            break;
+          }
+          case 'country':
+            navigate('/select-country');
+            break;
+          case 'tos': {
+            const cb = encodeURIComponent(`${window.location.origin}/tos-callback`);
+            const tos = stepData.tos_url || localStorage.getItem('tos_url');
+            if (tos) {
+              window.location.href = `${tos}&redirect_uri=${cb}`;
+            } else {
+              navigate('/signup');
+            }
+            break;
+          }
+          case 'kyc':
+            if (stepData.kyc_url) {
+              window.location.href = stepData.kyc_url;
+            } else {
+              navigate('/kyc-verification');
+            }
+            break;
+          default:
+            navigate('/dashboard');
+        }
+      };
+
+      await goToStep(check);
+
     } catch (err) {
-      setError(err.message || 'Signup failed.');
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   const handleGoogleSignUp = async () => {
-    setError('');
-    setLoading(true);
     try {
-      // Mark flow as new signup
+      setLoading(true);
+      setError(null);
+
+      // Sign up with Google using Auth0 popup
       localStorage.setItem('isNewSignup', 'true');
+      await loginWithPopup({
+        authorizationParams: {
+          connection: 'google-oauth2',
+          screen_hint: 'signup'
+        }
+      });
 
-      // Open Auth0 Google signup popup
-      await loginWithPopup({ authorizationParams: { connection: 'google-oauth2' } });
-      // Get token and set API header
+      // Get token for API calls
       const token = await getAccessTokenSilently();
-      api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
 
-      // If the account already exists we bail out early via duplicate guard
-      const exists = await checkExists(token);
-      if (exists) return;
+      // Ask backend where the user is in the onboarding funnel
+      const { data: check } = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
 
-      // Navigate to KYC page
-      navigate('/kyc-verification');
+      const goToStep = async (stepData) => {
+        switch (stepData.next_step) {
+          case 'register': {
+            // brand-new user → create DB row and obtain ToS link
+            const reg = await api.post(
+              '/onboard/register',
+              { email: user?.email || email },
+              { headers: { Authorization: `Bearer ${token}` } },
+            );
+            localStorage.setItem('tos_url', reg.data.tos_url);
+            navigate('/select-country');
+            break;
+          }
+          case 'country':
+            navigate('/select-country');
+            break;
+          case 'tos': {
+            const cb = encodeURIComponent(`${window.location.origin}/tos-callback`);
+            const tos = stepData.tos_url || localStorage.getItem('tos_url');
+            if (tos) {
+              window.location.href = `${tos}&redirect_uri=${cb}`;
+            } else {
+              navigate('/signup');
+            }
+            break;
+          }
+          case 'kyc':
+            if (stepData.kyc_url) {
+              window.location.href = stepData.kyc_url;
+            } else {
+              navigate('/kyc-verification');
+            }
+            break;
+          default:
+            navigate('/dashboard');
+        }
+      };
+
+      await goToStep(check);
+
     } catch (err) {
-      setError(err.message || 'Google signup failed.');
+      setError(err.message);
     } finally {
       setLoading(false);
     }

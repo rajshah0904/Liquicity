@@ -2,7 +2,7 @@ import axios from 'axios';
 
 // Create axios instance with a base URL for the proxy
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || '/api',
+  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
   headers: {
     'Content-Type': 'application/json'
   }
@@ -84,7 +84,7 @@ const withMockFallback = (apiCall, mockFunction) => async (...args) => {
 // Export API endpoints for authentication
 export const authAPI = {
   // Register new user with email
-  register: (userData, options = {}) => api.post('/user/register/', userData, options),
+  register: (userData, options = {}) => api.post('/onboard/register', userData, options),
   
   // Login with email and password
   login: (email, password) => api.post('/user/login/', { email, password }),
@@ -108,7 +108,7 @@ export const authAPI = {
   logout: () => api.post('/user/logout/'),
   
   // Get current user profile
-  getCurrentUser: () => api.get('/user/user/'),
+  getCurrentUser: () => api.get('/user'),
   
   // Update user profile
   updateProfile: (userId, profileData) => api.put(`/user/update-profile/${userId}`, profileData),
@@ -122,23 +122,20 @@ export const walletAPI = {
   // Get user wallets
   getUserWallets: (userId) => api.get(`/wallet/user/${userId}`),
   
+  // Bridge wallet live data
+  getBridgeWallet: (options = {}) => api.get('/wallet', options),
+  
   // Update wallet
   updateWallet: (userId, walletData) => api.put(`/wallet/update/${userId}`, walletData),
   
-  // Get wallet transactions
-  getTransactions: (walletId) => api.get(`/wallet/${walletId}/transactions`),
+  // Get wallet transactions (live from Bridge)
+  getTransactions: () => api.get('/wallet/history'),
   
   // Get all transactions (Bridge aggregated)
-  getAllTransactions: (options = {}) => withMockFallback(
-    () => api.get('/wallet/transactions', options),
-    'walletAPI.getAllTransactions'
-  )(),
+  getAllTransactions: (options = {}) => api.get('/wallet/history', options),
   
   // Get wallet overview
-  getOverview: (options = {}) => withMockFallback(
-    () => api.get('/wallet/overview', options),
-    'walletAPI.getOverview'
-  )()
+  getOverview: (options = {}) => api.get('/wallet/overview', options)
 };
 
 // Export API endpoints for payment operations
@@ -179,6 +176,28 @@ export const kycAPI = {
 };
 
 // === Bridge-centric helpers (new) ===
+
+/**
+ * Bridge API client
+ * 
+ * This API client interfaces with the Liquicity backend which in turn connects to Bridge API.
+ * Our backend implements these endpoints to match the Bridge API structure.
+ * 
+ * Bridge API Reference documentation: https://docs.bridge.xyz/reference/
+ * 
+ * The Bridge API is organized into the following main sections:
+ * - Customers (account management)
+ * - External Accounts (bank accounts linked to Bridge)
+ * - Virtual Accounts (US accounts & EU IBANs for receiving funds)
+ * - Bridge Wallets (crypto/stablecoin wallets managed by Bridge)
+ * - Transfers (moving money between accounts)
+ * - Plaid (US bank account linking via Plaid)
+ * - Cards (virtual card issuance and management)
+ * - Webhooks (notification system for account changes)
+ * 
+ * For a complete reference of all endpoints, see:
+ * app/services/bridge_api_reference.py in the backend codebase
+ */
 export const bridgeAPI = {
   // Ensure customer exists & return record
   getOrCreateCustomer: (options = {}) => api.get('/bridge/customers', options),
@@ -196,28 +215,52 @@ export const bridgeAPI = {
     api.post(`/bridge/plaid/exchange/${requestId}`, {}, options),
 };
 
-// New Transfer-centric helpers (deposit / withdraw / send)
+// Export API endpoints for external accounts
+export const externalAccountsAPI = {
+  // Get all external accounts for the current user
+  getAccounts: () => api.get('/external_accounts/accounts'),
+  
+  // Get a specific external account
+  getAccount: (id) => api.get(`/external_accounts/accounts/${id}`),
+  
+  // Create a new external account (manual entry)
+  createAccount: (accountData) => api.post('/external_accounts/accounts', accountData),
+  
+  // Delete an external account
+  deleteAccount: (id) => api.delete(`/external_accounts/accounts/${id}`),
+  
+  // Get region info to determine flow
+  getRegionInfo: () => api.get('/external_accounts/region'),
+  
+  // Plaid linking (US only)
+  getPlaidLinkToken: () => api.get('/external_accounts/plaid/link_token'),
+  exchangePlaidToken: (requestId, publicToken) => 
+    api.post(`/external_accounts/plaid/exchange/${requestId}`, { public_token: publicToken }),
+  
+  // Sync accounts/balances
+  syncAccounts: () => api.post('/external_accounts/sync'),
+};
+
+// Export API endpoints for deposits and transfers
 export const transferAPI = {
-  deposit: (payload, options = {}) => api.post('/transfer/deposit', payload, options),
-  withdraw: (payload, options = {}) => api.post('/transfer/withdraw', payload, options),
-  send: (payload, options = {}) => withMockFallback(
-    () => api.post('/transfer/send', payload, options),
-    'transferAPI.send'
-  )(),
-  internal: (payload, options = {}) => api.post('/transfer/internal', payload, options),
+  // Deposit funds from external account to Bridge wallet
+  deposit: (data) => api.post('/deposits', data),
+  
+  // Withdraw funds
+  withdraw: (data) => api.post('/transfers/withdraw', data),
+  
+  // Internal transfer
+  transfer: (data) => api.post('/transfers', data),
+  
+  // List transfers
+  getTransfers: (params) => api.get('/transfers', { params }),
 };
 
-// New Requests helper
+// Requests (P2P payment requests)
 export const requestsAPI = {
-  create: (payload, options = {}) => withMockFallback(
-    () => api.post('/requests', payload, options),
-    'requestsAPI.create'
-  )(),
-  list: (options = {}) => withMockFallback(
-    () => api.get('/requests', options),
-    'requestsAPI.list'
-  )(),
+  create: (payload, options = {}) => api.post('/requests', payload, options),
+  list: (options = {}) => api.get('/requests', options),
 };
 
-// Export the base API instance as default
-export default api; 
+// Export base axios instance for modules that imported default
+export default api;

@@ -28,11 +28,7 @@ const AuthFlow = () => {
           // Register the user in our database
           setStatus('registering');
           try {
-            await api.post(`/user/register`, {
-              email: user.email,
-              name: user.name,
-              auth0_id: user.sub
-            }, {
+            await api.post(`/onboard/register`, undefined, {
               headers: { Authorization: `Bearer ${token}` }
             });
           } catch (regErr) {
