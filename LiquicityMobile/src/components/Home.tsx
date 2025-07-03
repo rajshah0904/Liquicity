@@ -17,7 +17,7 @@ import MaterialCommunityIcons from 'react-native-vector-icons/MaterialCommunityI
 import { useNavigation, useRoute } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import KYCStart from './KYCStart';
-import { requestTosLink } from '../lib/bridgeClient';
+import { backendRequest, API_ENDPOINTS } from '../utils/api';
 import WebView from 'react-native-webview';
 
 type RootStackParamList = {
@@ -123,12 +123,18 @@ const Home = () => {
         {/* Test KYC Flow Button for development/testing */}
         <TouchableOpacity style={styles.outlineButton} onPress={async () => {
           try {
-            const url = await requestTosLink();
-            setTosUrl(appendRedirectUri(url, 'https://myapp.local/kyc'));
-            setTosModalVisible(true);
+            // For testing, we'll use the registration endpoint which generates TOS link
+            const response = await backendRequest('POST', API_ENDPOINTS.REGISTER, {});
+            const url = response.tos_url;
+            if (url) {
+              setTosUrl(appendRedirectUri(url, 'https://myapp.local/kyc'));
+              setTosModalVisible(true);
+            } else {
+              Alert.alert('Error', 'No TOS URL received from backend');
+            }
           } catch (e: any) {
-            console.log('Bridge API Error:', e, e.response, e.request, e.config);
-            Alert.alert('Bridge API Error', e?.message || String(e));
+            console.log('Backend API Error:', e, e.response, e.request, e.config);
+            Alert.alert('Backend API Error', e?.message || String(e));
           }
         }}>
           <Text style={styles.outlineButtonText}>Test KYC Flow</Text>

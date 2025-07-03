@@ -1,5 +1,0 @@
-{
-  "tos_links": [ { "url": "http://192.168.86.26:3000/mock-tos?signed_agreement_id=abc123" } ],
-  "customers": [],
-  "customersStatus": {}
-} 

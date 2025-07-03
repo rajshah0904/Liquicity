@@ -1,14 +1,14 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Image, Alert, ActivityIndicator } from 'react-native';
 import { launchCamera, launchImageLibrary } from 'react-native-image-picker';
+import { useRoute, useNavigation } from '@react-navigation/native';
 import { bridgeRequest } from '../lib/bridgeClient';
 
-interface KYCUploadIDProps {
-  customerId: string;
-  navigation: any;
-}
-
-const KYCUploadID: React.FC<KYCUploadIDProps> = ({ customerId, navigation }) => {
+const KYCUploadID: React.FC = () => {
+  const route = useRoute();
+  const navigation = useNavigation();
+  const { customerId } = route.params as { customerId: string };
+  
   const [frontImage, setFrontImage] = useState<string | null>(null);
   const [backImage, setBackImage] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
