@@ -9,7 +9,7 @@ from .routers.card import router as card_router
 from .routers.external_accounts import router as external_router
 from .routers.virtual_accounts import router as va_router
 from .routers.webhooks import router as webhook_router
-from .routers.transfer import router as transfer_router
+from .routers.transfer import router as transfer_router, public_router as transfer_public_router
 
 app = FastAPI(title="Liquicity Clean API")
 app.include_router(onboard_router) 
@@ -22,6 +22,7 @@ app.include_router(external_router)
 app.include_router(va_router)
 app.include_router(webhook_router)
 app.include_router(transfer_router)
+app.include_router(transfer_public_router)
 
 # --- CORS so that http://localhost:3000 front-end can call the API ---
 app.add_middleware(

@@ -158,3 +158,57 @@ def create_external_account(payload: Dict, db: Session = Depends(get_db), jwt = 
         db.commit()
 
     return bridge_resp 
+
+@router.get("/accounts/{account_id}")
+def get_external_account_details(account_id: str, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
+    """Return details for a single external account belonging to the authenticated user.
+
+    This is a thin wrapper around Bridge's GET /customers/{customer_id}/external_accounts/{id}
+    (falling back to /external_accounts/{id}). We also upsert the latest metadata into
+    the local `external_accounts_v2` table so cached lists stay in sync.
+    """
+    # Authorize user
+    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user or not user.bridge_customer_id:
+        raise HTTPException(status_code=404, detail="Bridge customer id missing")
+
+    try:
+        bridge_resp = BridgeClient().get_external_account(account_id, user.bridge_customer_id)
+    except requests.HTTPError as e:
+        status = e.response.status_code if e.response else 502
+        detail = e.response.text if e.response else str(e)
+        raise HTTPException(status_code=status, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Bridge unreachable") from e
+
+    # Upsert into DB for caching/display purposes
+    bank_name = bridge_resp.get("bank_name") or bridge_resp.get("name")
+    last4 = (
+        bridge_resp.get("account", {}).get("last_4")
+        or bridge_resp.get("account", {}).get("last4")
+        or bridge_resp.get("last_4")
+        or bridge_resp.get("last4")
+    )
+    currency = bridge_resp.get("currency")
+    status = bridge_resp.get("status")
+
+    ext = db.query(ExternalAccount).filter(ExternalAccount.id == account_id).first()
+    if not ext:
+        ext = ExternalAccount(id=account_id, user_id=user.id)
+        db.add(ext)
+    ext.bank_name = bank_name
+    ext.last4 = last4
+    ext.currency = currency
+    ext.status = status
+    db.commit()
+
+    return {
+        "id": account_id,
+        "bank_name": bank_name,
+        "name": bank_name,
+        "last4": last4,
+        "accountNumber": f"****{last4}" if last4 else None,
+        "currency": currency,
+        "status": status,
+        "raw": bridge_resp,  # Expose full Bridge response for frontend flexibility
+    } 

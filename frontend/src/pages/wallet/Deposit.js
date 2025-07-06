@@ -103,7 +103,7 @@ export default function Deposit() {
   const [form, setForm] = useState({ 
     amount: '', 
     external_account_id: '',
-    depositType: 'standard' // standard or instant
+    depositType: 'instant' // only instant deposit supported
   });
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
@@ -375,7 +375,7 @@ export default function Deposit() {
       setForm(prev => ({ 
         amount: '', 
         external_account_id: prev.external_account_id,
-        depositType: 'standard'
+        depositType: 'instant'
       }));
     } catch (err) {
       console.error(err);
@@ -813,82 +813,19 @@ export default function Deposit() {
                       
                       <Grid item xs={12}>
                         <Box sx={{ p: 3, border: '1px solid rgba(55, 65, 81, 0.5)', borderRadius: 2 }}>
-                          <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
-                            Select Deposit Method
+                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
+                            <Typography variant="subtitle1" fontWeight={600}>
+                              Instant Deposit
+                            </Typography>
+                            <Typography variant="caption" component="span" sx={{ bgcolor: 'rgba(59, 130, 246, 0.1)', px: 1, py: 0.5, borderRadius: 1, fontWeight: 'medium' }}>
+                              No Fee
+                            </Typography>
+                          </Box>
+                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
+                            Deposits are credited instantly (under&nbsp;1&nbsp;minute).
                           </Typography>
-                          
-                          <RadioGroup
-                            name="depositType"
-                            value={form.depositType}
-                            onChange={handleChange}
-                          >
-                            <Box sx={{ mb: 2, p: 2, borderRadius: 2, border: form.depositType === 'standard' ? '1px solid rgba(59, 130, 246, 0.5)' : '1px solid rgba(55, 65, 81, 0.3)', background: form.depositType === 'standard' ? 'rgba(59, 130, 246, 0.05)' : 'transparent' }}>
-                              <FormControlLabel 
-                                value="standard" 
-                                control={<Radio />} 
-                                label={
-                                  <Box>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                      <Typography variant="subtitle2">Standard Bank Transfer ({getRailName()})</Typography>
-                                      <Typography variant="caption" sx={{ 
-                                        bgcolor: 'rgba(59, 130, 246, 0.1)', 
-                                        px: 1, 
-                                        py: 0.5, 
-                                        borderRadius: 1,
-                                        fontWeight: 'medium'
-                                      }}>
-                                        No Fee
-                                      </Typography>
-                                    </Box>
-                                    <Typography variant="caption" color="text.secondary">
-                                      Funds will arrive in 1-3 business days
-                                    </Typography>
-                                  </Box>
-                                }
-                                sx={{ width: '100%', m: 0 }}
-                              />
-                            </Box>
-                            
-                            <Box sx={{ p: 2, borderRadius: 2, border: form.depositType === 'instant' ? '1px solid rgba(245, 158, 11, 0.5)' : '1px solid rgba(55, 65, 81, 0.3)', background: form.depositType === 'instant' ? 'rgba(245, 158, 11, 0.05)' : 'transparent' }}>
-                              <FormControlLabel 
-                                value="instant" 
-                                control={<Radio />} 
-                                label={
-                                  <Box>
-                                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                                      <Typography variant="subtitle2">Instant Deposit</Typography>
-                                      <Typography variant="caption" sx={{ 
-                                        bgcolor: 'rgba(245, 158, 11, 0.1)', 
-                                        px: 1, 
-                                        py: 0.5, 
-                                        borderRadius: 1,
-                                        fontWeight: 'medium'
-                                      }}>
-                                        1.5% Fee
-                                      </Typography>
-                                    </Box>
-                                    <Typography variant="caption" color="text.secondary">
-                                      Funds available immediately (≤15 minutes)
-                                    </Typography>
-                                    <Typography variant="caption" color="text.secondary" sx={{ display: 'block', fontSize: '0.7rem', mt: 0.5, opacity: 0.7 }}>
-                                      *Exact rate: 1.5076%
-                                    </Typography>
-                                  </Box>
-                                }
-                                sx={{ width: '100%', m: 0 }}
-                              />
-                            </Box>
-                          </RadioGroup>
                         </Box>
                       </Grid>
-                      
-                      {form.depositType === 'instant' && form.amount && (
-                        <Grid item xs={12}>
-                          <Alert severity="info" sx={{ borderRadius: 2 }}>
-                            A fee of {getCurrencySymbol(userRegion.currency.toUpperCase())}{calculateFee(parseFloat(form.amount), INSTANT_DEPOSIT_FEE_RATE)} will be charged for this instant deposit.
-                          </Alert>
-                        </Grid>
-                      )}
                       
                       <Grid item xs={12}>
                         <Button
