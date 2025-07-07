@@ -151,6 +151,36 @@ class BridgeClient:
         """Create a new external account for the specified customer (POST /customers/{customer_id}/external_accounts)."""
         return self._post(f"/customers/{customer_id}/external_accounts", payload)
 
+    def get_external_account(self, external_account_id: str, customer_id: str | None = None):
+        """Retrieve a single external account.
+
+        Bridge API supports two flavours:
+        1. GET /customers/{customer_id}/external_accounts/{id}  ← reliable
+        2. GET /external_accounts/{id}                          ← returns 404 for customer-scoped resources
+
+        We attempt the customer-scoped path first when `customer_id` is given, and fall back to the global one.
+        """
+        paths = []
+        if customer_id:
+            paths.append(f"/customers/{customer_id}/external_accounts/{external_account_id}")
+        paths.append(f"/external_accounts/{external_account_id}")
+
+        last_err = None
+        for p in paths:
+            try:
+                resp = self.session.get(f"{BASE_URL}{p}", headers=_headers(), timeout=30)
+                resp.raise_for_status()
+                return resp.json()
+            except requests.HTTPError as e:
+                last_err = e
+                # Only try fallback on 404; any other error we propagate immediately
+                if e.response is None or e.response.status_code != 404:
+                    raise
+
+        # If all attempts failed, raise the last 404 error
+        assert last_err is not None
+        raise last_err
+
     # ---------------- Virtual Accounts ----------------
 
     def create_virtual_account(self, customer_id: str, payload: Dict[str, Any] | None = None):
@@ -196,7 +226,7 @@ class BridgeClient:
         }
         if wallet_address:
             payload["destination"]["address"] = wallet_address
-        return self.create_virtual_account(customer_id, payload)
+        return self.create_virtual_account(customer_id, payload) 
 
     # ------------------- Transfers -----------------
     def create_transfer_sync(self, payload: Dict[str, Any]) -> Dict[str, Any]:
@@ -206,3 +236,33 @@ class BridgeClient:
         the same client throughout the backend.
         """
         return self._post("/transfers", payload) 
+
+    def delete_transfer(self, transfer_id: str):
+        """Delete (cancel) a transfer that is still in awaiting_funds state.
+
+        Wrapper around DELETE /transfers/{id}. Returns JSON response.
+        """
+        idem = str(uuid.uuid4())
+        resp = self.session.delete(
+            f"{BASE_URL}/transfers/{transfer_id}",
+            headers=_headers({"Idempotency-Key": idem}),
+            timeout=15,
+        )
+        # DELETE returns 200 on success; raise for others
+        try:
+            resp.raise_for_status()
+        except requests.HTTPError as e:
+            raise requests.HTTPError(f"Delete transfer failed: {e}\nResponse body: {resp.text}") from e
+        return resp.json()
+
+    # ---------------- Exchange Rates ----------------
+    def get_exchange_rate(self, from_currency: str, to_currency: str) -> dict:
+        """Fetch the latest exchange rate from `from_currency` to `to_currency`.
+
+        Wrapper around GET /exchange_rates?from=<>&to=<>
+        Returns the parsed JSON body (expected to include a `rate` key).
+        """
+        params = {"from": from_currency.lower(), "to": to_currency.lower()}
+        resp = self.session.get(f"{BASE_URL}/exchange_rates", headers=_headers(), params=params, timeout=15)
+        resp.raise_for_status()
+        return resp.json() 
