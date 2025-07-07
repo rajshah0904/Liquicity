@@ -1,6 +1,6 @@
 from datetime import datetime
 import uuid
-from sqlalchemy import Column, String, DateTime, Boolean, func, ForeignKey
+from sqlalchemy import Column, String, DateTime, Boolean, func, ForeignKey, Integer, Float, Text
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
 from .database import Base
@@ -140,5 +140,80 @@ class EncPosition(Base):
     )
 
     encumbrance = relationship("Encumbrance", back_populates="positions")
+
+
+
+# ------------------- On-chain Transaction Logging -------------------
+
+class Transaction(Base):
+    __tablename__ = "transactions"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users_v2.id", ondelete="CASCADE"), nullable=False, index=True)
+    from_wallet = Column(String(64), nullable=False)
+    to_wallet = Column(String(64), nullable=False)
+    amount = Column(Numeric(18, 6), nullable=False)
+    currency = Column(String(16), nullable=False)
+    chain_type = Column(String(16), nullable=False)
+    status = Column(String(16), default="pending")  # pending, confirmed, failed
+    tx_hash = Column(String(128), nullable=True)
+    risk_score = Column(Float, default=0.0)
+    flagged = Column(Boolean, default=False)
+    notes = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    confirmed_at = Column(DateTime(timezone=True), nullable=True)
+
+    user = relationship("User")
+
+
+
+# ------------------- Blacklist/Whitelist -------------------
+
+class BlacklistedAddress(Base):
+    __tablename__ = "blacklisted_addresses"
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    address = Column(String(64), unique=True, nullable=False, index=True)
+    chain_type = Column(String(16), nullable=False)
+    reason = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    active = Column(Boolean, default=True)
+
+
+
+# ------------------- Dispute/Report -------------------
+
+class Dispute(Base):
+    __tablename__ = "disputes"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=False)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users_v2.id", ondelete="CASCADE"), nullable=False)
+    reason = Column(Text, nullable=False)
+    status = Column(String(16), default="open")  # open, resolved, rejected
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    resolved_at = Column(DateTime(timezone=True), nullable=True)
+
+    transaction = relationship("Transaction")
+    user = relationship("User")
+
+
+
+# ------------------- Compliance Reporting -------------------
+
+class ComplianceReport(Base):
+    __tablename__ = "compliance_reports"
+
+    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    transaction_id = Column(UUID(as_uuid=True), ForeignKey("transactions.id", ondelete="CASCADE"), nullable=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users_v2.id", ondelete="CASCADE"), nullable=True)
+    report_type = Column(String(32), nullable=False)  # SAR, CTR, manual_review, etc.
+    details = Column(Text)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    reviewed = Column(Boolean, default=False)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+
+    transaction = relationship("Transaction")
+    user = relationship("User")
 
 
