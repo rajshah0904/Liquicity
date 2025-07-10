@@ -27,16 +27,89 @@ type RootStackParamList = {
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Home'>;
 
-function appendRedirectUri(url: string, redirectUri: string): string {
-  return url.includes('?')
-    ? `${url}&redirect_uri=${encodeURIComponent(redirectUri)}`
-    : `${url}?redirect_uri=${encodeURIComponent(redirectUri)}`;
+const AUTH0_AUDIENCE = 'https://api.liquicity.com';
+
+// Helper function to decode JWT token (for debugging)
+function decodeJWT(token: string) {
+  try {
+    const base64Url = token.split('.')[1];
+    const base64 = base64Url.replace(/-/g, '+').replace(/_/g, '/');
+    const jsonPayload = decodeURIComponent(atob(base64).split('').map(function(c) {
+      return '%' + ('00' + c.charCodeAt(0).toString(16)).slice(-2);
+    }).join(''));
+    return JSON.parse(jsonPayload);
+  } catch (e) {
+    console.error('[JWT] Failed to decode token:', e);
+    return null;
+  }
+}
+
+async function registerUserWithBackend(token: string, userInfo?: any) {
+  console.log('[Signup] Starting backend registration with token:', token ? 'Token present' : 'No token');
+  console.log('[Signup] User info:', userInfo);
+  
+  // Debug: Decode and log JWT token contents
+  const decodedToken = decodeJWT(token);
+  console.log('[Signup] JWT Token contents:', decodedToken);
+  console.log('[Signup] JWT Token email claim:', decodedToken?.email);
+  console.log('[Signup] JWT Token sub claim:', decodedToken?.sub);
+  console.log('[Signup] JWT Token aud claim:', decodedToken?.aud);
+  
+  try {
+    console.log('[Signup] Making POST request to /onboard/register');
+    
+    // Include email in request body as fallback if not in JWT token
+    const requestBody: any = {};
+    if (decodedToken?.email) {
+      console.log('[Signup] Using email from JWT token:', decodedToken.email);
+      requestBody.email = decodedToken.email;
+    } else if (userInfo?.email) {
+      console.log('[Signup] Using email from user info:', userInfo.email);
+      requestBody.email = userInfo.email;
+    } else {
+      console.log('[Signup] No email found in JWT token or user info');
+    }
+    
+    const response = await backendRequest('POST', API_ENDPOINTS.REGISTER, requestBody, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    console.log('[Signup] /onboard/register SUCCESS - Response:', response);
+    return response;
+  } catch (e: any) {
+    console.error('[Signup] /onboard/register ERROR - Full error object:', e);
+    console.error('[Signup] /onboard/register ERROR - Message:', e?.message);
+    console.error('[Signup] /onboard/register ERROR - Status:', e?.response?.status);
+    console.error('[Signup] /onboard/register ERROR - Response data:', e?.response?.data);
+    console.error('[Signup] /onboard/register ERROR - Request config:', e?.config);
+    
+    // If 409 (already exists), that's fine, just continue
+    if (e.response && e.response.status === 409) {
+      console.log('[Signup] User already exists (409), continuing...');
+      return;
+    }
+    
+    // Handle 400 errors specifically
+    if (e.response && e.response.status === 400) {
+      const errorDetail = e?.response?.data?.detail || 'Bad request';
+      console.error('[Signup] 400 Error detail:', errorDetail);
+      
+      if (errorDetail.includes('email claim missing') || errorDetail.includes('Email is required')) {
+        throw new Error('Authentication token is missing email information. Please check Auth0 configuration or try signing up again.');
+      } else if (errorDetail.includes('Authorization header')) {
+        throw new Error('Authentication failed. Please try signing up again.');
+      } else {
+        throw new Error(`Registration failed: ${errorDetail}`);
+      }
+    }
+    
+    throw e;
+  }
 }
 
 const Home = () => {
   const navigation = useNavigation<HomeScreenNavigationProp & { navigate: (screen: string, params?: any) => void }>();
   const route = useRoute();
-  const { authorize, clearSession, user, isLoading, error } = useAuth0();
+  const { authorize, clearSession, user, isLoading, error, getCredentials } = useAuth0();
   const [email, setEmail] = useState('');
   const [emailLoading, setEmailLoading] = useState(false);
   const [tosModalVisible, setTosModalVisible] = useState(false);
@@ -44,6 +117,12 @@ const Home = () => {
   const [showTosWebView, setShowTosWebView] = useState(false);
   const [canGoBackBridgeTos, setCanGoBackBridgeTos] = useState(false);
   const bridgeTosWebViewRef = useRef<WebView>(null);
+
+  function appendRedirectUri(url: string, redirectUri: string): string {
+    return url.includes('?')
+      ? `${url}&redirect_uri=${encodeURIComponent(redirectUri)}`
+      : `${url}?redirect_uri=${encodeURIComponent(redirectUri)}`;
+  }
 
   if (isLoading) {
     return (
@@ -57,7 +136,50 @@ const Home = () => {
   const handleEmailLogin = async () => {
     setEmailLoading(true);
     try {
-      await authorize();
+      await authorize({ audience: AUTH0_AUDIENCE, scope: 'openid profile email' });
+      // After login, get token and register user in backend
+      const credentials = await getCredentials();
+      console.log('Auth0 credentials after login:', credentials);
+      if (credentials && credentials.accessToken) {
+        // Get user info to extract email
+        const userInfo = await credentials.user;
+        console.log('User info after login:', userInfo);
+        
+        await registerUserWithBackend(credentials.accessToken, userInfo);
+        
+        // Check if user needs ToS acceptance or can proceed to KYC
+        const userCheckResponse = await fetch('http://192.168.86.31:8000/user/check', {
+          headers: {
+            'Authorization': `Bearer ${credentials.accessToken}`,
+            'Content-Type': 'application/json'
+          }
+        });
+        
+        if (userCheckResponse.ok) {
+          const userData = await userCheckResponse.json();
+          console.log('[Login] User status:', userData);
+          
+          if (userData.next_step === 'tos' && userData.tos_url) {
+            navigation.navigate('TermsOfService', { 
+              tosUrl: userData.tos_url,
+              returnTo: 'KYCStart'
+            });
+          } else if (userData.next_step === 'kyc') {
+            navigation.navigate('KYCStart');
+          } else if (userData.next_step === 'done') {
+            // User is fully onboarded, navigate to main app
+            navigation.navigate('MainTabs');
+          } else {
+            navigation.navigate('KYCStart');
+          }
+        } else {
+          navigation.navigate('KYCStart');
+        }
+      } else {
+        Alert.alert('Error', 'No access token received from Auth0');
+        setEmailLoading(false);
+        return;
+      }
     } catch (e: any) {
       Alert.alert('Error', e?.message || 'Login failed');
     }
@@ -66,14 +188,58 @@ const Home = () => {
 
   // Universal Login: Sign Up
   const handleSignUp = async () => {
+    console.log('[Signup] Starting signup process...');
     try {
       // Clear any existing Auth0 session first
+      console.log('[Signup] Clearing existing Auth0 session...');
       await clearSession();
-      // Now call authorize with signup hint
-      await authorize({ screen_hint: 'signup' } as any);
-      // After successful signup, navigate to KYCStart
-      navigation.navigate('KYCStart');
+      console.log('[Signup] Auth0 session cleared successfully');
+      
+      // Now call authorize with signup hint, audience, and scope
+      console.log('[Signup] Calling Auth0 authorize with signup hint...');
+      await authorize({ audience: AUTH0_AUDIENCE, screen_hint: 'signup', scope: 'openid profile email' } as any);
+      console.log('[Signup] Auth0 authorize completed successfully');
+      
+      // After signup, get token and register user in backend
+      console.log('[Signup] Getting Auth0 credentials...');
+      const credentials = await getCredentials();
+      console.log('[Signup] Auth0 credentials received:', credentials ? 'Credentials present' : 'No credentials');
+      console.log('[Signup] Auth0 credentials details:', credentials);
+      
+      if (credentials && credentials.accessToken) {
+        console.log('[Signup] Access token present, registering with backend...');
+        
+        // Get user info to extract email
+        const userInfo = await credentials.user;
+        console.log('[Signup] User info:', userInfo);
+        
+        const backendResponse = await registerUserWithBackend(credentials.accessToken, userInfo);
+        console.log('[Signup] Backend registration completed:', backendResponse);
+        console.log('[Signup] ToS URL received:', backendResponse.tos_url);
+        
+        // After registration, show ToS acceptance instead of jumping to KYC
+        if (backendResponse.tos_url) {
+          console.log('[Signup] Navigating to Terms of Service...');
+          navigation.navigate('TermsOfService', { 
+            tosUrl: backendResponse.tos_url,
+            returnTo: 'KYCStart'
+          });
+        } else {
+          console.log('[Signup] No ToS URL, navigating to KYCStart...');
+          setTimeout(() => {
+            navigation.navigate('KYCStart');
+          }, 500);
+        }
+      } else {
+        console.error('[Signup] No access token received from Auth0');
+        Alert.alert('Error', 'No access token received from Auth0');
+        return;
+      }
     } catch (e: any) {
+      console.error('[Signup] Signup process failed:', e);
+      console.error('[Signup] Error message:', e?.message);
+      console.error('[Signup] Error code:', e?.code);
+      console.error('[Signup] Error details:', e);
       Alert.alert('Error', e?.message || 'Sign up failed');
     }
   };
@@ -92,7 +258,54 @@ const Home = () => {
       <View style={styles.card}>
         <Text style={styles.title}>Liquicity</Text>
         {/* Only show login/signup UI, never the welcome message for authenticated users */}
-        <TouchableOpacity style={styles.googleButton} onPress={async () => { await authorize({ connection: 'google-oauth2' }); }}>
+        <TouchableOpacity style={styles.googleButton} onPress={async () => { 
+          try {
+            await authorize({ audience: AUTH0_AUDIENCE, connection: 'google-oauth2', scope: 'openid profile email' });
+            // After Google login, get token and register user in backend
+            const credentials = await getCredentials();
+            console.log('Auth0 credentials after Google login:', credentials);
+            if (credentials && credentials.accessToken) {
+              // Get user info to extract email
+              const userInfo = await credentials.user;
+              console.log('User info after Google login:', userInfo);
+              
+              await registerUserWithBackend(credentials.accessToken, userInfo);
+              
+              // Check if user needs ToS acceptance or can proceed to KYC
+              const userCheckResponse = await fetch('http://192.168.86.31:8000/user/check', {
+                headers: {
+                  'Authorization': `Bearer ${credentials.accessToken}`,
+                  'Content-Type': 'application/json'
+                }
+              });
+              
+              if (userCheckResponse.ok) {
+                const userData = await userCheckResponse.json();
+                console.log('[Google Login] User status:', userData);
+                
+                if (userData.next_step === 'tos' && userData.tos_url) {
+                  navigation.navigate('TermsOfService', { 
+                    tosUrl: userData.tos_url,
+                    returnTo: 'KYCStart'
+                  });
+                } else if (userData.next_step === 'kyc') {
+                  navigation.navigate('KYCStart');
+                } else if (userData.next_step === 'done') {
+                  // User is fully onboarded, navigate to main app
+                  navigation.navigate('MainTabs');
+                } else {
+                  navigation.navigate('KYCStart');
+                }
+              } else {
+                navigation.navigate('KYCStart');
+              }
+            } else {
+              Alert.alert('Error', 'No access token received from Auth0');
+            }
+          } catch (e: any) {
+            Alert.alert('Error', e?.message || 'Google login failed');
+          }
+        }}>
           <Icon name="google" size={20} color="#fff" style={{ marginRight: 8 }} />
           <Text style={styles.buttonText}>Sign in with Google</Text>
         </TouchableOpacity>

@@ -8,7 +8,8 @@ from sqlalchemy.orm import sessionmaker
 load_dotenv()
 
 # DATABASE_URL is now loaded from an environment variable for better security.
-DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://raj:Rajshah11@localhost:5432/liquicity")
+DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://karthikpydishetty@localhost:5432/liquicity")
+
 
 engine = create_engine(DATABASE_URL)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)

@@ -3,8 +3,8 @@ import { v4 as uuidv4 } from 'uuid';
 
 // Backend API configuration
 const BACKEND_BASE_URL = __DEV__ 
-  ? 'http://localhost:8000'  // Development - your local backend
-  : 'https://your-production-backend.com'; // Production - replace with your actual production URL
+  ? 'http://192.168.86.31:8000'  // Development - use your computer's IP address
+  : 'https://api.liquicity.com'; // Production - replace with your actual production URL
 
 // Create axios instance for backend API calls
 const backendApi = axios.create({
@@ -21,36 +21,74 @@ export async function backendRequest<T = any>(
   data?: any,
   config?: AxiosRequestConfig
 ): Promise<T> {
-  const response = await backendApi.request<T>({
-    method,
-    url,
-    data,
-    ...config,
-  });
-  return response.data;
+  console.log('[API] Request:', method, url, { data, config });
+  try {
+    const response = await backendApi.request<T>({
+      method,
+      url,
+      data,
+      ...config,
+    });
+    console.log('[API] Response:', method, url, response.status, response.data);
+    return response.data;
+  } catch (error: any) {
+    console.error('[API] Error:', method, url, error?.message, error?.response);
+    console.error('[API] Error Details:', {
+      message: error?.message,
+      status: error?.response?.status,
+      statusText: error?.response?.statusText,
+      data: error?.response?.data,
+      config: error?.config,
+      code: error?.code,
+      isAxiosError: error?.isAxiosError,
+      timeout: error?.code === 'ECONNABORTED' ? 'Request timed out' : 'No timeout'
+    });
+    throw error;
+  }
 }
 
 // Auth0 token interceptor - adds Authorization header with JWT token
 backendApi.interceptors.request.use(
   async (config) => {
-    // You'll need to get the Auth0 token from your auth context
-    // For now, this is a placeholder
-    // const token = await getAuth0Token();
-    // if (token) {
-    //   config.headers.Authorization = `Bearer ${token}`;
-    // }
+    const method = config.method?.toUpperCase() || 'UNKNOWN';
+    const baseURL = config.baseURL || '';
+    const url = config.url || '';
+    console.log('[API] Axios Request:', method, baseURL + url, config.headers);
+    if (config.headers && config.headers.Authorization) {
+      console.log('Authorization header being sent:', config.headers.Authorization);
+    } else {
+      console.log('No Authorization header set on this request');
+    }
     return config;
   },
   (error) => {
+    console.error('[API] Request interceptor error:', error);
     return Promise.reject(error);
   }
 );
 
-// Response interceptor for error handling
 backendApi.interceptors.response.use(
-  (response) => response,
+  (response) => {
+    const method = response.config.method?.toUpperCase() || 'UNKNOWN';
+    const baseURL = response.config.baseURL || '';
+    const url = response.config.url || '';
+    console.log('[API] Axios Response:', method, baseURL + url, response.status, response.data);
+    return response;
+  },
   (error) => {
-    console.error('API Error:', error.response?.data || error.message);
+    const method = error.config?.method?.toUpperCase() || 'UNKNOWN';
+    const baseURL = error.config?.baseURL || '';
+    const url = error.config?.url || '';
+    console.error('[API] Axios Error:', method, baseURL + url, error?.message, error?.response);
+    console.error('[API] Axios Error Details:', {
+      message: error?.message,
+      status: error?.response?.status,
+      statusText: error?.response?.statusText,
+      data: error?.response?.data,
+      code: error?.code,
+      isAxiosError: error?.isAxiosError,
+      timeout: error?.code === 'ECONNABORTED' ? 'Request timed out' : 'No timeout'
+    });
     return Promise.reject(error);
   }
 );

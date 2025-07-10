@@ -1,36 +1,34 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, Button, ActivityIndicator, Alert } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { bridgeRequest } from '../lib/bridgeClient';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../RootStackParamList';
+import { useAuth0 } from 'react-native-auth0';
 
 const POLL_INTERVAL = 10000; // 10 seconds
 
-type KYCStatusScreenProps = {
-  navigation: NativeStackNavigationProp<RootStackParamList, 'KYCStatusScreen'>;
-};
-
-const KYCStatusScreen: React.FC<KYCStatusScreenProps> = ({ navigation }) => {
+const KYCStatusScreen = ({ navigation }: any) => {
+  const { getCredentials } = useAuth0();
   const [status, setStatus] = useState<string | null>(null);
   const [rejectionReasons, setRejectionReasons] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
   const fetchStatus = async () => {
     setLoading(true);
-    const customerId = await AsyncStorage.getItem('customer_id');
-    if (!customerId) {
-      Alert.alert('Error', 'No customer ID found.');
-      setLoading(false);
-      return;
-    }
     try {
-      const res = await bridgeRequest('GET', `/customers/${customerId}`);
-      setStatus(res.kyc_status || res.status);
-      if (res.kyc_status === 'rejected' || res.status === 'rejected') {
-        setRejectionReasons(res.rejection_reasons?.map((r: { reason: string }) => r.reason) || []);
+      const credentials = await getCredentials();
+      if (!credentials || !credentials.accessToken) {
+        Alert.alert('Error', 'No access token found.');
+        setLoading(false);
+        return;
       }
-      await AsyncStorage.setItem('customer_id', customerId);
+      const res = await fetch('http://192.168.86.26:8000/kyc/status', {
+        headers: {
+          'Authorization': `Bearer ${credentials.accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+      if (!res.ok) throw new Error('Failed to fetch KYC status');
+      const data = await res.json();
+      setStatus(data.kyc_status);
+      setRejectionReasons(data.rejection_reasons || []);
     } catch (e: any) {
       Alert.alert('Error', e?.message || String(e));
     }
@@ -62,11 +60,7 @@ const KYCStatusScreen: React.FC<KYCStatusScreenProps> = ({ navigation }) => {
         {rejectionReasons.map((reason, idx) => (
           <Text key={idx}>{reason}</Text>
         ))}
-        <Button title="Retry" onPress={() => {
-          AsyncStorage.getItem('customer_id').then(customerId => {
-            navigation.navigate('KYCUploadID', { customerId: customerId || '' });
-          });
-        }} />
+        <Button title="Retry" onPress={fetchStatus} />
       </View>
     );
   }

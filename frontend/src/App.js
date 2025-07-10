@@ -15,7 +15,7 @@ import PageDashboard from './pages/Dashboard';
 import ModernCardDemo from './pages/ModernCardDemo';
 import Wallet from './pages/Wallet';
 import SendMoney from './pages/SendMoney';
-import ReceiveMoney from './pages/ReceiveMoney';
+// import ReceiveMoney from './pages/ReceiveMoney';
 import Transactions from './pages/Transactions';
 import DepositFunds from './pages/DepositFunds';
 import WithdrawFunds from './pages/WithdrawFunds';
@@ -98,16 +98,6 @@ function App() {
             <ProtectedRoute>
               <AuthenticatedLayout>
                 <SendMoney />
-              </AuthenticatedLayout>
-            </ProtectedRoute>
-          }
-        />
-        <Route
-          path="/receive"
-          element={
-            <ProtectedRoute>
-              <AuthenticatedLayout>
-                <ReceiveMoney />
               </AuthenticatedLayout>
             </ProtectedRoute>
           }

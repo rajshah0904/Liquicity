@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, FlatList, SafeAreaView, Alert } from 'react-native';
 import Icon from 'react-native-vector-icons/Feather';
 import { useAuth0 } from 'react-native-auth0';
@@ -17,8 +17,26 @@ const activityData = [
 ];
 
 const Dashboard = () => {
-  const { clearSession } = useAuth0();
+  const { clearSession, getCredentials } = useAuth0();
   const insets = useSafeAreaInsets();
+
+  useEffect(() => {
+    const fetchToken = async () => {
+      try {
+        const credentials = await getCredentials();
+        if (credentials && credentials.accessToken) {
+          const accessToken = credentials.accessToken;
+          // Use accessToken in your backend requests
+          console.log('Access Token:', accessToken);
+        } else {
+          console.warn('No credentials or access token found');
+        }
+      } catch (e) {
+        console.error('Failed to get credentials:', e);
+      }
+    };
+    fetchToken();
+  }, []);
 
   const handleLogout = async () => {
     try {

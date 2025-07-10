@@ -91,55 +91,86 @@ const AuthStack = () => (
 );
 
 const App = () => {
-  const { user, isLoading, clearSession } = useAuth0();
+  const { user, isLoading, error } = useAuth0();
   const [userStatus, setUserStatus] = useState<'checking' | 'new' | 'existing' | 'kyc_pending' | 'ready'>('checking');
   const [customerId, setCustomerId] = useState<string>('');
 
+  // Comprehensive Auth0 state logging
   useEffect(() => {
-    // Force logout on app start (for dev/testing)
-    clearSession().catch(() => {});
-  }, []);
+    console.log('[Auth0 State] === AUTH0 STATE CHANGE ===');
+    console.log('[Auth0 State] user:', user);
+    console.log('[Auth0 State] isLoading:', isLoading);
+    console.log('[Auth0 State] error:', error);
+    console.log('[Auth0 State] userStatus:', userStatus);
+    console.log('[Auth0 State] navigation ready:', navigationRef.isReady());
+    console.log('[Auth0 State] =========================');
+  }, [user, isLoading, error, userStatus]);
+
+  console.log('App render - isLoading:', isLoading, 'user:', user, 'userStatus:', userStatus);
 
   useEffect(() => {
     const checkUserStatus = async () => {
-      if (user && user.id && navigationRef.isReady()) {
+      console.log('[User Check] Starting user status check...');
+      console.log('[User Check] Auth0 user:', user);
+      console.log('[User Check] Auth0 isLoading:', isLoading);
+      console.log('[User Check] Navigation ready:', navigationRef.isReady());
+      
+      if (!user) {
+        // User is not authenticated - show login screen
+        console.log('[User Check] User not authenticated, showing login screen');
+        setUserStatus('new');
+        return;
+      }
+      
+      if (user.id && navigationRef.isReady()) {
         try {
-          // Check if user exists in our backend
-          const response = await fetch(`http://localhost:8000/user/check`, {
+          console.log('[User Check] Checking user status with backend...');
+          const response = await fetch(`http://192.168.86.31:8000/user/check`, {
             headers: {
               'Authorization': `Bearer ${user.accessToken}`,
               'Content-Type': 'application/json'
             }
           });
-          
+          console.log('[User Check] Backend response status:', response.status);
           if (response.ok) {
             const userData = await response.json();
+            console.log('[User Check] User data from backend:', userData);
             
             if (!userData.exists) {
-              // New user - they need to complete onboarding
+              console.log('[User Check] User does not exist, setting status to new');
               setUserStatus('new');
             } else if (userData.next_step === 'done' && userData.kyc_complete) {
-              // User is fully onboarded and KYC is complete
+              console.log('[User Check] User is ready (KYC complete)');
               setUserStatus('ready');
+            } else if (userData.next_step === 'tos') {
+              console.log('[User Check] User needs ToS acceptance');
+              setUserStatus('kyc_pending'); // Use kyc_pending for any onboarding step
+            } else if (userData.next_step === 'kyc') {
+              console.log('[User Check] User needs KYC completion');
+              setUserStatus('kyc_pending');
             } else {
-              // User exists but needs to complete KYC or other steps
+              console.log('[User Check] User exists but in unknown state:', userData.next_step);
               setUserStatus('kyc_pending');
             }
           } else {
-            // If the request fails, assume user needs to complete onboarding
+            console.log('[User Check] Backend returned error status, setting user to new');
             setUserStatus('new');
           }
         } catch (error) {
-          console.error('Error checking user status:', error);
-          // On error, assume user needs to complete onboarding
+          console.error('[User Check] Error checking user status:', error);
           setUserStatus('new');
         }
+      } else {
+        console.log('[User Check] User not ready or navigation not ready', { user, navReady: navigationRef.isReady() });
       }
     };
     checkUserStatus();
-  }, [user]);
+  }, [user, isLoading]);
 
+  console.log('Before render check - isLoading:', isLoading, 'userStatus:', userStatus);
+  
   if (isLoading || userStatus === 'checking') {
+    console.log('Showing loading screen');
     return (
       <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#000' }}>
         <ActivityIndicator size="large" color="#fff" />
@@ -147,27 +178,30 @@ const App = () => {
     );
   }
 
+  console.log('Showing main app - user:', !!user, 'userStatus:', userStatus);
+
   return (
     <NavigationContainer ref={navigationRef}>
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         {!user ? (
-          // Auth flow
           <>
             <Stack.Screen name="Home" component={Home} />
             <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
           </>
         ) : userStatus === 'ready' ? (
-          // User is ready - show main app
           <Stack.Screen name="MainTabs" component={MainTabs} />
-        ) : (
-          // User needs KYC
+        ) : userStatus === 'kyc_pending' ? (
           <>
             <Stack.Screen name="KYCStart" component={KYCStart} />
-            <Stack.Screen 
-              name="KYCUploadID" 
-              component={KYCUploadID}
-              initialParams={{ customerId: customerId }}
-            />
+            <Stack.Screen name="KYCUploadID" component={KYCUploadID} />
+          </>
+        ) : (
+          // For authenticated users who are not ready (new users after registration)
+          <>
+            <Stack.Screen name="Home" component={Home} />
+            <Stack.Screen name="TermsOfService" component={TermsOfServiceScreen} />
+            <Stack.Screen name="KYCStart" component={KYCStart} />
+            <Stack.Screen name="KYCUploadID" component={KYCUploadID} />
           </>
         )}
       </Stack.Navigator>
