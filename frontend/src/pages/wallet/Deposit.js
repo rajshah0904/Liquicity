@@ -64,6 +64,8 @@ import {
   StaggerItem
 } from '../../components/animations/AnimatedComponents';
 
+import LinkPaymentDialog from '../../components/LinkPaymentDialog';
+
 // Replace the region detection with a function that gets the user's region directly from profile
 const getUserRegion = (userData) => {
   // Get the user's country from their profile
@@ -132,6 +134,7 @@ export default function Deposit() {
   
   const { wallet: bridgeWallet, loading: walletLoading } = useBridgeWallet();
   const [balanceData, setBalanceData] = useState({ total: 0, available: 0, currency: 'USD' });
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   
   const navigate = useNavigate();
   const location = useLocation();
@@ -158,7 +161,7 @@ export default function Deposit() {
       setLinkedAccounts(response.data.accounts || []);
     } catch (err) {
       console.error('Error fetching linked accounts:', err);
-      setError('Failed to load your linked bank accounts');
+      setError('Failed to load your linked payment methods');
     } finally {
       setLoading(false);
     }
@@ -486,10 +489,10 @@ export default function Deposit() {
             >
               <Box sx={{ mb: 4 }}>
                 <Typography variant="h4" component="h1" fontWeight="600" color="#fff">
-                  {(isLinkBankMode || step==='link-bank') ? 'Link Bank Account' : 'Deposit Funds'}
+                  {(isLinkBankMode || step==='link-bank') ? 'Link Payment Method' : 'Deposit Funds'}
                 </Typography>
                 <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  {(isLinkBankMode || step==='link-bank') ? 'Securely connect your bank account' : 'Add money to your Liquicity account'}
+                  {(isLinkBankMode || step==='link-bank') ? 'Securely link a bank or crypto wallet' : 'Add money to your Liquicity account'}
                 </Typography>
               </Box>
               
@@ -497,7 +500,7 @@ export default function Deposit() {
               {step === 'select-method' && (
                 <>
                   <Typography variant="h6" fontWeight="600" sx={{ mb: 3 }}>
-                    Select Bank Account
+                    Select Payment Method
                   </Typography>
                   
                   {loading ? (
@@ -542,7 +545,7 @@ export default function Deposit() {
                       mb: 3
                     }}>
                       <Typography color="text.secondary" sx={{ mb: 1 }}>
-                        No bank accounts linked yet
+                        No payment methods linked yet
                       </Typography>
                     </Box>
                   )}
@@ -551,7 +554,7 @@ export default function Deposit() {
                       startIcon={<AddIcon />}
                       variant="outlined"
                       fullWidth
-                    onClick={() => navigate('/wallet/link-bank')}
+                    onClick={() => setLinkDialogOpen(true)}
                       sx={{ 
                         py: 1.5, 
                         mt: 2,
@@ -563,7 +566,7 @@ export default function Deposit() {
                         }
                       }}
                     >
-                    Link Bank Account
+                    Link Payment Method
                     </Button>
                 </>
               )}
@@ -865,6 +868,7 @@ export default function Deposit() {
           </Grid>
         </Grid>
       </Container>
+      <LinkPaymentDialog open={linkDialogOpen} onClose={() => setLinkDialogOpen(false)} />
     </Box>
   );
 } 

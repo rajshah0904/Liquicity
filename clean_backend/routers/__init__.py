@@ -1,1 +1,1 @@
- 
+from .crypto import router as crypto_router  # noqa 

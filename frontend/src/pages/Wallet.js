@@ -53,6 +53,7 @@ import {
 } from '../components/animations/AnimatedComponents';
 
 import useBridgeWallet from '../hooks/useBridgeWallet';
+import LinkPaymentDialog from '../components/LinkPaymentDialog';
 
 export default function Wallet() {
   const [loading, setLoading] = useState(false);
@@ -65,6 +66,8 @@ export default function Wallet() {
 
   // Live Bridge wallet hook
   const { wallet: bridgeWallet, loading: walletLoading, refetch: refetchWallet } = useBridgeWallet();
+
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
 
   useEffect(() => {
     // No overview endpoint on clean backend – everything comes from hooks now
@@ -128,7 +131,7 @@ export default function Wallet() {
   const handleDeposit = () => navigate('/wallet/deposit');
   const handleWithdraw = () => navigate('/wallet/withdraw');
   const handleCardManagement = () => navigate('/virtual-account');
-  const handleAddAccount = () => navigate('/wallet/deposit?action=link-account');
+  const handleAddAccount = () => setLinkDialogOpen(true);
 
   if (walletLoading) {
     return (
@@ -330,7 +333,7 @@ export default function Wallet() {
           }}>
             <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
               <Typography variant="h6" fontWeight="600">
-                Linked Accounts
+                Linked Payment Methods
               </Typography>
               <Button
                 size="small"
@@ -393,6 +396,7 @@ export default function Wallet() {
                 </ListItem>
               ))}
             </List>
+            <LinkPaymentDialog open={linkDialogOpen} onClose={()=>setLinkDialogOpen(false)} />
           </FloatingCard>
         </motion.div>
 
@@ -458,7 +462,7 @@ export default function Wallet() {
               </AccordionSummary>
               <AccordionDetails>
                 <Typography variant="body2" color="text.secondary">
-                  To link a new bank account, go to the "Linked Accounts" section and click "Add". You'll need your bank account details and may need to verify small test deposits.
+                  To link a new bank account, go to the "Linked Payment Methods" section and click "Add". You'll need your bank account details and may need to verify small test deposits.
                 </Typography>
               </AccordionDetails>
             </Accordion>

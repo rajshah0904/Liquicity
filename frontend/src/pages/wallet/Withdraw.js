@@ -49,6 +49,8 @@ import {
   StaggerItem
 } from '../../components/animations/AnimatedComponents';
 
+import LinkPaymentDialog from '../../components/LinkPaymentDialog';
+
 // Replace the region detection with a function that gets the user's region directly from profile
 const getUserRegion = (userData) => {
   // Get the user's country from their profile
@@ -115,6 +117,7 @@ export default function Withdraw() {
   
   const { wallet: bridgeWallet, loading: walletLoading } = useBridgeWallet();
   const [balanceData, setBalanceData] = useState({ total: 0, available: 0, currency: 'USD' });
+  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   
   const navigate = useNavigate();
   const theme = useTheme();
@@ -131,7 +134,7 @@ export default function Withdraw() {
       setLinkedAccounts(response.data.accounts || []);
     } catch (err) {
       console.error('Error fetching linked accounts:', err);
-      setError('Failed to load your linked bank accounts');
+      setError('Failed to load your linked payment methods');
     } finally {
       setLoading(false);
     }
@@ -463,11 +466,11 @@ export default function Withdraw() {
               
               {/* The method selection step was removed – we go straight to bank selection */}
               
-              {/* Select Bank Account */}
+              {/* Select Payment Method */}
               {step === 'select-bank' && (
                 <>
                   <Typography variant="h6" fontWeight="600" sx={{ mb: 3 }}>
-                    Select Bank Account
+                    Select Payment Method
                   </Typography>
                   
                   {loading ? (
@@ -536,7 +539,7 @@ export default function Withdraw() {
                           variant="outlined"
                           fullWidth
                           startIcon={<AddIcon />}
-                          onClick={handleAddAccount}
+                          onClick={() => setLinkDialogOpen(true)}
                           sx={{ 
                             py: 1.5, 
                             mt: 2,
@@ -548,13 +551,13 @@ export default function Withdraw() {
                             }
                           }}
                         >
-                        Link Bank Account
+                        Link Payment Method
                         </Button>
                     </List>
                   ) : (
                     <Box sx={{ py: 3, textAlign: 'center' }}>
                       <Typography color="text.secondary" sx={{ mb: 3 }}>
-                        You don't have any linked bank accounts
+                        You don't have any linked payment methods
                       </Typography>
                       <Button
                         variant="contained"
@@ -569,7 +572,7 @@ export default function Withdraw() {
                           }
                         }}
                       >
-                        Link Bank Account
+                        Link Payment Method
                       </Button>
                     </Box>
                   )}
@@ -607,7 +610,7 @@ export default function Withdraw() {
                       <Grid item xs={12}>
                         <Box sx={{ p: 3, border: '1px solid rgba(55, 65, 81, 0.5)', borderRadius: 2 }}>
                           <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 2 }}>
-                            Select Bank Account
+                            Select Payment Method
                           </Typography>
                           
                           <RadioGroup
@@ -647,13 +650,13 @@ export default function Withdraw() {
                           <Button
                             size="small"
                             startIcon={<AddIcon />}
-                            onClick={handleAddAccount}
+                            onClick={() => setLinkDialogOpen(true)}
                             sx={{ 
                               mt: 1,
                               color: 'primary.main',
                             }}
                           >
-                            Link another account
+                            Link another payment method
                           </Button>
                         </Box>
                       </Grid>
@@ -696,6 +699,7 @@ export default function Withdraw() {
           </Grid>
         </Grid>
       </Container>
+      <LinkPaymentDialog open={linkDialogOpen} onClose={()=>setLinkDialogOpen(false)} />
     </Box>
   );
 } 
