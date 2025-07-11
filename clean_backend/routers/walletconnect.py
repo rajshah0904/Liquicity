@@ -19,9 +19,9 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v1/walletconnect", tags=["WalletConnect"])
 
 # Dependency to get the WalletConnect service with real settings
-async def get_walletconnect_service():
+async def get_walletconnect_service(db: Session = Depends(get_db)):
     settings = get_settings()
-    return WalletConnectV2Service(settings, security_validator, ERROR_CODES)
+    return WalletConnectV2Service(settings, security_validator, ERROR_CODES, db)
 
 # Pydantic models
 class WalletConnectRequest(BaseModel):
@@ -71,7 +71,7 @@ async def create_walletconnect_session(
             session_id=session.id,
             qr_code=qr_code,
             uri=uri,
-            status=session.status.value,
+            status=session.status,
             expires_at=session.expires_at.isoformat()
         )
     except WalletConnectError as e:
@@ -79,7 +79,7 @@ async def create_walletconnect_session(
         raise HTTPException(status_code=400, detail=e.message)
     except Exception as e:
         logger.error(f"Internal error: {e}")
-        raise HTTPException(status_code=500, detail="Internal server error")
+        raise HTTPException(status_code=500, detail="Internal server error. Please try again or contact support.")
 
 # Endpoint: Get session status
 @router.get("/session/{session_id}")
