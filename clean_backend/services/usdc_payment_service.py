@@ -14,7 +14,12 @@ from enum import Enum
 from decimal import Decimal
 import aiohttp
 from web3 import Web3, AsyncWeb3
-from web3.exceptions import ContractLogicError, ValidationError
+#web3 exceptio error, new import message
+from web3.exceptions import ContractLogicError
+try:
+    from web3.exceptions import ValidationError
+except ImportError:
+    from eth_utils.exceptions import ValidationError
 from solana.rpc.async_api import AsyncClient as SolanaClient
 from solana.transaction import Transaction as SolanaTransaction
 try:

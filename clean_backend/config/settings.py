@@ -9,6 +9,10 @@ from pydantic import Field, validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic.types import SecretStr
 from enum import Enum
+from dotenv import load_dotenv
+load_dotenv('.env')
+
+print("WALLETCONNECT_PROJECT_ID from env:", os.environ.get("WALLETCONNECT_PROJECT_ID"))
 
 class Environment(str, Enum):
     DEVELOPMENT = "development"
@@ -41,7 +45,7 @@ class Settings(BaseSettings):
     # Pydantic (v2) model configuration
     # ---------------------------------------------------------------------
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file='.env',
         env_file_encoding="utf-8",
         extra="allow",  # ignore extra vars present in .env
     )
