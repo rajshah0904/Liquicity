@@ -262,5 +262,19 @@ export const requestsAPI = {
   list: (options = {}) => api.get('/requests', options),
 };
 
+// === Crypto wallet endpoints (WalletConnect & USDC) ===
+export const cryptoAPI = {
+  // Start WalletConnect session
+  connectWallet: (payload) => api.post('/api/crypto/wallet/connect', payload),
+  // Get WC session status
+  getSessionStatus: (sessionId) => api.get(`/api/crypto/wallet/session/${sessionId}`),
+  // Create USDC transfer (awaiting signature)
+  createUsdcTransfer: (payload) => api.post('/api/crypto/payments/usdc/transfer', payload),
+  // Submit signed transaction
+  signUsdcTransaction: (payload) => api.post('/api/crypto/payments/usdc/sign', payload),
+  // Bridge transfer after deposit
+  createBridgeTransfer: (payload) => api.post('/api/crypto/bridge/transfer', payload),
+};
+
 // Export base axios instance for modules that imported default
 export default api;

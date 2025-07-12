@@ -19,6 +19,7 @@ import TosCallback from './pages/TosCallback';
 import WalletPage from './pages/Wallet';
 import DepositPage from './pages/wallet/Deposit';
 import WithdrawPage from './pages/wallet/Withdraw';
+import LinkWalletPage from './pages/wallet/LinkWallet';
 import SendPage from './pages/payments/Send';
 import RequestPage from './pages/payments/Request';
 import TransactionsPage from './pages/Transactions';
@@ -89,6 +90,7 @@ function App() {
         <Route path="/wallet/deposit" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><DepositPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
         <Route path="/wallet/link-bank" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><DepositPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
         <Route path="/wallet/withdraw" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><WithdrawPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
+        <Route path="/wallet/link-wallet" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><LinkWalletPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
 
         {/* Payments Routes - Protected with Authenticated Layout */}
         <Route path="/payments/send" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><SendPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
