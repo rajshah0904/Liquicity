@@ -1,9 +1,3 @@
-<<<<<<< HEAD
-import os
-from typing import Dict, List, Optional
-from pydantic import BaseSettings, Field
-from enum import Enum
-=======
 """
 Production Configuration Settings
 Comprehensive configuration management with validation
@@ -15,23 +9,18 @@ from pydantic import Field, validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic.types import SecretStr
 from enum import Enum
+
+# Load environment variables from .env file at project root
 from dotenv import load_dotenv
 load_dotenv('.env')
 
 print("WALLETCONNECT_PROJECT_ID from env:", os.environ.get("WALLETCONNECT_PROJECT_ID"))
->>>>>>> main
 
 class Environment(str, Enum):
     DEVELOPMENT = "development"
     STAGING = "staging"
     PRODUCTION = "production"
 
-<<<<<<< HEAD
-class Settings(BaseSettings):
-    environment: Environment = Field(default=Environment.DEVELOPMENT, env="ENVIRONMENT")
-    debug: bool = Field(default=False, env="DEBUG")
-    walletconnect_project_id: str = Field(..., env="WALLETCONNECT_PROJECT_ID")
-=======
 class NetworkConfig(str, Enum):
     POLYGON = "polygon"
     BASE = "base"
@@ -46,17 +35,7 @@ class SecurityLevel(str, Enum):
     HIGH = "high"
 
 class Settings(BaseSettings):
-    """Application settings (dev-friendly).
-
-    In local development a full .env may be absent; therefore sensible default
-    values are provided for critical secrets so the application can start
-    without manual configuration.  In production these should be overridden
-    via environment variables.
-    """
-
-    # ---------------------------------------------------------------------
     # Pydantic (v2) model configuration
-    # ---------------------------------------------------------------------
     model_config = SettingsConfigDict(
         env_file='.env',
         env_file_encoding="utf-8",
@@ -85,7 +64,6 @@ class Settings(BaseSettings):
     
     # WalletConnect Configuration
     walletconnect_project_id: str = Field("dev-walletconnect-project", env="WALLETCONNECT_PROJECT_ID")
->>>>>>> main
     walletconnect_relay_url: str = Field(default="wss://relay.walletconnect.com", env="WALLETCONNECT_RELAY_URL")
     walletconnect_metadata: Dict = Field(default={
         "name": "Liquicity Bridge",
@@ -93,23 +71,6 @@ class Settings(BaseSettings):
         "url": "https://liquicity.com",
         "icons": ["https://liquicity.com/icon.png"]
     })
-<<<<<<< HEAD
-    session_expiry_hours: int = Field(default=24, env="SESSION_EXPIRY_HOURS")
-
-    class Config:
-        env_file = ".env"
-        env_file_encoding = "utf-8"
-        case_sensitive = False
-
-def get_settings() -> Settings:
-    return Settings()
-
-ERROR_CODES = {
-    "INVALID_WALLET_ADDRESS": "invalid_wallet_address",
-    "INVALID_NETWORK": "invalid_network",
-    "SESSION_EXPIRED": "session_expired",
-    "INTERNAL_ERROR": "internal_error"
-=======
     
     # Bridge API Configuration
     bridge_api_key: SecretStr = Field("dev-bridge-api-key", env="BRIDGE_API_KEY")
@@ -231,92 +192,7 @@ ERROR_CODES = {
     # Risk Management
     enable_risk_checks: bool = Field(default=True, env="ENABLE_RISK_CHECKS")
     max_daily_transactions: int = Field(default=1000, env="MAX_DAILY_TRANSACTIONS")
-    max_daily_volume: float = Field(default=1000000.0, env="MAX_DAILY_VOLUME")
     suspicious_amount_threshold: float = Field(default=10000.0, env="SUSPICIOUS_AMOUNT_THRESHOLD")
-    
-    @validator("secret_key")
-    def validate_secret_key(cls, v):
-        if len(v.get_secret_value()) < 32:
-            raise ValueError("Secret key must be at least 32 characters long")
-        return v
-    
-    @validator("encryption_key")
-    def validate_encryption_key(cls, v):
-        if len(v.get_secret_value()) < 32:
-            raise ValueError("Encryption key must be at least 32 characters long")
-        return v
-    
-    @validator("walletconnect_project_id")
-    def validate_walletconnect_project_id(cls, v):
-        if not v or len(v) < 10:
-            raise ValueError("WalletConnect project ID must be at least 10 characters")
-        return v
-    
-    @validator("bridge_api_key")
-    def validate_bridge_api_key(cls, v):
-        if not v or len(v.get_secret_value()) < 10:
-            raise ValueError("Bridge API key must be at least 10 characters")
-        return v
-    
-    @validator("database_url")
-    def validate_database_url(cls, v):
-        if not v or not v.startswith(("postgresql://", "postgres://")):
-            raise ValueError("Database URL must be a valid PostgreSQL connection string")
-        return v
-    
-    @validator("cors_origins")
-    def validate_cors_origins(cls, v):
-        if not v:
-            raise ValueError("CORS origins cannot be empty")
-        return v
 
-# Global settings instance
+# Instantiate the settings object
 settings = Settings()
-
-# Network configurations
-NETWORK_CONFIGS = settings.networks
-
-# Security constants
-SECURITY_CONSTANTS = {
-    "PASSWORD_MIN_LENGTH": 8,
-    "PASSWORD_MAX_LENGTH": 128,
-    "WALLET_ADDRESS_MIN_LENGTH": 26,
-    "WALLET_ADDRESS_MAX_LENGTH": 44,
-    "SESSION_ID_LENGTH": 36,
-    "CONSENT_ID_LENGTH": 36,
-    "MAX_RETRY_ATTEMPTS": 3,
-    "REQUEST_TIMEOUT": 30,
-    "MAX_PAYLOAD_SIZE": 10 * 1024 * 1024,  # 10MB
-}
-
-# Error codes
-ERROR_CODES = {
-    "INVALID_WALLET_ADDRESS": "WALLET_001",
-    "INVALID_NETWORK": "NETWORK_001",
-    "SESSION_EXPIRED": "SESSION_001",
-    "CONSENT_EXPIRED": "CONSENT_001",
-    "INSUFFICIENT_BALANCE": "BALANCE_001",
-    "GAS_ESTIMATION_FAILED": "GAS_001",
-    "BRIDGE_API_ERROR": "BRIDGE_001",
-    "RATE_LIMIT_EXCEEDED": "RATE_001",
-    "INVALID_AMOUNT": "AMOUNT_001",
-    "NETWORK_UNAVAILABLE": "NETWORK_002",
-    "ENCRYPTION_ERROR": "CRYPTO_001",
-    "DECRYPTION_ERROR": "CRYPTO_002",
-    "WEBSOCKET_ERROR": "WS_001",
-    "VALIDATION_ERROR": "VALIDATION_001",
-    "AUTHENTICATION_ERROR": "AUTH_001",
-    "AUTHORIZATION_ERROR": "AUTH_002",
-    "INTERNAL_ERROR": "INTERNAL_001",
-}
-
-# Success codes
-SUCCESS_CODES = {
-    "WALLET_CONNECTED": "SUCCESS_001",
-    "PAYMENT_CONSENT_CREATED": "SUCCESS_002",
-    "PAYMENT_PROCESSED": "SUCCESS_003",
-    "SESSION_CREATED": "SUCCESS_004",
-    "GAS_ESTIMATED": "SUCCESS_005",
-    "COST_SAVINGS_CALCULATED": "SUCCESS_006",
->>>>>>> main
-} 
