@@ -95,6 +95,13 @@ class ExternalAccount(Base):
 
     # Relationship back to User
     user = relationship("User", back_populates="external_accounts")
+    # Link to PlaidItem for direct Plaid API access (Auth/Balance/Identity)
+    plaid_item = relationship(
+        "PlaidItem",
+        uselist=False,
+        back_populates="external_account",
+        cascade="all, delete-orphan",
+    )
 
 
 

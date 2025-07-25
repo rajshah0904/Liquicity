@@ -13,6 +13,7 @@ from ..database import Base  # noqa: F401 – make Base re-exported at package l
 # Import all model modules here so that they are discovered by Alembic / Base.metadata.
 # Keep the imports **at the bottom** to avoid circular-import issues during initialisation.
 from . import crypto  # noqa: F401  # pylint: disable=unused-import 
+from . import plaid  # noqa: F401  # pylint: disable=unused-import 
 
 # ---------------------------------------------------------------------------
 # Legacy module support – until all code moves into the *models* package, we

@@ -1,4 +1,5 @@
 from decimal import Decimal
+import os
 from typing import Any, Dict
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -11,6 +12,7 @@ from ..database import get_db
 from ..models import User
 from ..bridge import BridgeClient
 from ..services.encumbrance_service import EncumbranceService, CORP_WALLET_ID, CORPORATE_CUSTOMER_ID
+from ..models.plaid import PlaidItem
 
 router = APIRouter(prefix="/transfers", tags=["transfers"])
 
@@ -29,6 +31,11 @@ class DepositOut(BaseModel):
     advance_transfer_id: str
     encumbrance_id: str
     state: str
+
+
+class WithdrawalIn(BaseModel):
+    amount: condecimal(gt=Decimal("0"), max_digits=18, decimal_places=2)
+    external_account_id: str
 
 
 # ---------------------------- Helpers ----------------------------
@@ -69,12 +76,81 @@ async def deposit_fiat_to_wallet(
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid external account: {e}")
 
+    # ------------------------------------------------------------------
+    # Plaid balance guardrail – ensure sufficient funds before pushing ACH
+    # ------------------------------------------------------------------
+
+    from ..services.plaid_client import PlaidClient  # local import to avoid cycles
+
+    plaid_item = db.query(PlaidItem).filter(PlaidItem.external_account_id == body.external_account_id).first()
+    if plaid_item:
+        try:
+            bal_resp = PlaidClient().get_balance(plaid_item.access_token)
+            # Sum available balance across matching accounts
+            available_sum = 0
+            for acct in bal_resp.get("accounts", []):
+                avail = acct.get("balances", {}).get("available")
+                if avail is not None:
+                    available_sum += float(avail)
+
+            if available_sum < float(body.amount):
+                raise HTTPException(status_code=400, detail="Insufficient bank balance to cover deposit amount")
+        except HTTPException:
+            raise
+        except Exception as e:
+            # Non-fatal – log warning but continue; Bridge will still attempt ACH
+            import logging
+            logging.getLogger(__name__).warning("Plaid balance check failed: %s", e)
+
     currency = (ext_acct.get("currency") or "usd").lower()
     rail_by_cur = {"usd": "ach_push", "eur": "sepa", "mxn": "spei"}
     if currency not in rail_by_cur:
         raise HTTPException(status_code=400, detail=f"Unsupported external account currency: {currency}")
 
     payment_rail = rail_by_cur[currency]
+
+    # ------------------------------------------------------------------
+    # Generate Plaid processor token & initiate ACH debit via Seamless Chex
+    # ------------------------------------------------------------------
+    processor_token = None
+    if plaid_item:
+        from ..services.seamless_chex_client import SeamlessChexClient, SeamlessChexError  # local import
+        try:
+            auth_resp = PlaidClient().get_auth(plaid_item.access_token)
+            # Pick first account (or first checking/savings) for processor token
+            accounts = auth_resp.get("accounts", [])
+            if not accounts:
+                raise ValueError("No accounts returned by Plaid Auth")
+            preferred = next((a for a in accounts if a.get("subtype") in ("checking", "savings")), accounts[0])
+            account_id_for_token = preferred["account_id"]
+
+            proc_resp = PlaidClient().create_processor_token(
+                plaid_item.access_token,
+                account_id=account_id_for_token,
+                processor="seamless_chex",
+            )
+            processor_token = proc_resp.get("processor_token")
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).warning("Failed to create processor token for Seamless Chex: %s", e)
+
+    # Initiate debit via Seamless Chex if we have a processor token
+    if processor_token:
+        try:
+            dest_acct_id = os.getenv("SEAMLESSCHEX_DESTINATION_ACCOUNT_ID")
+            chex = SeamlessChexClient()
+            chex_resp = chex.initiate_debit(
+                processor_token=processor_token,
+                amount=Decimal(str(body.amount)),
+                currency=currency.upper(),
+                description="Liquicity fiat deposit",
+                destination_account_id=dest_acct_id,
+            )
+            # Optionally persist chex_resp somewhere or include in response
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error("Seamless Chex debit failed: %s", e)
+            # Non-fatal for now – continue with Bridge on-ramp so deposit isn't blocked
 
     # Fetch current exchange rate currency -> USDB so we can credit user immediately
     try:
@@ -204,4 +280,60 @@ async def deposit_alias_root(
     auth_user: Auth0User = Depends(get_current_user),
 ):
     """Root-level /deposits alias for frontend convenience."""
-    return await deposit_fiat_to_wallet(body, db, auth_user) 
+    return await deposit_fiat_to_wallet(body, db, auth_user)
+
+
+@router.post("/withdraw", response_model=Dict[str, Any])
+async def withdraw_fiat_from_wallet(
+    body: WithdrawalIn,
+    db: Session = Depends(get_db),
+    auth_user: Auth0User = Depends(get_current_user),
+):
+    """Initiate a fiat withdrawal: Bridge wallet ➜ external bank account.
+
+    We pick the appropriate fiat rail (ACH, SEPA, etc.) based on the external
+    account's currency.
+    """
+    user = _get_user_by_sub(db, auth_user.id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    if not user.bridge_customer_id or not user.bridge_wallet_id:
+        raise HTTPException(status_code=400, detail="User missing Bridge account")
+
+    client = BridgeClient()
+
+    # Fetch external account to validate ownership & get currency
+    try:
+        ext_acct = client.get_external_account(body.external_account_id, user.bridge_customer_id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid external account: {e}")
+
+    currency = (ext_acct.get("currency") or "usd").lower()
+    rail_by_cur = {"usd": "ach_push", "eur": "sepa"}
+    if currency not in rail_by_cur:
+        raise HTTPException(status_code=400, detail=f"Unsupported withdrawal currency: {currency}")
+
+    payment_rail = rail_by_cur[currency]
+
+    payload = {
+        "amount": str(body.amount),
+        "on_behalf_of": user.bridge_customer_id,
+        "source": {
+            "payment_rail": "solana",
+            "currency": "usdb",
+            "wallet_id": user.bridge_wallet_id,
+        },
+        "destination": {
+            "payment_rail": payment_rail,
+            "currency": currency,
+            "external_account_id": body.external_account_id,
+        },
+    }
+
+    try:
+        transfer = client.create_transfer_sync(payload)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Bridge withdrawal failed: {e}")
+
+    # TODO: optionally persist withdrawal record / encumbrance if needed
+    return transfer 

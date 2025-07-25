@@ -181,6 +181,24 @@ class BridgeClient:
         assert last_err is not None
         raise last_err
 
+    # ---------------- Delete External Account ----------------
+    def delete_external_account(self, customer_id: str, external_account_id: str):
+        """Delete an external account under a customer.
+
+        Wrapper around DELETE /customers/{customer_id}/external_accounts/{id}
+        Returns True on success.
+        """
+        idem = str(uuid.uuid4())
+        resp = self.session.delete(
+            f"{BASE_URL}/customers/{customer_id}/external_accounts/{external_account_id}",
+            headers=_headers({"Idempotency-Key": idem}),
+            timeout=30,
+        )
+        if resp.status_code == 404:
+            raise requests.HTTPError("External account not found", response=resp)
+        resp.raise_for_status()
+        return resp.json() if resp.text else {"deleted": True}
+
     # ---------------- Virtual Accounts ----------------
 
     def create_virtual_account(self, customer_id: str, payload: Dict[str, Any] | None = None):

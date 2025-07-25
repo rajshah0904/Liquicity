@@ -236,6 +236,31 @@ export const externalAccountsAPI = {
   getPlaidLinkToken: () => api.get('/external_accounts/plaid/link_token'),
   exchangePlaidToken: (requestId, publicToken) => 
     api.post(`/external_accounts/plaid/exchange/${requestId}`, { public_token: publicToken }),
+
+  // Plaid passthrough APIs for linked accounts
+  /**
+   * Fetch real-time balance information for the specified external account.
+   * Backend wrapper around Plaid /accounts/balance/get
+   * @param {string} accountId Bridge external_account id
+   */
+  getAccountBalance: (accountId) =>
+    api.get(`/external_accounts/accounts/${accountId}/balance`),
+
+  /**
+   * Fetch account/routing numbers (ACH) via Plaid Auth
+   * Backend wrapper around Plaid /auth/get
+   * @param {string} accountId Bridge external_account id
+   */
+  getAccountAuth: (accountId) =>
+    api.get(`/external_accounts/accounts/${accountId}/auth`),
+
+  /**
+   * Fetch owner name / address via Plaid Identity
+   * Backend wrapper around Plaid /identity/get
+   * @param {string} accountId Bridge external_account id
+   */
+  getAccountIdentity: (accountId) =>
+    api.get(`/external_accounts/accounts/${accountId}/identity`),
   
   // Sync accounts/balances
   syncAccounts: () => api.post('/external_accounts/sync'),

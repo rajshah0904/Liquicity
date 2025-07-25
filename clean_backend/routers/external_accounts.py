@@ -8,6 +8,8 @@ from ..database import get_db
 from ..auth import get_current_user
 from ..models import User, ExternalAccount
 from ..bridge import BridgeClient
+from ..services.plaid_client import PlaidClient
+from ..models.plaid import PlaidItem
 
 router = APIRouter(prefix="/external_accounts", tags=["external_accounts"])
 
@@ -44,6 +46,64 @@ def exchange_plaid_token(link_token: str, payload: PublicTokenSchema, db: Sessio
         raise HTTPException(status_code=status, detail=detail)
     except Exception as e:
         raise HTTPException(status_code=502, detail="Bridge unreachable") from e
+    # ------------------------------------------------------------------
+    # Plaid integration – exchange public_token for access_token and store
+    # ------------------------------------------------------------------
+    access_token = None
+    item_id = None
+    try:
+        plaid_resp = PlaidClient().exchange_public_token(payload.public_token)
+        access_token = plaid_resp.get("access_token")
+        item_id = plaid_resp.get("item_id")
+    except Exception as e:
+        # Log but don't fail the whole request – the Bridge exchange already succeeded
+        import logging
+        logging.getLogger(__name__).warning("Plaid exchange failed: %s", e)
+
+    # ------------------------------------------------------------------
+    # Identity verification – ensure bank account owner matches user name
+    # ------------------------------------------------------------------
+    if access_token and user.full_name:
+        try:
+            ident = PlaidClient().get_identity(access_token)
+            owner_names: set[str] = set()
+            for acct in ident.get("accounts", []):
+                for owner in acct.get("owners", []):
+                    owner_names.update(n.lower() for n in owner.get("names", []))
+
+            user_name = user.full_name.lower()
+
+            # Simple containment / exact match check; can be replaced with fuzzy logic
+            match_found = any(user_name in n or n in user_name for n in owner_names)
+            if not match_found:
+                raise HTTPException(
+                    status_code=400,
+                    detail="Bank account owner name does not match registered user",
+                )
+        except HTTPException:
+            raise  # propagate mismatch
+        except Exception as e:
+            # Non-blocking – just log if Plaid Identity call fails
+            import logging
+            logging.getLogger(__name__).warning("Plaid identity check failed: %s", e)
+
+    external_account_id = resp.get("external_account_id") or resp.get("id")
+    if external_account_id and access_token:
+        item = db.query(PlaidItem).filter(PlaidItem.external_account_id == external_account_id).first()
+        if not item:
+            item = PlaidItem(
+                external_account_id=external_account_id,
+                access_token=access_token,
+                item_id=item_id,
+            )
+            db.add(item)
+        else:
+            item.access_token = access_token
+            item.item_id = item_id
+        db.commit()
+
+    if item_id:
+        resp["plaid_item_id"] = item_id
     return resp
 
 # -------- List accounts --------
@@ -116,6 +176,89 @@ def _upsert_accounts(db: Session, user: User, accounts: List[Dict]):
         })
     db.commit()
     return mapped 
+
+# ---------------------------------------------------------------------------
+# Plaid passthrough endpoints (Balance / Auth / Identity)
+# ---------------------------------------------------------------------------
+
+@router.get("/accounts/{account_id}/balance")
+def get_account_balance(account_id: str, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
+    """Fetch real-time balance for the specified external account via Plaid."""
+    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    # Verify ownership of the external account
+    ext = (
+        db.query(ExternalAccount)
+        .filter(ExternalAccount.id == account_id, ExternalAccount.user_id == user.id)
+        .first()
+    )
+    if not ext:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    item = db.query(PlaidItem).filter(PlaidItem.external_account_id == account_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Plaid token not found")
+
+    try:
+        return PlaidClient().get_balance(item.access_token)
+    except requests.HTTPError as e:
+        status = e.response.status_code if e.response else 502
+        detail = e.response.text if e.response else str(e)
+        raise HTTPException(status_code=status, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Plaid unreachable") from e
+
+
+@router.get("/accounts/{account_id}/auth")
+def get_account_auth(account_id: str, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
+    """Retrieve ACH account/routing numbers via Plaid Auth."""
+    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    ext = db.query(ExternalAccount).filter(ExternalAccount.id == account_id, ExternalAccount.user_id == user.id).first()
+    if not ext:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    item = db.query(PlaidItem).filter(PlaidItem.external_account_id == account_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Plaid token not found")
+
+    try:
+        return PlaidClient().get_auth(item.access_token)
+    except requests.HTTPError as e:
+        status = e.response.status_code if e.response else 502
+        detail = e.response.text if e.response else str(e)
+        raise HTTPException(status_code=status, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Plaid unreachable") from e
+
+
+@router.get("/accounts/{account_id}/identity")
+def get_account_identity(account_id: str, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
+    """Return user identity information (name / address) from Plaid."""
+    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    ext = db.query(ExternalAccount).filter(ExternalAccount.id == account_id, ExternalAccount.user_id == user.id).first()
+    if not ext:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    item = db.query(PlaidItem).filter(PlaidItem.external_account_id == account_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Plaid token not found")
+
+    try:
+        return PlaidClient().get_identity(item.access_token)
+    except requests.HTTPError as e:
+        status = e.response.status_code if e.response else 502
+        detail = e.response.text if e.response else str(e)
+        raise HTTPException(status_code=status, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Plaid unreachable") from e
 
 @router.post("/accounts")
 def create_external_account(payload: Dict, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
@@ -212,3 +355,85 @@ def get_external_account_details(account_id: str, db: Session = Depends(get_db),
         "status": status,
         "raw": bridge_resp,  # Expose full Bridge response for frontend flexibility
     } 
+
+# ---------------------------------------------------------------------------
+# Delete external account                                                    
+# ---------------------------------------------------------------------------
+
+@router.delete("/accounts/{account_id}")
+def delete_external_account(account_id: str, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
+    """Delete an external account both on Bridge and locally."""
+    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user or not user.bridge_customer_id:
+        raise HTTPException(status_code=404, detail="Bridge customer id missing")
+
+    # Verify ownership locally first
+    ext = db.query(ExternalAccount).filter(ExternalAccount.id == account_id, ExternalAccount.user_id == user.id).first()
+    if not ext:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    try:
+        BridgeClient().delete_external_account(user.bridge_customer_id, account_id)
+    except requests.HTTPError as e:
+        status = e.response.status_code if e.response else 502
+        detail = e.response.text if e.response else str(e)
+        raise HTTPException(status_code=status, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Bridge unreachable") from e
+
+    # Remove from local DB
+    db.delete(ext)
+    db.commit()
+
+    return {"deleted": True, "id": account_id}
+
+
+# ---------------------------------------------------------------------------
+# Processor token creation (e.g. Finix)                                     
+# ---------------------------------------------------------------------------
+
+
+@router.post("/accounts/{account_id}/processor_token")
+def create_processor_token(
+    account_id: str,
+    processor: str = "finix",
+    db: Session = Depends(get_db),
+    jwt=Depends(get_current_user),
+):
+    """Generate a Plaid *processor_token* for the given external account.
+
+    The token is passed through to a payment processor (Finix, Stripe, etc.) so
+    we never handle raw account & routing numbers ourselves.
+    """
+
+    # Authorize user & verify ownership of the external account
+    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    ext = (
+        db.query(ExternalAccount)
+        .filter(ExternalAccount.id == account_id, ExternalAccount.user_id == user.id)
+        .first()
+    )
+    if not ext:
+        raise HTTPException(status_code=404, detail="Account not found")
+
+    # Fetch Plaid access_token for this external account
+    item = db.query(PlaidItem).filter(PlaidItem.external_account_id == account_id).first()
+    if not item:
+        raise HTTPException(status_code=404, detail="Plaid token not found")
+
+    try:
+        token_resp = PlaidClient().create_processor_token(
+            item.access_token, account_id=item.external_account_id or account_id, processor=processor
+        )
+    except requests.HTTPError as e:
+        status = e.response.status_code if e.response else 502
+        detail = e.response.text if e.response else str(e)
+        raise HTTPException(status_code=status, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail="Plaid unreachable") from e
+
+    # Don't persist locally yet – callers can cache if desired
+    return token_resp 

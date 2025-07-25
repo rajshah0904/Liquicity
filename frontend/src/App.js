@@ -24,6 +24,7 @@ import SendPage from './pages/payments/Send';
 import RequestPage from './pages/payments/Request';
 import TransactionsPage from './pages/Transactions';
 import VirtualAccountPage from './pages/VirtualAccount';
+import BankAccountsPage from './pages/wallet/BankAccounts';
 import SettingsPage from './pages/Settings';
 import ProfilePage from './pages/Profile';
 import CountrySelect from './pages/CountrySelect';
@@ -90,6 +91,8 @@ function App() {
         <Route path="/wallet/deposit" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><DepositPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
         <Route path="/wallet/link-bank" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><DepositPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
         <Route path="/wallet/withdraw" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><WithdrawPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
+        {/* New Bank Accounts manager */}
+        <Route path="/wallet/bank-accounts" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><BankAccountsPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
         <Route path="/wallet/link-wallet" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><LinkWalletPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
 
         {/* Payments Routes - Protected with Authenticated Layout */}
