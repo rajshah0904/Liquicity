@@ -33,7 +33,7 @@ class WalletConnectRequest(BaseModel):
     chain_type: str = Field(..., description="evm or solana")
     chain_id: str = Field(..., description="chain/network id")
 
-#add this back as a vriable in def conect wallet: current_user=Depends(get_current_user)
+#add this back : current_user=Depends(get_current_user)
 @router.post("/wallet/connect")
 async def connect_wallet(request: WalletConnectRequest):
     """Begin a WalletConnect v2 session and return QR / URI."""

@@ -1,0 +1,70 @@
+# On-Ramp Engine (VelaFi) – Process Task List
+
+*Each task is broken into actionable subtasks. Check a sub-task when finished; only begin the next major task after all subtasks are complete.*
+
+## 1. Backend API & Service Layer
+- [ ] **services/velafi_client.py**
+  - [ ] Wrap VelaFi endpoints: `add_payment_method`, `create_order`, `get_order`, `verify_signature`.
+  - [ ] Implement retry & idempotency helpers.
+- [ ] **routers/onramp.py**
+  - [ ] `POST /onramp/payment_method` (uses `velafi_client.add_payment_method`).
+  - [ ] `POST /onramp/order` (uses `velafi_client.create_order`).
+  - [ ] Integrate `EnhancedSecurityService.is_deposit_allowed` pre-check.
+  - [ ] Emit `order.status_changed` event on state transition.
+- [ ] **routers/webhooks_velafi.py**
+  - [ ] Validate `x-velafi-signature` (timestamp ±5 min, SHA-256).
+  - [ ] Handle `order.completed` → trigger USDC credit via `BridgeAPIClient`.
+  - [ ] Handle `order.failed` → log & surface error.
+- [ ] **services/velafi_monitor.py**
+  - [ ] Poll `pending/processing` orders every minute; reconcile & emit events.
+- [ ] **Register new routers** in `clean_backend/main.py`.
+
+## 2. Database
+- [ ] **Alembic migration**
+  - [ ] Create table `onramp_payment_methods` (cols per PRD).
+  - [ ] Create/alter table `onramp_orders` (add cols per PRD).
+  - [ ] Add indexes: `user_id`, `payment_method_id`, `status`.
+- [ ] **SQLAlchemy models** reflecting new tables.
+
+## 3. Security & Limits
+- [ ] Extend `services/security.py`
+  - [ ] Add `is_deposit_allowed` helper with AML / velocity thresholds.
+  - [ ] Expose thresholds via env vars.
+
+## 4. Configuration
+- [ ] Add env vars: `VELAFI_API_KEY`, `VELAFI_WEBHOOK_SECRET`, `ONRAMP_RISK_FORWARD`, `VELAFI_MONITOR_INTERVAL_SEC`, `ONRAMP_DAILY_LIMIT_USD`, etc.
+- [ ] Update `clean_backend/config/settings.py` with new fields & defaults.
+
+## 5. Tests
+- [ ] **Unit tests**
+  - [ ] `velafi_client` success & error cases.
+  - [ ] Signature verification edge cases.
+- [ ] **Integration tests** (pytest-asyncio)
+  - [ ] Payment-method → order happy path (mock VelaFi sandbox).
+  - [ ] Webhook → USDC credit flow.
+
+## 6. Documentation & Samples
+- [ ] Add `docs/VELAFI_ONRAMP_API.md` – request/response examples.
+- [ ] Update `docs/BRIDGE_PAYMENT_SYSTEM.md` with on-ramp diagram.
+- [ ] Provide Postman collection under `docs/samples/`.
+
+## 7. CI/CD
+- [ ] Ensure new tests run in CI; update GitHub Actions workflows.
+- [ ] Add `VELAFI_*` secret placeholders in Actions.
+
+## 8. Frontend Contract (Plaid Team)
+- [ ] Document required JSON payloads for `/onramp/payment_method` & `/onramp/order`.
+- [ ] Export TypeScript interfaces in `lib/api.ts`.
+
+## 9. Deployment Checklist
+- [ ] Provision VelaFi sandbox creds & set webhook URL.
+- [ ] Populate staging `.env` with new vars.
+- [ ] Verify end-to-end flow on staging before prod rollout.
+
+---
+### Relevant Files
+_Update this list as files are created/modified._
+description:
+globs:
+alwaysApply: false
+---
