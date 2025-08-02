@@ -2,8 +2,9 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from ..database import get_db
 from ..auth import get_current_user
-from ..models import User
+from ..models import User, BridgeCustomer, BridgeWallet
 from ..bridge import BridgeClient
+from typing import Optional
 
 router = APIRouter(prefix="/card", tags=["card"])
 
@@ -19,15 +20,24 @@ async def provision_card_account(
     as the funding source, as required by Bridge.
     """
     # 1. Ensure the user exists and has Bridge identifiers stored.
-    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
-    if not user or not user.bridge_customer_id or not user.bridge_wallet_id:
-        raise HTTPException(status_code=404, detail="Bridge wallet not found for user")
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get bridge customer and wallet from related tables
+    bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
+    if not bridge_customer:
+        raise HTTPException(status_code=404, detail="Bridge customer not found")
+    
+    bridge_wallet = db.query(BridgeWallet).filter(BridgeWallet.user_id == user.id).first()
+    if not bridge_wallet:
+        raise HTTPException(status_code=404, detail="Bridge wallet not found")
 
     bridge = BridgeClient()
 
     # 2. Retrieve wallet details to extract the public address.
     try:
-        wallet = bridge.get_wallet(user.bridge_customer_id, user.bridge_wallet_id)
+        wallet = bridge.get_wallet(bridge_customer.id, bridge_wallet.id)
     except Exception as e:
         raise HTTPException(status_code=502, detail="Unable to fetch Bridge wallet") from e
 
@@ -43,7 +53,7 @@ async def provision_card_account(
     # 3. Create / provision the card account.
     try:
         card = bridge.create_card_account(
-            user.bridge_customer_id,
+            bridge_customer.id,
             wallet_address=wallet_address,
             chain="solana",
             currency="usdc",

@@ -1,151 +1,246 @@
-from datetime import datetime
 import uuid
-from sqlalchemy import Column, String, DateTime, Boolean, func, ForeignKey
+from datetime import datetime
+from sqlalchemy import (
+    Column, String, DateTime, ForeignKey,
+    Enum as SQLEnum, Numeric, JSON, Boolean
+)
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
+import enum
 from .database import Base
-from sqlalchemy.types import Numeric
+
+# --- ENUMS ---
+
+class PaymentRail(enum.Enum):
+    ACH = "ach"
+    SEPA = "sepa"
+
+class TransferType(enum.Enum):
+    FIAT_DEPOSIT       = "fiat_deposit"      # Plaid → Bridge
+    WALLET_DEPOSIT     = "wallet_deposit"    # External stablecoin → Bridge
+    SEND               = "send"              # Bridge → Bridge
+    WITHDRAWAL         = "withdrawal"        # Bridge → External bank or wallet
+    EXTERNAL_TRANSFER  = "external_transfer" # External payout to user VA
+
+class TransferStatus(enum.Enum):
+    PENDING    = "pending"
+    COMPLETED  = "completed"
+    FAILED     = "failed"
+
+class EncumbranceStatus(enum.Enum):
+    PENDING = "pending"
+    CLEARED = "cleared"
+    FAILED  = "failed"
+
+# VirtualAccountRole enum removed - no longer used in Bridge API structure
+
+
+
+# --- CORE USER / KYC ---
 
 class User(Base):
-    __tablename__ = "users_v2"
+    __tablename__ = "users"
+    id         = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    email      = Column(String(128), unique=True, nullable=False, index=True)
+    auth0_id   = Column(String(64), unique=True, nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    email = Column(String(255), unique=True, nullable=False, index=True)
-    auth0_id = Column(String(255), unique=True, nullable=False, index=True)
-    full_name = Column(String(255))
-    kyc_status = Column(String(20), default="pending")
-    tos_status = Column(String(20), default="pending")  # pending, approved
-    kyc_link_id = Column(String(64))
-    kyc_type = Column(String(32))
-    country = Column(String(64))  
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
-    bridge_customer_id = Column(String(64), unique=True)
-    bridge_wallet_id = Column(String(64), unique=True)  # New column for Bridge wallet id
-    tos_url = Column(String)
-    kyc_url = Column(String)
-    rejection_reasons = Column(String)
-
-    # One-to-one relationship with BridgeUser helper table
-    bridge_data = relationship(
-        "BridgeUser",
-        uselist=False,
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
-
-    # New: one-to-many relationship to track the user's linked bank accounts
-    external_accounts = relationship(
-        "ExternalAccount",
-        back_populates="user",
-        cascade="all, delete-orphan",
-    )
+    bridge_customer       = relationship("BridgeCustomer", uselist=False, back_populates="user")
+    bridge_wallets        = relationship("BridgeWallet", back_populates="user")
+    external_accounts     = relationship("ExternalAccount", back_populates="user")
+    external_wallets      = relationship("ExternalWallet", back_populates="user")
+    virtual_accounts      = relationship("VirtualAccount", back_populates="user")
+    transfers             = relationship("Transfer", back_populates="user")
+    liquidation_addresses = relationship("LiquidationAddress", back_populates="user")
 
 
+# --- BRIDGE CUSTOMER ---
 
-# ------------------- Bridge specific -------------------
+class BridgeCustomer(Base):
+    __tablename__ = "bridge_customers"
+    id                              = Column(String(50), primary_key=True)  # Bridge customer ID (API: id)
+    user_id                         = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, unique=True)
+    
+    first_name                      = Column(String(1024))                  # Bridge API field
+    last_name                       = Column(String(1024))                  # Bridge API field
+    email                           = Column(String(1024))                  # Bridge API field
+    status                          = Column(String(32))                    # Bridge API field
+    capabilities                    = Column(JSON)                          # Bridge API JSON object
+    future_requirements_due         = Column(JSON, default=[])              # Bridge API array
+    requirements_due                = Column(JSON, default=[])              # Bridge API array
+    created_at                      = Column(DateTime, nullable=False)      # Bridge API timestamp
+    updated_at                      = Column(DateTime, nullable=False)      # Bridge API timestamp
+    rejection_reasons               = Column(JSON, default=[])              # Bridge API array of objects
+    has_accepted_terms_of_service   = Column(Boolean)                       # Bridge API field
+    endorsements                    = Column(JSON, default=[])              # Bridge API array of objects
+    requirements                    = Column(JSON)                          # Bridge API JSON object
 
-class BridgeUser(Base):
-    """Track Bridge customer & wallet ids for each Liquicity user (one-row per user)."""
+    user                    = relationship("User", back_populates="bridge_customer")
+    external_accounts       = relationship("ExternalAccount", back_populates="customer")
+    bridge_wallets          = relationship("BridgeWallet", back_populates="customer")
+    virtual_accounts        = relationship("VirtualAccount", back_populates="customer")
 
-    __tablename__ = "bridge_users_v2"
+# --- WALLETS ---
 
-    user_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users_v2.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    bridge_customer_id = Column(String(64), unique=True)
-    bridge_wallet_id = Column(String(64), unique=True)
-    virtual_account_id = Column(String(64), unique=True)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+class BridgeWallet(Base):
+    __tablename__ = "bridge_wallets"
+    wallet_id  = Column(String(50), primary_key=True)  # Bridge wallet ID from API
+    customer_id= Column(String(50), ForeignKey("bridge_customers.id"), nullable=False)
+    user_id    = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    chain      = Column(String(32), nullable=False)  # e.g. "base", "solana"
+    address    = Column(String(64), nullable=False)
+    tags       = Column(JSON, default=[])  # Array of tags from Bridge API
+    created_at = Column(DateTime)  # Bridge API timestamp
+    updated_at = Column(DateTime)  # Bridge API timestamp
+    balances   = Column(JSON, default=[])  # Array of balance objects from Bridge API
 
-    # Relationship back to User
-    user = relationship("User", back_populates="bridge_data")
+    customer = relationship("BridgeCustomer", back_populates="bridge_wallets")
+    user     = relationship("User", back_populates="bridge_wallets")
 
+class ExternalWallet(Base):
+    __tablename__ = "external_wallets"
+    external_wallet_id = Column(String(64), primary_key=True)  # e.g. wallet address
+    customer_id        = Column(String(50), ForeignKey("bridge_customers.id"), nullable=False)
+    user_id            = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    chain      = Column(String(32), nullable=False)
+    address    = Column(String(64), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
 
+    user = relationship("User", back_populates="external_wallets")
 
-# ------------------- External accounts -------------------
+# --- EXTERNAL ACCOUNTS (Bridge) ---
 
 class ExternalAccount(Base):
-    """Stores non-sensitive metadata about a user's connected bank/external account (Bridge)."""
+    __tablename__ = "external_accounts"
+    external_account_id  = Column(String(50), primary_key=True)  # Bridge external account ID from API
+    customer_id          = Column(String(50), ForeignKey("bridge_customers.id"), nullable=False)
+    user_id              = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
 
-    __tablename__ = "external_accounts_v2"
+    currency             = Column(String(8), nullable=False)     # "usd", "eur", "mxn"
+    bank_name            = Column(String(256))                   # e.g. "Chase"
+    account_owner_name   = Column(String(256), nullable=False)   # e.g. "John Doe"
+    last_4               = Column(String(4))                     # Last 4 digits (deprecated but in API)
+    account_type         = Column(String(16), nullable=False)    # "us", "iban", "clabe", "unknown"
+    iban                 = Column(JSON)                          # IBAN object from Bridge API
+    account              = Column(JSON)                          # US account object from Bridge API
+    swift                = Column(JSON)                          # SWIFT object from Bridge API
+    clabe                = Column(JSON)                          # CLABE object from Bridge API
+    account_owner_type   = Column(String(32))                    # "individual", "business"
+    first_name           = Column(String(128))                   # First name of individual owner
+    last_name            = Column(String(128))                   # Last name of individual owner
+    business_name        = Column(String(256))                   # Business name for business accounts
+    created_at           = Column(DateTime, nullable=False)      # Bridge API timestamp
+    updated_at           = Column(DateTime, nullable=False)      # Bridge API timestamp
+    active               = Column(Boolean, nullable=False)       # Bridge API active status
+    beneficiary_address_valid = Column(Boolean)                  # Bridge API validation field
 
-    # Use Bridge external account id as the primary key – it is a string
-    id = Column(String(64), primary_key=True, index=True)
+    plaid_item           = relationship("PlaidItem", uselist=False, back_populates="external_account")
+    customer             = relationship("BridgeCustomer", back_populates="external_accounts")
+    user                 = relationship("User", back_populates="external_accounts")
 
-    # FK to Liquicity user
-    user_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("users_v2.id", ondelete="CASCADE"),
-        nullable=False,
-        index=True,
-    )
+# --- PLAID ITEM ---
 
-    # Display-only information (no sensitive data stored)
-    bank_name = Column(String(255))
-    last4 = Column(String(4))
-    currency = Column(String(16))
-    status = Column(String(32))  # active, inactive, pending, etc.
+class PlaidItem(Base):
+    __tablename__ = "plaid_items"
+    plaid_item_id       = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    external_account_id = Column(String(50), ForeignKey("external_accounts.external_account_id"), nullable=False, unique=True)
+    customer_id         = Column(String(50), ForeignKey("bridge_customers.id"), nullable=False)
+    user_id             = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    access_token        = Column(String(128), nullable=False)
+    item_id             = Column(String(32), nullable=False)    # Plaid Item ID
 
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(DateTime(timezone=True), onupdate=func.now(), server_default=func.now())
+    # Store the full /accounts/get response, which includes account_id, balances, subtype, etc.
+    accounts            = Column(JSON)
 
-    # Relationship back to User
-    user = relationship("User", back_populates="external_accounts")
-    # Link to PlaidItem for direct Plaid API access (Auth/Balance/Identity)
-    plaid_item = relationship(
-        "PlaidItem",
-        uselist=False,
-        back_populates="external_account",
-        cascade="all, delete-orphan",
-    )
+    item_raw            = Column(JSON)   # other cached Plaid responses
 
+    external_account    = relationship("ExternalAccount", back_populates="plaid_item")
 
+    created_at          = Column(DateTime, default=datetime.utcnow)
+    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-# ------------------- Encumbrance tracking -------------------
+# --- VIRTUAL ACCOUNTS (Bridge) ---
+
+class VirtualAccount(Base):
+    __tablename__ = "virtual_accounts"
+    virtual_account_id        = Column(String(50), primary_key=True)  # Bridge virtual account ID from API
+    customer_id               = Column(String(50), ForeignKey("bridge_customers.id"), nullable=False)
+    user_id                   = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    status                    = Column(String(16))                   # "activated", "deactivated"
+    source_deposit_instructions = Column(JSON)                       # Complete deposit instructions object
+    destination               = Column(JSON)                         # Destination crypto wallet info
+    created_at                = Column(DateTime)                     # Created timestamp from Bridge API
+
+    customer                  = relationship("BridgeCustomer", back_populates="virtual_accounts")
+    user                      = relationship("User", back_populates="virtual_accounts")
+
+# --- TRANSFERS & ENCUMBRANCE ---
+
+class Transfer(Base):
+    __tablename__ = "transfers"
+    transfer_id               = Column(String(50), primary_key=True)  # Bridge transfer ID from API
+    customer_id               = Column(String(50), ForeignKey("bridge_customers.id"), nullable=False)
+    user_id                   = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    
+    client_reference_id       = Column(String(256))                  # Bridge API field
+    amount                    = Column(String(50), nullable=False)   # Decimal string from Bridge API
+    currency                  = Column(String(8), nullable=False)    # Bridge API field
+    on_behalf_of              = Column(String(50), nullable=False)   # Bridge customer ID
+    developer_fee             = Column(String(50), nullable=False)   # Decimal string from Bridge API
+    source                    = Column(JSON, nullable=False)         # Complete source object from Bridge API
+    destination               = Column(JSON, nullable=False)         # Complete destination object from Bridge API
+    state                     = Column(String(32), nullable=False)   # Bridge API state field
+    source_deposit_instructions = Column(JSON)                       # Bridge API object
+    receipt                   = Column(JSON, nullable=False)         # Bridge API receipt object
+    return_details            = Column(JSON)                         # Bridge API return details object
+    created_at                = Column(DateTime, nullable=False)     # Bridge API timestamp
+    updated_at                = Column(DateTime, nullable=False)     # Bridge API timestamp
+
+    user       = relationship("User", back_populates="transfers")
+    encumbrances = relationship("Encumbrance", back_populates="transfer")
 
 class Encumbrance(Base):
-    """One row per fiat transfer that was advanced on-chain."""
-
     __tablename__ = "encumbrances"
+    encumbrance_id  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    transfer_id     = Column(String(50), ForeignKey("transfers.transfer_id"), nullable=False)
+    customer_id     = Column(String(50), ForeignKey("bridge_customers.id"), nullable=False)
+    user_id         = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    original_amount = Column(Numeric(18,6), nullable=False)
+    remaining_amount= Column(Numeric(18,6), nullable=False)
+    status          = Column(SQLEnum(EncumbranceStatus), default=EncumbranceStatus.PENDING)
+    cleared_at      = Column(DateTime)
 
-    id = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    fiat_transfer_id = Column(String(64), unique=True, nullable=False, index=True)
-    original_amount = Column(Numeric(18, 6), nullable=False)
-    recovered_amount = Column(Numeric(18, 6), default=0)
-    status = Column(String(16), default="pending")  # pending | cleared | failed_*
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
-    updated_at = Column(
-        DateTime(timezone=True),
-        server_default=func.now(),
-        onupdate=func.now(),
-    )
+    transfer        = relationship("Transfer", back_populates="encumbrances")
+    created_at      = Column(DateTime, default=datetime.utcnow)
+    updated_at      = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
-    # Relationship to current positions (encumbered balances still outstanding)
-    positions = relationship(
-        "EncPosition", back_populates="encumbrance", cascade="all, delete-orphan"
-    )
+# --- WITHDRAWAL ADDRESSES ---
 
+class LiquidationAddress(Base):
+    __tablename__ = "liquidation_addresses"
+    liquidation_address_id   = Column(String(50), primary_key=True)  # Bridge liquidation address ID from API
+    customer_id              = Column(String(50), ForeignKey("bridge_customers.id"), nullable=False)
+    user_id                  = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    
+    currency                 = Column(String(8), nullable=False)     # Bridge API field
+    chain                    = Column(String(32), nullable=False)    # Bridge API field
+    external_account_id      = Column(String(50), nullable=False)    # Bridge API field
+    prefunded_account_id     = Column(String(50))                    # Bridge API field
+    destination_wire_message = Column(String(256))                   # Bridge API field
+    destination_sepa_reference = Column(String(140))                 # Bridge API field
+    destination_spei_reference = Column(String(40))                  # Bridge API field
+    destination_ach_reference = Column(String(10))                   # Bridge API field
+    destination_payment_rail = Column(String(32), nullable=False)    # Bridge API field
+    destination_currency     = Column(String(8), nullable=False)     # Bridge API field
+    address                  = Column(String(64), nullable=False)    # Bridge API field
+    destination_address      = Column(String(64))                    # Bridge API field
+    destination_blockchain_memo = Column(String(256))                # Bridge API field
+    return_address           = Column(String(64))                    # Bridge API field
+    state                    = Column(String(16))                    # Bridge API field
+    created_at               = Column(DateTime, nullable=False)      # Bridge API timestamp
+    updated_at               = Column(DateTime, nullable=False)      # Bridge API timestamp
 
-class EncPosition(Base):
-    """Current holders of an encumbrance (live 'UTXOs')."""
-
-    __tablename__ = "encumbrance_positions"
-
-    enc_id = Column(
-        UUID(as_uuid=True),
-        ForeignKey("encumbrances.id", ondelete="CASCADE"),
-        primary_key=True,
-    )
-    wallet_id = Column(String(64), primary_key=True)
-    amount = Column(Numeric(18, 6), nullable=False)
-    last_updated = Column(
-        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
-    )
-
-    encumbrance = relationship("Encumbrance", back_populates="positions")
+    user     = relationship("User", back_populates="liquidation_addresses")
 
 

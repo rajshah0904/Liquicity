@@ -9,7 +9,7 @@ from __future__ import annotations
 import os
 import uuid
 from decimal import Decimal
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 import httpx
 
@@ -21,7 +21,7 @@ class SeamlessChexError(RuntimeError):
 class SeamlessChexClient:
     BASE_URL = os.getenv("SEAMLESSCHEX_BASE_URL", "https://api.seamlesschex.com/v1")
 
-    def __init__(self, api_key: str | None = None):
+    def __init__(self, api_key: Optional[str] = None):
         self.api_key = api_key or os.getenv("SEAMLESSCHEX_API_KEY")
         if not self.api_key:
             raise RuntimeError("Missing SEAMLESSCHEX_API_KEY environment variable")
@@ -41,9 +41,9 @@ class SeamlessChexClient:
         processor_token: str,
         amount: Decimal,
         currency: str = "USD",
-        description: str | None = None,
-        destination_account_id: str | None = None,
-        idempotency_key: str | None = None,
+        description: Optional[str] = None,
+        destination_account_id: Optional[str] = None,
+        idempotency_key: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Submit an ACH debit request using a Plaid processor_token.
 

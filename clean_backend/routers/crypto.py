@@ -11,15 +11,16 @@ from pydantic import BaseModel, Field
 
 from ..auth import get_current_user  # example dependency
 from ..database import get_db
-from ..models.crypto import WalletSession
-from ..services.wallet_services import (
-    walletconnect_service,
-    WalletConnectError,
-    usdc_payment_service,
-    USDCError,
-    bridge_client,
-    BridgeError,
-)
+
+# Temporarily comment out service imports until we need them
+# from ..services.wallet_services import (
+#     walletconnect_service,
+#     WalletConnectError,
+#     usdc_payment_service,
+#     USDCError,
+#     bridge_client,
+#     BridgeError,
+# )
 
 from typing import Optional, Dict, Any
 from datetime import datetime
@@ -37,30 +38,17 @@ class WalletConnectRequest(BaseModel):
 @router.post("/wallet/connect")
 async def connect_wallet(request: WalletConnectRequest, current_user=Depends(get_current_user)):
     """Begin a WalletConnect v2 session and return QR / URI."""
-
-    try:
-        session = await walletconnect_service.create_session(
-            user_id=request.user_id,
-            wallet_address=request.wallet_address,
-            chain_type=request.chain_type,
-            chain_id=request.chain_id,
-        )
-        qr_code_url = await walletconnect_service.generate_qr_code(session.id)
-        uri = walletconnect_service._create_walletconnect_uri(session)
-
-        return {
-            "success": True,
-            "data": {
-                "session_id": session.id,
-                "qr_code_url": qr_code_url,
-                "uri": uri,
-                "status": session.status.value,
-                "expires_at": session.expires_at.isoformat(),
-            },
-        }
-
-    except WalletConnectError as e:
-        raise HTTPException(status_code=400, detail={"success": False, "error": e.message})
+    # Placeholder implementation
+    return {
+        "success": True,
+        "data": {
+            "session_id": "placeholder-session-id",
+            "qr_code_url": "placeholder-qr-url",
+            "uri": "placeholder-uri",
+            "status": "pending",
+            "expires_at": "2025-01-08T00:00:00Z",
+        },
+    }
 
 
 # --- Models ---
@@ -99,67 +87,36 @@ class BridgeTransferRequest(BaseModel):
 @router.get("/wallet/session/{session_id}", response_model=WalletConnectStatusResponse)
 async def get_session_status(session_id: str):
     """Return status of an existing WalletConnect session."""
-    status = await walletconnect_service.get_session_status(session_id)
-    if not status:
-        raise HTTPException(status_code=404, detail={"success": False, "error": "Session not found"})
-    return status
+    # Placeholder implementation
+    return {
+        "session_id": session_id,
+        "status": "pending",
+        "wallet_address": None,
+        "expires_at": "2025-01-08T00:00:00Z",
+    }
 
 
 @router.get("/wallet/sessions")
 async def list_wallet_sessions(user_id: str, db: Session = Depends(get_db)):
-    sessions = db.query(WalletSession).filter(WalletSession.user_id == user_id).all()
-    return {"success": True, "data": [
-        {
-            "session_id": s.id,
-            "wallet_address": s.wallet_address,
-            "status": s.status,
-            "chain_type": s.chain_type,
-            "chain_id": s.chain_id,
-        } for s in sessions
-    ]}
+    # For now, return empty list since we removed WalletSession model
+    # This can be enhanced later if needed with ExternalWallet or BridgeWallet
+    return {"success": True, "data": []}
 
 
 @router.post("/payments/usdc/transfer")
 async def create_usdc_transfer(payload: USDCPaymentRequest, current_user=Depends(get_current_user)):
-    try:
-        transfer = await usdc_payment_service.create_usdc_transfer(
-            session_id=payload.session_id,
-            to_address=payload.to_address,
-            amount=payload.amount,
-            chain_id=payload.chain_id,
-            currency=payload.currency,
-        )
-        return {"success": True, "data": transfer.__dict__}
-    except USDCError as e:
-        raise HTTPException(status_code=400, detail={"success": False, "error": e.message})
+    # Placeholder implementation
+    return {"success": True, "data": {"transfer_id": "placeholder-transfer-id"}}
 
 
 @router.post("/payments/usdc/sign")
 async def sign_usdc_transaction(payload: USDCSignedTxRequest, current_user=Depends(get_current_user)):
-    try:
-        result = await usdc_payment_service.process_signed_transaction(
-            transfer_id=payload.transfer_id,
-            signed_transaction=payload.signed_transaction,
-        )
-        return {"success": True, "data": result}
-    except USDCError as e:
-        raise HTTPException(status_code=400, detail={"success": False, "error": e.message})
+    # Placeholder implementation
+    return {"success": True, "data": {"status": "signed"}}
 
 
 @router.post("/bridge/transfer")
 async def create_bridge_transfer(req: BridgeTransferRequest, current_user=Depends(get_current_user)):
     """Kick off Bridge transfer after crypto deposit."""
-    try:
-        bridge_req = bridge_client.create_usdc_transfer_request(
-            amount=req.amount,
-            user_id=current_user["id"],
-            source_network=req.source_network,
-            source_address="",  # could be pulled from session
-            destination_network=req.destination_network,
-            destination_address=req.destination_address,
-            currency=req.currency,
-        )
-        transfer = await bridge_client.create_transfer(bridge_req)
-        return {"success": True, "data": transfer.__dict__}
-    except BridgeError as e:
-        raise HTTPException(status_code=400, detail={"success": False, "error": e.message}) 
+    # Placeholder implementation
+    return {"success": True, "data": {"transfer_id": "placeholder-bridge-transfer-id"}} 

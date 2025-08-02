@@ -1,5 +1,5 @@
 import os, uuid, requests
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 from dotenv import load_dotenv
 
 load_dotenv()  # load variables from .env if present
@@ -11,7 +11,7 @@ if not API_KEY:
     raise RuntimeError("BRIDGE_API_KEY environment variable must be set (either in the environment or .env file)")
 
 
-def _headers(extra: Dict[str, str] | None = None) -> Dict[str, str]:
+def _headers(extra: Optional[Dict[str, str]] = None) -> Dict[str, str]:
     h = {
         "Api-Key": API_KEY,
         "Content-Type": "application/json",
@@ -79,7 +79,26 @@ class BridgeClient:
         resp.raise_for_status()
         return resp.json()
 
-    def get_wallet_history(self, wallet_id: str, params: dict | None = None):
+    def get_all_wallets(self):
+        """Get all wallets from Bridge API"""
+        resp = self.session.get(f"{BASE_URL}/wallets", headers=_headers(), timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+
+    def get_wallet_balances(self, customer_id: str, wallet_id: str):
+        """Get detailed balance information for a specific wallet"""
+        try:
+            return self.get_wallet(customer_id, wallet_id)
+        except requests.HTTPError as e:
+            if e.response.status_code == 404:
+                # If individual wallet endpoint not available, return basic info
+                return {
+                    "id": wallet_id,
+                    "balances": []
+                }
+            raise
+
+    def get_wallet_history(self, wallet_id: str, params: Optional[dict] = None):
         resp = self.session.get(f"{BASE_URL}/wallets/{wallet_id}/history", headers=_headers(), params=params or {}, timeout=30)
         resp.raise_for_status()
         return resp.json()
@@ -99,7 +118,7 @@ class BridgeClient:
         wallet_address: str,
         chain: str = "solana",
         currency: str = "usdc",
-        client_reference_id: str | None = None,
+        client_reference_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Provision a new card account for the given customer.
 
@@ -151,7 +170,7 @@ class BridgeClient:
         """Create a new external account for the specified customer (POST /customers/{customer_id}/external_accounts)."""
         return self._post(f"/customers/{customer_id}/external_accounts", payload)
 
-    def get_external_account(self, external_account_id: str, customer_id: str | None = None):
+    def get_external_account(self, external_account_id: str, customer_id: Optional[str] = None):
         """Retrieve a single external account.
 
         Bridge API supports two flavours:
@@ -201,7 +220,7 @@ class BridgeClient:
 
     # ---------------- Virtual Accounts ----------------
 
-    def create_virtual_account(self, customer_id: str, payload: Dict[str, Any] | None = None):
+    def create_virtual_account(self, customer_id: str, payload: Optional[Dict[str, Any]] = None):
         """Create a new virtual account for the customer.
 
         By default creates a USD virtual account that converts to USDC on Solana.
@@ -223,7 +242,7 @@ class BridgeClient:
         resp.raise_for_status()
         return resp.json()
 
-    def get_or_create_usd_virtual_account(self, customer_id: str, wallet_address: str | None = None):
+    def get_or_create_usd_virtual_account(self, customer_id: str, wallet_address: Optional[str] = None):
         """Idempotent helper: return existing VA id or create a USD→USDC(Solana) account once."""
         # 1. Check existing
         try:

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 import os
 import requests
 
@@ -15,8 +15,8 @@ class PlaidClient:
     """Minimal Plaid REST client covering public_token exchange, Auth, Balance and Identity."""
 
     def __init__(self) -> None:
-        self.client_id: str | None = os.getenv("PLAID_CLIENT_ID")
-        self.secret: str | None = os.getenv("PLAID_SECRET")
+        self.client_id: Optional[str] = os.getenv("PLAID_CLIENT_ID")
+        self.secret: Optional[str] = os.getenv("PLAID_SECRET")
         if not self.client_id or not self.secret:
             raise RuntimeError("PLAID_CLIENT_ID and PLAID_SECRET env vars must be set")
 

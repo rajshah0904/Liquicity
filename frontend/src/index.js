@@ -16,13 +16,18 @@ import '@fontsource/inter/600.css';
 import '@fontsource/inter/700.css';
 
 // Auth0 configuration
-const domain = process.env.REACT_APP_AUTH0_DOMAIN 
-const clientId = process.env.REACT_APP_AUTH0_CLIENT_ID 
-const audience = process.env.REACT_APP_AUTH0_AUDIENCE 
+const domain = process.env.REACT_APP_AUTH0_DOMAIN;
+const clientId = process.env.REACT_APP_AUTH0_CLIENT_ID;
+const audience = process.env.REACT_APP_AUTH0_AUDIENCE;
 const redirectUri = window.location.origin;
 
 // Debug: log Auth0 config
 console.log('Auth0 Config:', { domain, clientId, audience, redirectUri });
+console.log('Environment variables:', {
+  domain: process.env.REACT_APP_AUTH0_DOMAIN,
+  clientId: process.env.REACT_APP_AUTH0_CLIENT_ID,
+  audience: process.env.REACT_APP_AUTH0_AUDIENCE
+});
 
 // Handle redirects from Auth0 loginWithRedirect
 // Perform a full navigation to the target path so React Router properly loads that route

@@ -83,7 +83,11 @@ class Settings(BaseSettings):
     bridge_retry_attempts: int = Field(default=3, env="BRIDGE_RETRY_ATTEMPTS")
     
     # Database Configuration
-    database_url: str = Field(..., env="DATABASE_URL")
+    database_url: str = Field(
+        default="postgresql://liquicity_user:Liquicity2025!@localhost:5432/liquicity_db",
+        env="DATABASE_URL",
+        description="Database connection URL - defaults to Google Cloud SQL via proxy"
+    )
     database_pool_size: int = Field(default=20, env="DATABASE_POOL_SIZE")
     database_max_overflow: int = Field(default=30, env="DATABASE_MAX_OVERFLOW")
     
@@ -225,8 +229,11 @@ class Settings(BaseSettings):
     
     @validator("database_url")
     def validate_database_url(cls, v):
-        if not v or not v.startswith(("postgresql://", "postgres://")):
-            raise ValueError("Database URL must be a valid PostgreSQL connection string")
+        if not v:
+            raise ValueError("Database URL cannot be empty")
+        # Allow SQLite for development and PostgreSQL for production
+        if not v.startswith(("postgresql://", "postgres://", "sqlite://")):
+            raise ValueError("Database URL must be a valid PostgreSQL or SQLite connection string")
         return v
     
     @validator("cors_origins")

@@ -4,6 +4,7 @@ from ..database import get_db
 from ..models import User
 from ..auth import get_current_user
 from pydantic import BaseModel, constr
+from typing import Optional
 
 router = APIRouter(prefix="/user", tags=["user"])
 
@@ -31,19 +32,19 @@ async def set_country(payload: CountryIn, db: Session = Depends(get_db), jwt=Dep
     user = db.query(User).filter(User.auth0_id == jwt.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    user.country = country_name
-    db.commit()
-    return {"country": user.country}
+    
+    # Note: country field removed from User model
+    # For now, just return success - country selection is handled by Bridge during KYC
+    return {"country": country_name, "status": "selected"}
 
 @router.get("")
 async def get_profile(db: Session = Depends(get_db), jwt=Depends(get_current_user)):
-    """Return the authenticated user's basic profile (id, email, full_name, country)."""
-    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
+    """Return the authenticated user's basic profile (id, email, country)."""
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return {
         "id": str(user.id),
         "email": user.email,
-        "full_name": user.full_name,
-        "country": user.country,
+        "country": getattr(user, 'country', None),
     } 

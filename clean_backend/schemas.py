@@ -1,18 +1,15 @@
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel
+from typing import Optional
 
 class UserOut(BaseModel):
     id: str
-    email: EmailStr
-    full_name: str | None = None
-    tos_url: str | None = None
-    kyc_status: str
-    bridge_wallet_id: str | None = None
+    email: str
 
 class TOSAcceptedIn(BaseModel):
     signed_agreement_id: str 
 
 class RegisterIn(BaseModel):
-    email: EmailStr | None = None
-    first_name: str | None = None
-    last_name: str | None = None
+    email: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
     # additional optional fields in future 

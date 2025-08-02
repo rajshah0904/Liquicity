@@ -1,6 +1,6 @@
 from decimal import Decimal
 import os
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, condecimal
@@ -9,10 +9,10 @@ from sqlalchemy.orm import Session
 from ..auth import get_current_user
 from fastapi_auth0.auth import Auth0User
 from ..database import get_db
-from ..models import User
+from ..models import User, BridgeCustomer, BridgeWallet
 from ..bridge import BridgeClient
-from ..services.encumbrance_service import EncumbranceService, CORP_WALLET_ID, CORPORATE_CUSTOMER_ID
-from ..models.plaid import PlaidItem
+from ..services.encumbrance_service import EncumbranceService, CORPORATE_WALLET_ID, CORPORATE_CUSTOMER_ID
+from ..models import PlaidItem
 
 router = APIRouter(prefix="/transfers", tags=["transfers"])
 
@@ -40,7 +40,7 @@ class WithdrawalIn(BaseModel):
 
 # ---------------------------- Helpers ----------------------------
 
-def _get_user_by_sub(db: Session, sub: str) -> User | None:
+def _get_user_by_sub(db: Session, sub: str) -> Optional[User]:
     return db.query(User).filter((User.auth0_id == sub) | (User.email == sub)).first()
 
 
@@ -55,7 +55,7 @@ async def deposit_fiat_to_wallet(
     """Start a fiat deposit (bank push) and immediately credit the user's on-chain wallet with USDB.
 
     Steps:
-    1. Create bridge transfer: external_account_id ➜ corporate treasury wallet (fiat rails).
+    1. Create bridge transfer: external_account_id ➜ corporate account treasury wallet (fiat rails).
     2. Advance USDB from treasury wallet ➜ user's bridge wallet.
     3. Persist encumbrance so funds can be clawed back if fiat leg fails.
     """
@@ -63,16 +63,23 @@ async def deposit_fiat_to_wallet(
     user = _get_user_by_sub(db, auth_user.id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if not user.bridge_customer_id or not user.bridge_wallet_id:
-        raise HTTPException(status_code=400, detail="User missing Bridge account")
+    
+    # Get bridge customer and wallet from related tables
+    bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
+    if not bridge_customer:
+        raise HTTPException(status_code=400, detail="Bridge customer not found")
+    
+    bridge_wallet = db.query(BridgeWallet).filter(BridgeWallet.user_id == user.id).first()
+    if not bridge_wallet:
+        raise HTTPException(status_code=400, detail="Bridge wallet not found")
 
-    if not CORP_WALLET_ID or not CORPORATE_CUSTOMER_ID:
+    if not CORPORATE_WALLET_ID or not CORPORATE_CUSTOMER_ID:
         raise HTTPException(status_code=500, detail="Treasury configuration missing on server")
 
     client = BridgeClient()
     # Fetch the external account to determine currency and appropriate on-ramp rail
     try:
-        ext_acct = client.get_external_account(body.external_account_id, user.bridge_customer_id)
+        ext_acct = client.get_external_account(body.external_account_id, bridge_customer.id)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid external account: {e}")
 
@@ -170,7 +177,7 @@ async def deposit_fiat_to_wallet(
 
     # ---------------- Treasury liquidity check ----------------
     try:
-        treas_wallet = client.get_wallet(CORPORATE_CUSTOMER_ID, CORP_WALLET_ID)
+        treas_wallet = client.get_wallet(CORPORATE_CUSTOMER_ID, CORPORATE_WALLET_ID)
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Treasury wallet not found or unreachable: {e}")
 
@@ -186,7 +193,7 @@ async def deposit_fiat_to_wallet(
 
     fiat_payload: Dict[str, Any] = {
         "amount": str(body.amount),
-        "on_behalf_of": user.bridge_customer_id,
+        "on_behalf_of": bridge_customer.id,
         "source": {
             "payment_rail": payment_rail,
             "currency": currency,
@@ -195,7 +202,7 @@ async def deposit_fiat_to_wallet(
         "destination": {
             "payment_rail": "solana",
             "currency": "usdb",
-            "bridge_wallet_id": CORP_WALLET_ID,
+            "bridge_wallet_id": CORPORATE_WALLET_ID,
         },
         "convert_to_currency": "usdb",
     }
@@ -223,12 +230,12 @@ async def deposit_fiat_to_wallet(
         "source": {
             "payment_rail": "solana",
             "currency": "usdb",
-            "bridge_wallet_id": CORP_WALLET_ID,
+            "bridge_wallet_id": CORPORATE_WALLET_ID,
         },
         "destination": {
             "payment_rail": "solana",
             "currency": "usdb",
-            "bridge_wallet_id": user.bridge_wallet_id,
+            "bridge_wallet_id": bridge_wallet.id,
         },
     }
 
@@ -249,7 +256,7 @@ async def deposit_fiat_to_wallet(
     svc = EncumbranceService(db)
     enc = svc.create_encumbrance(
         fiat_transfer_id=fiat_tx["id"],
-        user_wallet_id=user.bridge_wallet_id,
+        user_wallet_id=bridge_wallet.id,
         amount=usdb_amount_dec,
     )
 
@@ -297,14 +304,21 @@ async def withdraw_fiat_from_wallet(
     user = _get_user_by_sub(db, auth_user.id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
-    if not user.bridge_customer_id or not user.bridge_wallet_id:
-        raise HTTPException(status_code=400, detail="User missing Bridge account")
+    
+    # Get bridge customer and wallet from related tables
+    bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
+    if not bridge_customer:
+        raise HTTPException(status_code=400, detail="Bridge customer not found")
+    
+    bridge_wallet = db.query(BridgeWallet).filter(BridgeWallet.user_id == user.id).first()
+    if not bridge_wallet:
+        raise HTTPException(status_code=400, detail="Bridge wallet not found")
 
     client = BridgeClient()
 
     # Fetch external account to validate ownership & get currency
     try:
-        ext_acct = client.get_external_account(body.external_account_id, user.bridge_customer_id)
+        ext_acct = client.get_external_account(body.external_account_id, bridge_customer.id)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Invalid external account: {e}")
 
@@ -317,11 +331,11 @@ async def withdraw_fiat_from_wallet(
 
     payload = {
         "amount": str(body.amount),
-        "on_behalf_of": user.bridge_customer_id,
+        "on_behalf_of": bridge_customer.id,
         "source": {
             "payment_rail": "solana",
             "currency": "usdb",
-            "wallet_id": user.bridge_wallet_id,
+            "wallet_id": bridge_wallet.id,
         },
         "destination": {
             "payment_rail": payment_rail,

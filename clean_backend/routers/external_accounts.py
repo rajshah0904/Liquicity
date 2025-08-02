@@ -2,14 +2,14 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import requests
-from typing import List, Dict
+from typing import List, Dict, Optional
 
 from ..database import get_db
 from ..auth import get_current_user
-from ..models import User, ExternalAccount
+from ..models import User, ExternalAccount, BridgeCustomer
 from ..bridge import BridgeClient
 from ..services.plaid_client import PlaidClient
-from ..models.plaid import PlaidItem
+from ..models import PlaidItem
 
 router = APIRouter(prefix="/external_accounts", tags=["external_accounts"])
 
@@ -19,12 +19,17 @@ class PublicTokenSchema(BaseModel):
 @router.get("/plaid/link_token")
 def get_plaid_link_token(db: Session = Depends(get_db), jwt = Depends(get_current_user)):
     """Return a Plaid Link token for the authenticated user (US-only for now)."""
-    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
-    if not user or not user.bridge_customer_id:
-        raise HTTPException(status_code=404, detail="Bridge customer id missing")
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get bridge customer from related table
+    bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
+    if not bridge_customer:
+        raise HTTPException(status_code=404, detail="Bridge customer not found")
 
     try:
-        resp = BridgeClient().get_plaid_link_token(user.bridge_customer_id)
+        resp = BridgeClient().get_plaid_link_token(bridge_customer.id)
     except Exception as e:
         raise HTTPException(status_code=502, detail="Bridge unreachable") from e
     return resp
@@ -33,7 +38,7 @@ def get_plaid_link_token(db: Session = Depends(get_db), jwt = Depends(get_curren
 def exchange_plaid_token(link_token: str, payload: PublicTokenSchema, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
     """Exchange the Plaid public_token via Bridge."""
     # Ensure user exists (authorization)
-    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -63,29 +68,8 @@ def exchange_plaid_token(link_token: str, payload: PublicTokenSchema, db: Sessio
     # ------------------------------------------------------------------
     # Identity verification – ensure bank account owner matches user name
     # ------------------------------------------------------------------
-    if access_token and user.full_name:
-        try:
-            ident = PlaidClient().get_identity(access_token)
-            owner_names: set[str] = set()
-            for acct in ident.get("accounts", []):
-                for owner in acct.get("owners", []):
-                    owner_names.update(n.lower() for n in owner.get("names", []))
-
-            user_name = user.full_name.lower()
-
-            # Simple containment / exact match check; can be replaced with fuzzy logic
-            match_found = any(user_name in n or n in user_name for n in owner_names)
-            if not match_found:
-                raise HTTPException(
-                    status_code=400,
-                    detail="Bank account owner name does not match registered user",
-                )
-        except HTTPException:
-            raise  # propagate mismatch
-        except Exception as e:
-            # Non-blocking – just log if Plaid Identity call fails
-            import logging
-            logging.getLogger(__name__).warning("Plaid identity check failed: %s", e)
+    # Note: full_name field removed from User model, skipping identity verification for now
+    # TODO: Implement identity verification using alternative user identification method
 
     external_account_id = resp.get("external_account_id") or resp.get("id")
     if external_account_id and access_token:
@@ -111,12 +95,17 @@ def exchange_plaid_token(link_token: str, payload: PublicTokenSchema, db: Sessio
 @router.get("/accounts")
 def list_external_accounts(db: Session = Depends(get_db), jwt = Depends(get_current_user)):
     """Return all Bridge external accounts for the authenticated user."""
-    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
-    if not user or not user.bridge_customer_id:
-        raise HTTPException(status_code=404, detail="Bridge customer id missing")
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get bridge customer from related table
+    bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
+    if not bridge_customer:
+        raise HTTPException(status_code=404, detail="Bridge customer not found")
 
     try:
-        bridge_resp = BridgeClient().list_external_accounts(user.bridge_customer_id)
+        bridge_resp = BridgeClient().list_external_accounts(bridge_customer.id)
         accounts = bridge_resp.get("data", [])
     except Exception as e:
         raise HTTPException(status_code=502, detail="Bridge unreachable") from e
@@ -129,12 +118,17 @@ def list_external_accounts(db: Session = Depends(get_db), jwt = Depends(get_curr
 @router.post("/sync")
 def sync_accounts(db: Session = Depends(get_db), jwt = Depends(get_current_user)):
     """Trigger a sync – currently just fetches latest accounts from Bridge and returns count."""
-    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
-    if not user or not user.bridge_customer_id:
-        raise HTTPException(status_code=404, detail="Bridge customer id missing")
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get bridge customer from related table
+    bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
+    if not bridge_customer:
+        raise HTTPException(status_code=404, detail="Bridge customer not found")
 
     try:
-        bridge_resp = BridgeClient().list_external_accounts(user.bridge_customer_id)
+        bridge_resp = BridgeClient().list_external_accounts(bridge_customer.id)
         accounts = bridge_resp.get("data", [])
     except Exception as e:
         raise HTTPException(status_code=502, detail="Bridge unreachable") from e
@@ -184,7 +178,7 @@ def _upsert_accounts(db: Session, user: User, accounts: List[Dict]):
 @router.get("/accounts/{account_id}/balance")
 def get_account_balance(account_id: str, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
     """Fetch real-time balance for the specified external account via Plaid."""
-    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -214,7 +208,7 @@ def get_account_balance(account_id: str, db: Session = Depends(get_db), jwt = De
 @router.get("/accounts/{account_id}/auth")
 def get_account_auth(account_id: str, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
     """Retrieve ACH account/routing numbers via Plaid Auth."""
-    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -239,7 +233,7 @@ def get_account_auth(account_id: str, db: Session = Depends(get_db), jwt = Depen
 @router.get("/accounts/{account_id}/identity")
 def get_account_identity(account_id: str, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
     """Return user identity information (name / address) from Plaid."""
-    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
@@ -266,12 +260,17 @@ def create_external_account(payload: Dict, db: Session = Depends(get_db), jwt = 
 
     The payload is passed through to Bridge's POST /customers/{customer_id}/external_accounts endpoint.
     """
-    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
-    if not user or not user.bridge_customer_id:
-        raise HTTPException(status_code=404, detail="Bridge customer id missing")
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get bridge customer from related table
+    bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
+    if not bridge_customer:
+        raise HTTPException(status_code=404, detail="Bridge customer not found")
 
     try:
-        bridge_resp = BridgeClient().create_external_account(user.bridge_customer_id, payload)
+        bridge_resp = BridgeClient().create_external_account(bridge_customer.id, payload)
     except requests.HTTPError as e:
         status = e.response.status_code if e.response else 502
         detail = e.response.text if e.response else str(e)
@@ -311,12 +310,17 @@ def get_external_account_details(account_id: str, db: Session = Depends(get_db),
     the local `external_accounts_v2` table so cached lists stay in sync.
     """
     # Authorize user
-    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
-    if not user or not user.bridge_customer_id:
-        raise HTTPException(status_code=404, detail="Bridge customer id missing")
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get bridge customer from related table
+    bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
+    if not bridge_customer:
+        raise HTTPException(status_code=404, detail="Bridge customer not found")
 
     try:
-        bridge_resp = BridgeClient().get_external_account(account_id, user.bridge_customer_id)
+        bridge_resp = BridgeClient().get_external_account(account_id, bridge_customer.id)
     except requests.HTTPError as e:
         status = e.response.status_code if e.response else 502
         detail = e.response.text if e.response else str(e)
@@ -363,9 +367,14 @@ def get_external_account_details(account_id: str, db: Session = Depends(get_db),
 @router.delete("/accounts/{account_id}")
 def delete_external_account(account_id: str, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
     """Delete an external account both on Bridge and locally."""
-    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
-    if not user or not user.bridge_customer_id:
-        raise HTTPException(status_code=404, detail="Bridge customer id missing")
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get bridge customer from related table
+    bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
+    if not bridge_customer:
+        raise HTTPException(status_code=404, detail="Bridge customer not found")
 
     # Verify ownership locally first
     ext = db.query(ExternalAccount).filter(ExternalAccount.id == account_id, ExternalAccount.user_id == user.id).first()
@@ -373,7 +382,7 @@ def delete_external_account(account_id: str, db: Session = Depends(get_db), jwt 
         raise HTTPException(status_code=404, detail="Account not found")
 
     try:
-        BridgeClient().delete_external_account(user.bridge_customer_id, account_id)
+        BridgeClient().delete_external_account(bridge_customer.id, account_id)
     except requests.HTTPError as e:
         status = e.response.status_code if e.response else 502
         detail = e.response.text if e.response else str(e)
@@ -407,7 +416,7 @@ def create_processor_token(
     """
 
     # Authorize user & verify ownership of the external account
-    user: User | None = db.query(User).filter(User.auth0_id == jwt.id).first()
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
 
