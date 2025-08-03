@@ -1,0 +1,48 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.backend
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    volumes:
+      - ./clean_backend:/app/clean_backend
+      - ./alembic.ini:/app/alembic.ini
+      - ./requirements.txt:/app/requirements.txt
+    environment:
+      ENVIRONMENT: development
+      DEBUG: "true"
+
+      DATABASE_URL: postgresql://liquicity_user:Liquicity2025!@host.docker.internal:5432/liquicity_db
+
+      APP_URL: http://localhost:3000
+
+      AUTH0_DOMAIN: liquicity.us.auth0.com
+      AUTH0_CLIENT_ID: i3muDsirkXc1jgqVUhmVz4GyYY7dvmAD
+      AUTH0_CLIENT_SECRET: bLx87C3xazuzFILhmTwslZrXizq_xqF_bkyz-q_f67JgR0bNia-FBZ9fMf3_4kgR
+      AUTH0_AUDIENCE: https://api.liquicity.com
+
+      PLAID_CLIENT_ID: 682ba4a81620e500258449a3
+      PLAID_SECRET: 81fcc06a594f90a663ad937ad45e41
+
+      BRIDGE_API_KEY: sk-live-31c7d0ebf364ebab1a466df788314067
+      BRIDGE_API_URL: https://api.bridge.xyz/v0
+
+  frontend:
+    build:
+      context: .
+      dockerfile: Dockerfile.frontend
+      args:
+        REACT_APP_AUTH0_DOMAIN: liquicity.us.auth0.com
+        REACT_APP_AUTH0_CLIENT_ID: i3muDsirkXc1jgqVUhmVz4GyYY7dvmAD
+        REACT_APP_AUTH0_AUDIENCE: https://api.liquicity.com
+        REACT_APP_API_URL: http://localhost:3000
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules  # preserve node_modules in container
+    depends_on:
+      - backend 
