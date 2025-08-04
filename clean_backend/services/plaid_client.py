@@ -22,6 +22,8 @@ class PlaidClient:
 
         env = os.getenv("PLAID_ENV", "sandbox").lower()
         self.base_url: str = _PLAID_BASE_URLS.get(env, _PLAID_BASE_URLS["sandbox"])
+        print(f"🔧 PlaidClient initialized with environment: {env}")
+        print(f"🌐 Using Plaid base URL: {self.base_url}")
 
     # ---------------- Internal helpers ---------------- #
     def _post(self, path: str, json: Dict[str, Any]) -> Dict[str, Any]:
@@ -43,6 +45,23 @@ class PlaidClient:
 
     def get_identity(self, access_token: str) -> Dict[str, Any]:
         return self._post("/identity/get", {"access_token": access_token})
+
+    def create_link_token(self, user_id: str, webhook_url: Optional[str] = None) -> Dict[str, Any]:
+        """Create a link_token for initializing Plaid Link."""
+        payload = {
+            "products": ["auth", "identity"],
+            "client_name": "Liquicity",
+            "country_codes": ["US"],
+            "language": "en", 
+            "user": {
+                "client_user_id": user_id
+            }
+        }
+        
+        if webhook_url:
+            payload["webhook"] = webhook_url
+        
+        return self._post("/link/token/create", payload)
 
     # ---------------- Processor integrations ------------- #
     def create_processor_token(

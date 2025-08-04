@@ -148,8 +148,17 @@ class BridgeClient:
 
     # ---------------- Plaid helpers ----------------
     def get_plaid_link_token(self, customer_id: str):
-        """Generate a Plaid Link token for the specified Bridge customer."""
-        return self._post(f"/customers/{customer_id}/plaid_link_requests", {})
+        """Generate a Plaid Link token for the specified Bridge customer via Bridge API."""
+        import uuid
+        idem = str(uuid.uuid4())
+        resp = self.session.post(
+            f"{BASE_URL}/customers/{customer_id}/plaid_link_requests",
+            headers=_headers({"Idempotency-Key": idem}),
+            json={},
+            timeout=30,
+        )
+        resp.raise_for_status()
+        return resp.json()
 
     def exchange_plaid_token(self, link_token: str, public_token: str):
         """Exchange a Plaid public_token via Bridge (this endpoint MUST NOT include Idempotency-Key)."""
@@ -158,6 +167,44 @@ class BridgeClient:
         resp = self.session.post(url, json=payload, headers=_headers(), timeout=30)
         resp.raise_for_status()
         return resp.json()
+
+    def wait_for_plaid_accounts(self, customer_id: str, initial_count: int = 0, max_attempts: int = 12, delay: int = 5):
+        """Wait for Plaid-linked external accounts to be created asynchronously by Bridge.
+        
+        After a successful Plaid token exchange, Bridge creates external accounts asynchronously.
+        This method polls the external accounts endpoint until new accounts appear.
+        
+        Args:
+            customer_id: Bridge customer ID
+            initial_count: Number of external accounts before Plaid linking
+            max_attempts: Maximum number of polling attempts (default: 12 = 1 minute)
+            delay: Delay between attempts in seconds (default: 5)
+            
+        Returns:
+            List of newly created external accounts, or empty list if timeout
+        """
+        import time
+        
+        for attempt in range(max_attempts):
+            try:
+                current_accounts = self.list_external_accounts(customer_id)
+                current_count = len(current_accounts.get("data", []))
+                
+                if current_count > initial_count:
+                    # New accounts detected
+                    new_accounts = current_accounts.get("data", [])[initial_count:]
+                    return new_accounts
+                    
+                if attempt < max_attempts - 1:  # Don't sleep on last attempt
+                    time.sleep(delay)
+                    
+            except Exception as e:
+                print(f"Error polling for Plaid accounts (attempt {attempt + 1}): {e}")
+                if attempt < max_attempts - 1:
+                    time.sleep(delay)
+        
+        # Timeout reached
+        return []
 
     # ---------------- External Accounts ----------------
     def list_external_accounts(self, customer_id: str):
@@ -207,10 +254,9 @@ class BridgeClient:
         Wrapper around DELETE /customers/{customer_id}/external_accounts/{id}
         Returns True on success.
         """
-        idem = str(uuid.uuid4())
         resp = self.session.delete(
             f"{BASE_URL}/customers/{customer_id}/external_accounts/{external_account_id}",
-            headers=_headers({"Idempotency-Key": idem}),
+            headers=_headers(), 
             timeout=30,
         )
         if resp.status_code == 404:

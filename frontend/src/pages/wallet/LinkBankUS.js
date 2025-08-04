@@ -71,20 +71,44 @@ export default function LinkBankUS() {
   const openPlaidLink = async (token) => {
     if (!token) return;
     
-    const linkTokenUsed = token;  // pass same token back to server per Bridge docs
+    const linkTokenUsed = token;  // pass same token back to server for Option A flow
     const handler = window.Plaid.create({
       token,
       onSuccess: async (publicToken, metadata) => {
         try {
           setLoading(true);
-          // Exchange the public token via Bridge
-          await externalAccountsAPI.exchangePlaidToken(linkTokenUsed, publicToken);
           
-          // Navigate back to wallet on success
-          navigate('/wallet');
+          // Extract institution info from Plaid Link metadata (zero extra API calls!)
+          const institutionName = metadata?.institution?.name || "Unknown Bank";
+          const institutionId = metadata?.institution?.institution_id || null;
+          
+          console.log('🏦 Plaid Link Institution:', institutionName, institutionId);
+          
+          // Exchange the public token via Option A flow (Plaid → Identity verification → Manual Bridge account creation)
+          const response = await externalAccountsAPI.exchangePlaidToken(linkTokenUsed, publicToken, {
+            institution_name: institutionName,
+            institution_id: institutionId
+          });
+          
+          console.log('Plaid exchange successful:', response);
+          
+          // Show success message with account count
+          const accountCount = response.account_count || 0;
+          if (accountCount > 0) {
+            setError(null);
+            // Navigate back to wallet on success
+            navigate('/wallet');
+          } else {
+            setError('No accounts were linked. Please try again.');
+          }
         } catch (err) {
           console.error('Error exchanging Plaid token:', err);
-          setError('Failed to link your bank account. Please try again.');
+          if (err.response && err.response.status === 400) {
+            // Identity verification failure
+            setError(err.response.data.detail || 'Identity verification failed. Please ensure the bank account is in your name.');
+          } else {
+            setError('Failed to link your bank account. Please try again.');
+          }
         } finally {
           setLoading(false);
         }

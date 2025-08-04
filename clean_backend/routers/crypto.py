@@ -12,15 +12,7 @@ from pydantic import BaseModel, Field
 from ..auth import get_current_user  # example dependency
 from ..database import get_db
 
-# Temporarily comment out service imports until we need them
-# from ..services.wallet_services import (
-#     walletconnect_service,
-#     WalletConnectError,
-#     usdc_payment_service,
-#     USDCError,
-#     bridge_client,
-#     BridgeError,
-# )
+# Note: Crypto wallet services can be implemented using the main BridgeClient from ..bridge
 
 from typing import Optional, Dict, Any
 from datetime import datetime

@@ -194,7 +194,7 @@ export default function LinkBankEU() {
         throw new Error('Please fill in all required fields');
       }
 
-      // Prepare API payload
+      // Prepare API payload for Bridge API (original Bridge format)
       const payload = {
         currency: 'eur',
         account_type: 'iban',

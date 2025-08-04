@@ -92,7 +92,7 @@ async def deposit_fiat_to_wallet(
     plaid_item = db.query(PlaidItem).filter(PlaidItem.external_account_id == body.external_account_id).first()
     if plaid_item:
         try:
-            bal_resp = PlaidClient().get_balance(plaid_item.access_token)
+            bal_resp = PlaidClient(force_production=True).get_balance(plaid_item.access_token)
             # Sum available balance across matching accounts
             available_sum = 0
             for acct in bal_resp.get("accounts", []):
@@ -123,7 +123,7 @@ async def deposit_fiat_to_wallet(
     if plaid_item:
         from ..services.seamless_chex_client import SeamlessChexClient, SeamlessChexError  # local import
         try:
-            auth_resp = PlaidClient().get_auth(plaid_item.access_token)
+            auth_resp = PlaidClient(force_production=True).get_auth(plaid_item.access_token)
             # Pick first account (or first checking/savings) for processor token
             accounts = auth_resp.get("accounts", [])
             if not accounts:
@@ -131,7 +131,7 @@ async def deposit_fiat_to_wallet(
             preferred = next((a for a in accounts if a.get("subtype") in ("checking", "savings")), accounts[0])
             account_id_for_token = preferred["account_id"]
 
-            proc_resp = PlaidClient().create_processor_token(
+            proc_resp = PlaidClient(force_production=True).create_processor_token(
                 plaid_item.access_token,
                 account_id=account_id_for_token,
                 processor="seamless_chex",

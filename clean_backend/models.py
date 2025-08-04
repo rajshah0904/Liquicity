@@ -66,6 +66,14 @@ class BridgeCustomer(Base):
     last_name                       = Column(String(1024))                  # Bridge API field
     email                           = Column(String(1024))                  # Bridge API field
     status                          = Column(String(32))                    # Bridge API field
+    
+    # Address fields for KYC fallback (Bridge address spec format)
+    street_line_1                   = Column(String(1024))                  # Bridge spec: required, length ≥ 4
+    street_line_2                   = Column(String(1024))                  # Bridge spec: optional, length ≥ 1  
+    city                            = Column(String(1024))                  # Bridge spec: required, length ≥ 1
+    subdivision                     = Column(String(3))                     # Bridge spec: ISO 3166-2, length 1-3
+    postal_code                     = Column(String(32))                    # Bridge spec: required for countries with postal codes
+    country                         = Column(String(3))                     # Bridge spec: ISO 3166-1 alpha-3, length = 3
     capabilities                    = Column(JSON)                          # Bridge API JSON object
     future_requirements_due         = Column(JSON, default=[])              # Bridge API array
     requirements_due                = Column(JSON, default=[])              # Bridge API array
@@ -119,21 +127,13 @@ class ExternalAccount(Base):
 
     currency             = Column(String(8), nullable=False)     # "usd", "eur", "mxn"
     bank_name            = Column(String(256))                   # e.g. "Chase"
-    account_owner_name   = Column(String(256), nullable=False)   # e.g. "John Doe"
-    last_4               = Column(String(4))                     # Last 4 digits (deprecated but in API)
-    account_type         = Column(String(16), nullable=False)    # "us", "iban", "clabe", "unknown"
-    iban                 = Column(JSON)                          # IBAN object from Bridge API
-    account              = Column(JSON)                          # US account object from Bridge API
-    swift                = Column(JSON)                          # SWIFT object from Bridge API
-    clabe                = Column(JSON)                          # CLABE object from Bridge API
+    account_owner_name   = Column(String(256), nullable=False)   # e.g. "John Doe" (first_name + " " + last_name)
+    last_4               = Column(String(4))                     # Last 4 digits (deprecated but in API)                        # All account details (US/IBAN/CLABE/SWIFT) from Bridge API
     account_owner_type   = Column(String(32))                    # "individual", "business"
-    first_name           = Column(String(128))                   # First name of individual owner
-    last_name            = Column(String(128))                   # Last name of individual owner
     business_name        = Column(String(256))                   # Business name for business accounts
     created_at           = Column(DateTime, nullable=False)      # Bridge API timestamp
     updated_at           = Column(DateTime, nullable=False)      # Bridge API timestamp
-    active               = Column(Boolean, nullable=False)       # Bridge API active status
-    beneficiary_address_valid = Column(Boolean)                  # Bridge API validation field
+    active               = Column(Boolean, nullable=False)       # Bridge API active status                         # Google Maps or Plaid provided address
 
     plaid_item           = relationship("PlaidItem", uselist=False, back_populates="external_account")
     customer             = relationship("BridgeCustomer", back_populates="external_accounts")
@@ -148,17 +148,13 @@ class PlaidItem(Base):
     customer_id         = Column(String(50), ForeignKey("bridge_customers.id"), nullable=False)
     user_id             = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     access_token        = Column(String(128), nullable=False)
-    item_id             = Column(String(32), nullable=False)    # Plaid Item ID
+    item_id             = Column(String(64), nullable=False)    # Plaid Item ID from exchange response
 
-    # Store the full /accounts/get response, which includes account_id, balances, subtype, etc.
-    accounts            = Column(JSON)
-
-    item_raw            = Column(JSON)   # other cached Plaid responses
+    # Bridge timestamps to match external account lifecycle
+    created_at          = Column(DateTime, nullable=False)      # From Bridge external account created_at
+    updated_at          = Column(DateTime, nullable=False)      # From Bridge external account updated_at
 
     external_account    = relationship("ExternalAccount", back_populates="plaid_item")
-
-    created_at          = Column(DateTime, default=datetime.utcnow)
-    updated_at          = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 # --- VIRTUAL ACCOUNTS (Bridge) ---
 

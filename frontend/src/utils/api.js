@@ -234,8 +234,11 @@ export const externalAccountsAPI = {
   
   // Plaid linking (US only)
   getPlaidLinkToken: () => api.get('/external_accounts/plaid/link_token'),
-  exchangePlaidToken: (requestId, publicToken) => 
-    api.post(`/external_accounts/plaid/exchange/${requestId}`, { public_token: publicToken }),
+  exchangePlaidToken: (requestId, publicToken, institutionData = {}) => 
+    api.post(`/external_accounts/plaid/exchange/${requestId}`, { 
+      public_token: publicToken,
+      ...institutionData
+    }),
 
   // Plaid passthrough APIs for linked accounts
   /**
