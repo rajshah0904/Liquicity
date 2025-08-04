@@ -20,6 +20,9 @@ import WalletPage from './pages/Wallet';
 import DepositPage from './pages/wallet/Deposit';
 import WithdrawPage from './pages/wallet/Withdraw';
 import LinkWalletPage from './pages/wallet/LinkWallet';
+import BankCountrySelect from './pages/wallet/BankCountrySelect';
+import LinkBankUS from './pages/wallet/LinkBankUS';
+import LinkBankEU from './pages/wallet/LinkBankEU';
 import SendPage from './pages/payments/Send';
 import RequestPage from './pages/payments/Request';
 import TransactionsPage from './pages/Transactions';
@@ -89,7 +92,9 @@ function App() {
         {/* Wallet Routes - Protected with Authenticated Layout */}
         <Route path="/wallet" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><WalletPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
         <Route path="/wallet/deposit" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><DepositPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
-        <Route path="/wallet/link-bank" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><DepositPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
+        <Route path="/wallet/link-bank" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><BankCountrySelect/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
+        <Route path="/wallet/link-bank/us" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><LinkBankUS/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
+        <Route path="/wallet/link-bank/eu" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><LinkBankEU/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
         <Route path="/wallet/withdraw" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><WithdrawPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
         {/* New Bank Accounts manager */}
         <Route path="/wallet/bank-accounts" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><BankAccountsPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
