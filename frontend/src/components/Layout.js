@@ -55,7 +55,7 @@ const menuItems = [
 ];
 
 const Layout = ({ children }) => {
-  const { isAuthenticated, isLoading } = useAuth0();
+  const { isAuthenticated, isLoading, logout } = useAuth0();
   const navigate = useNavigate();
   const location = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
@@ -93,6 +93,13 @@ const Layout = ({ children }) => {
 
   const handleLogout = () => {
     handleMenuClose();
+    
+    // Clear all Auth0 cache to prevent session interference with new signups
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Simple logout and navigate
+    logout();
     navigate('/login');
   };
 

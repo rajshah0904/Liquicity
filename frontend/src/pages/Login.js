@@ -139,14 +139,70 @@ const Login = () => {
   // After login, get token and navigate
   useEffect(() => {
     if (isAuthenticated) {
-      getAccessTokenSilently().then(token => {
+      getAccessTokenSilently({
+        authorizationParams: {
+          scope: 'openid profile email'
+        }
+      }).then(token => {
         import('../utils/api').then(({ default: api }) => {
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-          navigate('/dashboard');
+          
+          // Check user's current onboarding state
+          api.get('/user/check').then(response => {
+            const userData = response.data;
+            console.log('Login: User state', userData);
+            
+            // Route based on onboarding state
+            routeUserBasedOnState(userData, api, token);
+          }).catch(error => {
+            console.error('Login: Failed to check user state', error);
+            navigate('/dashboard'); // Fallback
+          });
         });
       });
     }
   }, [isAuthenticated, getAccessTokenSilently, navigate]);
+
+  const routeUserBasedOnState = async (userData, api, token) => {
+    const { exists, next_step } = userData;
+    
+    if (!exists) {
+      // User not registered - shouldn't happen on login, but handle it
+      navigate('/signup');
+      return;
+    }
+    
+    // Route based on onboarding state
+    switch (next_step) {
+      case 'kyc':
+        console.log('Login: Redirecting to KYC');
+        navigate('/kyc-verification');
+        break;
+        
+      case 'create_wallet':
+        console.log('Login: KYC approved, creating wallet');
+        try {
+          const walletResp = await api.post('/user/create-wallet', {}, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          console.log('Wallet created:', walletResp.data);
+          navigate('/dashboard');
+        } catch (e) {
+          console.error('Wallet creation error:', e);
+          navigate('/kyc-verification'); // Fallback
+        }
+        break;
+        
+      case 'done':
+        console.log('Login: Onboarding complete, going to dashboard');
+        navigate('/dashboard');
+        break;
+        
+      default:
+        console.log('Login: Unknown state, going to dashboard');
+        navigate('/dashboard');
+    }
+  };
   
   const handleEmailLogin = async e => {
     e.preventDefault();

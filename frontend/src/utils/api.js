@@ -280,6 +280,9 @@ export const transferAPI = {
   // Internal transfer
   transfer: (data) => api.post('/transfers', data),
   
+  // Send money to another user
+  send: (data) => api.post('/transfers/send', data),
+  
   // List transfers
   getTransfers: (params) => api.get('/transfers', { params }),
 };

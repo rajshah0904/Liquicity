@@ -49,6 +49,7 @@ import NotificationCenter from '../components/NotificationCenter';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import useBridgeWallet from '../hooks/useBridgeWallet';
 import useBridgeTransactions from '../hooks/useBridgeTransactions';
+import { calculateLiquicityBalance } from '../utils/balanceUtils';
 
 // Import our custom UI components
 import {
@@ -106,11 +107,11 @@ const Dashboard = () => {
 
   // Update balances whenever live wallet changes
   useEffect(() => {
-    if (bridgeWallet && bridgeWallet.balances) {
-      // Sum USD-equivalent balances (assuming balance field is numeric string)
-      const total = bridgeWallet.balances.reduce((acc, b) => acc + parseFloat(b.balance || 0), 0);
+    if (bridgeWallet) {
+      // Use new fiat_balance_by_rate calculation
+      const total = calculateLiquicityBalance(bridgeWallet);
       setMainBalance(total);
-      setMainCurrency('USD');
+      setMainCurrency(bridgeWallet.fiat_currency || 'USD');
     }
   }, [bridgeWallet]);
 

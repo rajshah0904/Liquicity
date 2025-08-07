@@ -5,6 +5,7 @@ from ..database import get_db
 from ..models import User, BridgeCustomer, BridgeWallet
 from ..bridge import BridgeClient
 from ..auth import get_current_user
+from ..utils.currency_utils import get_fiat_currency_from_region
 import logging
 import json
 import datetime
@@ -14,7 +15,8 @@ _log = logging.getLogger(__name__)
 
 
 def _lookup_user(db: Session, sub: str) -> Optional[User]:
-    return db.query(User).filter((User.auth0_id == sub) | (User.email == sub)).first()
+    """Look up user by Auth0 subject ID only - NEVER by email to prevent auth bugs"""
+    return db.query(User).filter(User.auth0_id == sub).first()
 
 
 @router.post("/link")
@@ -75,7 +77,13 @@ async def kyc_callback(request: Request, db: Session = Depends(get_db)):
                 bridge_customer = BridgeCustomer(
                     id=customer.get("id"),
                     user_id=user.id,
-                    status="active"
+                    first_name=customer.get("first_name"),
+                    last_name=customer.get("last_name"),
+                    email=customer.get("email"),
+                    status=customer.get("status", "active"),
+                    country=customer.get("country"),
+                    created_at=datetime.datetime.utcnow(),
+                    updated_at=datetime.datetime.utcnow()
                 )
                 db.add(bridge_customer)
                 db.flush()
@@ -91,18 +99,26 @@ async def kyc_callback(request: Request, db: Session = Depends(get_db)):
             try:
                 wallet = BridgeClient().create_wallet(bridge_customer.id, chain="solana")
                 
-                # Create BridgeWallet record
+                # Create BridgeWallet record with fiat currency mapping
+                fiat_currency = get_fiat_currency_from_region(user.region) if user.region else 'USD'
+                
                 bridge_wallet = BridgeWallet(
-                    id=wallet.get("id"),
+                    wallet_id=wallet.get("id"),
                     user_id=user.id,
                     customer_id=bridge_customer.id,
+                    chain=wallet.get("chain", "solana"),
                     address=wallet.get("address"),
-                    balances=wallet.get("balances", {})
+                    balances=wallet.get("balances", []),
+                    fiat_currency=fiat_currency,
+                    fiat_balance_by_rate={},
+                    created_at=datetime.datetime.utcnow(),
+                    updated_at=datetime.datetime.utcnow()
                 )
                 db.add(bridge_wallet)
                 db.flush()
                 
                 _log.info(f"Created Bridge wallet {bridge_wallet.id} for user {user.id}")
+                
             except Exception as e:
                 _log.error("create_wallet failed: %s", e)
                 # Non-fatal - wallet creation can be retried later

@@ -45,6 +45,7 @@ class User(Base):
     auth0_id   = Column(String(64), unique=True, nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    region     = Column(String(32), nullable=True)  # User's selected region: us, eu, mexico, brazil, colombia, peru, argentina
 
     bridge_customer       = relationship("BridgeCustomer", uselist=False, back_populates="user")
     bridge_wallets        = relationship("BridgeWallet", back_populates="user")
@@ -102,6 +103,8 @@ class BridgeWallet(Base):
     created_at = Column(DateTime)  # Bridge API timestamp
     updated_at = Column(DateTime)  # Bridge API timestamp
     balances   = Column(JSON, default=[])  # Array of balance objects from Bridge API
+    fiat_currency = Column(String(3), nullable=True)  # ISO code of wallet's "home" fiat currency
+    fiat_balance_by_rate = Column(JSON, default={})  # Map of locked-in buckets: { "rate": amount } per currency
 
     customer = relationship("BridgeCustomer", back_populates="bridge_wallets")
     user     = relationship("User", back_populates="bridge_wallets")
@@ -182,6 +185,7 @@ class Transfer(Base):
     client_reference_id       = Column(String(256))                  # Bridge API field
     amount                    = Column(String(50), nullable=False)   # Decimal string from Bridge API
     currency                  = Column(String(8), nullable=False)    # Bridge API field
+    transfer_type            = Column(SQLEnum(TransferType), nullable=True)
     on_behalf_of              = Column(String(50), nullable=False)   # Bridge customer ID
     developer_fee             = Column(String(50), nullable=False)   # Decimal string from Bridge API
     source                    = Column(JSON, nullable=False)         # Complete source object from Bridge API

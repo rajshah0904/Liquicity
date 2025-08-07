@@ -53,9 +53,12 @@ class BridgeClient:
         return resp.json()
 
     # ------------------ Public minimal methods ---------------
-    def request_tos_links(self) -> Dict[str, Any]:
+    def request_tos_links(self, redirect_uri: str = None) -> Dict[str, Any]:
         """Call POST /customers/tos_links"""
-        return self._post("/customers/tos_links", {})
+        payload = {}
+        if redirect_uri:
+            payload["redirect_uri"] = redirect_uri
+        return self._post("/customers/tos_links", payload)
 
     def create_customer(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Create Bridge customer (POST /customers). Payload must include signed_agreement_id"""

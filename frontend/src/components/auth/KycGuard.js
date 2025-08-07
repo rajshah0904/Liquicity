@@ -15,7 +15,11 @@ const KycGuard = ({ children }) => {
         return;
       }
       try {
-        const token = await getAccessTokenSilently();
+        const token = await getAccessTokenSilently({
+          authorizationParams: {
+            scope: 'openid profile email'
+          }
+        });
         const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
         const { exists, kyc_complete } = res.data;
         if (!exists) {

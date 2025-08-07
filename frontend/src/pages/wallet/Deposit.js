@@ -65,6 +65,7 @@ import {
 } from '../../components/animations/AnimatedComponents';
 
 import LinkPaymentDialog from '../../components/LinkPaymentDialog';
+import { calculateLiquicityBalance } from '../../utils/balanceUtils';
 
 // Replace the region detection with a function that gets the user's region directly from profile
 const getUserRegion = (userData) => {
@@ -153,10 +154,7 @@ export default function Deposit() {
   const fetchLinkedAccounts = async () => {
     setLoading(true);
     try {
-      // First sync accounts with Bridge to get latest status and balance
-      await externalAccountsAPI.syncAccounts();
-      
-      // Then fetch the updated accounts
+      // Fetch the accounts directly - no sync needed since we get fresh data from Bridge
       const response = await externalAccountsAPI.getAccounts();
       setLinkedAccounts(response.data.accounts || []);
     } catch (err) {
@@ -186,8 +184,9 @@ export default function Deposit() {
   // Update balance when bridgeWallet changes
   useEffect(() => {
     if (bridgeWallet) {
-      const total = bridgeWallet.balances?.reduce((s,b)=>s+parseFloat(b.balance||0),0) || 0;
-      setBalanceData({ total, available: total, currency: 'USD' });
+      const total = calculateLiquicityBalance(bridgeWallet);
+      const currency = bridgeWallet.fiat_currency || 'USD';
+      setBalanceData({ total, available: total, currency });
     }
   }, [bridgeWallet]);
 
@@ -286,8 +285,11 @@ export default function Deposit() {
       onSuccess: async (publicToken, metadata) => {
         try {
           setLoading(true);
-          // Exchange the public token via Bridge
-          await externalAccountsAPI.exchangePlaidToken(linkTokenUsed, publicToken);
+          // Exchange the public token via Bridge with institution metadata
+          await externalAccountsAPI.exchangePlaidToken(linkTokenUsed, publicToken, {
+            institution_name: metadata.institution?.name,
+            institution_id: metadata.institution?.institution_id
+          });
           
           // Fetch updated list of accounts after linking
           fetchLinkedAccounts();
@@ -507,9 +509,9 @@ export default function Deposit() {
                     <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
                       <CircularProgress />
                     </Box>
-                  ) : linkedAccounts.length > 0 ? (
+                  ) : linkedAccounts.filter(account => account.active).length > 0 ? (
                     <List disablePadding>
-                      {linkedAccounts.map(account => (
+                      {linkedAccounts.filter(account => account.active).map(account => (
                         <ListItem 
                           key={account.id}
                           sx={{ 

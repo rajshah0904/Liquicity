@@ -21,14 +21,23 @@ def register(
     auth_user: Auth0User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # DEBUG: Log the Auth0 user info and payload
+    _log.info(f"register called with Auth0 user: id={auth_user.id}, email={auth_user.email}")
+    _log.info(f"register payload: {payload}")
+    
     # Prefer email from token, but fallback to body payload
     email = auth_user.email or (payload.email if payload else None)
     auth0_id = auth_user.id
+    
+    _log.info(f"Final email resolved: {email} (from token: {auth_user.email}, from payload: {payload.email if payload else 'No payload'})")
+    
     if not email:
+        _log.error(f"REGISTRATION_FAILED: No email available - Auth0_token_email={auth_user.email}, payload_email={payload.email if payload else 'No payload'}")
         raise HTTPException(status_code=400, detail="email claim missing in token")
 
     user = db.query(User).filter(User.auth0_id == auth0_id).first()
     if not user:
+        _log.info(f"Creating new user: email={email}, auth0_id={auth0_id}")
         user = User(
             email=email,
             auth0_id=auth0_id
@@ -36,12 +45,14 @@ def register(
         db.add(user)
         db.commit()
 
+        _log.info(f"Successfully created user: {user.id}")
         return {
             "id": str(user.id),
             "email": user.email,
         }
 
     # If the user already exists we shouldn't re-register – tell the client.
+    _log.warning(f"User already exists: {user.email} (ID: {user.id})")
     raise HTTPException(status_code=409, detail="Account already exists")
 
 @router.post("/tos/accepted")
