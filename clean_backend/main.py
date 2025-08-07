@@ -1,7 +1,5 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from .database import get_db, test_connection
 from .routers.onboarding import router as onboard_router
 from .routers.user_check import router as user_router
 from .routers.kyc import router as kyc_router
@@ -13,28 +11,10 @@ from .routers.virtual_accounts import router as va_router
 from .routers.webhooks import router as webhook_router
 from .routers.transfer import router as transfer_router, public_router as transfer_public_router
 from .routers.crypto import router as crypto_router
+from VelaFi.onramp import router as onramp_router
+from VelaFi.webhooks import router as velafi_webhook_router
 
 app = FastAPI(title="Liquicity Clean API")
-
-# Health check endpoint
-@app.get("/health")
-async def health_check():
-    """Health check endpoint"""
-    return {"status": "healthy", "service": "liquicity-api"}
-
-@app.get("/health/db")
-async def database_health_check(db: Session = Depends(get_db)):
-    """Database health check endpoint"""
-    try:
-        # Test database connection
-        if test_connection():
-            return {"status": "healthy", "database": "connected"}
-        else:
-            return {"status": "unhealthy", "database": "disconnected"}
-    except Exception as e:
-        return {"status": "unhealthy", "database": "error", "message": str(e)}
-
-# Include all routers
 app.include_router(onboard_router) 
 app.include_router(user_router)
 app.include_router(kyc_router)
@@ -47,6 +27,9 @@ app.include_router(webhook_router)
 app.include_router(transfer_router)
 app.include_router(transfer_public_router)
 app.include_router(crypto_router)
+# VelaFi on-ramp routes
+app.include_router(onramp_router)
+app.include_router(velafi_webhook_router)
 
 # --- CORS so that http://localhost:3000 front-end can call the API ---
 app.add_middleware(
