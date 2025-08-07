@@ -1,11 +1,10 @@
 """Async client wrapper for the VelaFi REST API.
 
-Only the public method signatures are implemented at this stage. Logic will be
-added in subsequent sub-tasks.
+Only the public method signatures are implemented at this stage. Logic still will need to be
+added 
 """
 from __future__ import annotations
 
-import aiohttp
 import asyncio
 import hashlib
 import hmac
@@ -15,15 +14,14 @@ import time
 from dataclasses import dataclass
 from typing import Any, Dict, Optional, Union
 
+import aiohttp
 from pydantic import BaseModel, Field
 
 _logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Pydantic models – request / response stubs (will be fleshed out later)
-# ---------------------------------------------------------------------------
 
+# Pydantic models – request / response stubs 
 
 class PaymentMethod(BaseModel):
     id: str
@@ -54,10 +52,7 @@ class VelafiError(RuntimeError):
         self.details = details or {}
 
 
-# ---------------------------------------------------------------------------
-# VelafiClient
-# ---------------------------------------------------------------------------
-
+#VelaFi Client
 
 class VelafiClient:
     """Lightweight async HTTP client for VelaFi API.
@@ -65,7 +60,7 @@ class VelafiClient:
     Parameters
     ----------
     api_key:
-        Secret key issued by VelaFi dashboard. If *None*, the client will look
+        Secret key issued by VelaFi. If *None*, the client will look
         for ``VELAFI_API_KEY`` in the environment at runtime (deferred import
         to avoid settings dependency during bootstrap).
     base_url:
@@ -91,13 +86,11 @@ class VelafiClient:
         self.timeout = timeout
         self._session: Optional[aiohttp.ClientSession] = None
 
-        # Basic back-off config (can be overridden later)
+        #CHANGE THIS LATER (BASIC CONFIG)
         self.retry_attempts = 3
         self.retry_backoff = 0.5  # seconds, will double per attempt
 
-    # ---------------------------------------------------------------------
-    # Context manager helpers
-    # ---------------------------------------------------------------------
+    #Context Manager 
 
     async def __aenter__(self):
         await self._ensure_session()
@@ -107,9 +100,70 @@ class VelafiClient:
         if self._session and not self._session.closed:
             await self._session.close()
 
-    # ---------------------------------------------------------------------
-    # Public API stubs – implementation in later tasks
-    # ---------------------------------------------------------------------
+    async def _ensure_session(self):
+        """Ensure aiohttp session is available."""
+        if self._session is None or self._session.closed:
+            timeout = aiohttp.ClientTimeout(total=self.timeout)
+            self._session = aiohttp.ClientSession(timeout=timeout)
+
+    async def _request(self, method: str, path: str, *, payload: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None) -> Dict[str, Any]:
+        """Make an HTTP request to the VelaFi API."""
+        await self._ensure_session()
+        
+        url = f"{self.base_url}{path}"
+        request_headers = {
+            "Authorization": f"Bearer {self.api_key}",
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+        }
+        
+        if headers:
+            request_headers.update(headers)
+        
+        try:
+            async with self._session.request(
+                method, url, json=payload, headers=request_headers
+            ) as response:
+                if response.status >= 400:
+                    error_text = await response.text()
+                    try:
+                        error_data = await response.json()
+                    except:
+                        error_data = {"message": error_text}
+                    
+                    raise VelafiError(
+                        status=response.status,
+                        message=error_data.get("message", f"HTTP {response.status}"),
+                        details=error_data
+                    )
+                
+                if response.status == 204:  # No content
+                    return {}
+                
+                return await response.json()
+                
+        except aiohttp.ClientError as e:
+            raise VelafiError(0, f"Network error: {e}")
+
+    def _generate_idempotency_key(self, payload: Dict[str, Any]) -> str:
+        """Generate an idempotency key from payload."""
+        payload_str = json.dumps(payload, sort_keys=True)
+        return hashlib.sha256(payload_str.encode()).hexdigest()
+
+    def _parse_order(self, data: Dict[str, Any]) -> OnRampOrder:
+        """Parse order response into OnRampOrder model."""
+        return OnRampOrder(
+            id=data.get("id"),
+            status=data.get("status"),
+            fiat_amount=data.get("amount") or data.get("fiat_amount"),
+            fiat_currency=data.get("currency") or data.get("fiat_currency", "USD"),
+            usdc_amount=data.get("usdc_amount"),
+            quote_rate=data.get("quote_rate"),
+            fee_usd=data.get("fee_usd"),
+            raw=data,
+        )
+
+    #Public API 
 
     async def add_payment_method(self, plaid_token: str, *, user_id: str) -> PaymentMethod:
         """Create & return a VelaFi payment method for the given Plaid token.
@@ -175,94 +229,208 @@ class VelafiClient:
         resp = await self._request("GET", path)
         return self._parse_order(resp)
 
-    # ------------------------------------------------------------------
-    # Signature verification helper (webhooks)
-    # ------------------------------------------------------------------
+    async def get_account(self) -> Dict[str, Any]:
+        """Return account details for the authenticated API key (no side-effects).
+
+        Endpoint: ``GET /v1/account`` – documented in VelaFi API reference › Account › Get Account Details.
+        Suitable for sandbox key validation.
+        """
+        path = "/v1/account"
+        return await self._request("GET", path)
+
+    async def get_wallets(self, limit: int = 10) -> list[Dict[str, Any]]:
+        """Retrieve a list of wallets (experimental – may not be available in all tenants)."""
+        path = "/v1/wallets"
+        return await self._request("GET", path)  # returns list or {"data": [...]}
+
+    #Ref data/Quotes (read only data)
+
+    async def list_countries(self) -> list[Dict[str, Any]]:
+        """Return list of supported countries (docs › Basic Configuration › Get List of Countries)."""
+        return await self._request("GET", "/v1/basic/countries")
+
+    async def get_countries(self) -> list[Dict[str, Any]]:
+        """Alias for list_countries."""
+        return await self.list_countries()
+
+    async def list_fiat_currencies(self) -> list[Dict[str, Any]]:
+        return await self._request("GET", "/v1/basic/fiat_currencies")
+
+    async def list_crypto_currencies(self) -> list[Dict[str, Any]]:
+        return await self._request("GET", "/v1/basic/crypto_currencies")
+
+    async def list_pairs(self, pair_type: str = "fiat_crypto") -> list[Dict[str, Any]]:
+        """Return currency pairs.
+
+        pair_type: one of `fiat_crypto`, `crypto_fiat`, `fiat_fiat`
+        """
+        return await self._request("GET", f"/v1/basic/pairs?type={pair_type}")
+
+    async def get_quote(self, fiat_amount: float, fiat_currency: str, country: str) -> Dict[str, Any]:
+        """Get a quote for fiat to crypto conversion."""
+        payload = {
+            "fiat_amount": str(fiat_amount),
+            "fiat_currency": fiat_currency,
+            "country": country
+        }
+        return await self._request("POST", "/v1/quotes", payload=payload)
+
+    async def get_quote_crypto_to_fiat(
+        self,
+        user_id: str,
+        crypto_symbol: str,
+        fiat_symbol: str,
+        crypto_amount: str,
+    ) -> Dict[str, Any]:
+        """Return a quote object converting crypto→fiat (docs › Quote)."""
+        payload = {
+            "user_id": user_id,
+            "from_symbol": crypto_symbol,
+            "to_symbol": fiat_symbol,
+            "from_amount": crypto_amount,
+        }
+        return await self._request("POST", "/v1/quote/crypto_to_fiat", payload=payload)
+
+    async def get_quote_fiat_to_fiat(
+        self,
+        user_id: str,
+        from_currency: str,
+        to_currency: str,
+        fiat_amount: str,
+    ) -> Dict[str, Any]:
+        payload = {
+            "user_id": user_id,
+            "from_currency": from_currency,
+            "to_currency": to_currency,
+            "from_amount": fiat_amount,
+        }
+        return await self._request("POST", "/v1/quote/fiat_to_fiat", payload=payload)
+
+    #Payment Methods
+
+    async def list_payment_templates(self) -> list[Dict[str, Any]]:
+        """Return available bank/rail templates (docs › Payment Method › Get Payment Templates)."""
+        return await self._request("GET", "/v1/payment_methods/templates")
+
+    async def get_payment_method(self, payment_method_id: str) -> Dict[str, Any]:
+        path = f"/v1/payment_methods/{payment_method_id}"
+        return await self._request("GET", path)
+
+    async def delete_payment_method(self, payment_method_id: str) -> None:
+        path = f"/v1/payment_methods/{payment_method_id}"
+        await self._request("DELETE", path)
+
+    async def set_refund_account(self, payment_method_id: str, account_id: str) -> Dict[str, Any]:
+        """Associate a refund account with an existing payment-method."""
+        path = f"/v1/payment_methods/{payment_method_id}/refund_account"
+        payload = {"refund_account_id": account_id}
+        return await self._request("PATCH", path, payload=payload)
+
+    # ------------------------- KYC Methods -------------------------
+    
+    async def create_customer(self, customer_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a VelaFi customer for KYC purposes.
+        
+        Endpoint: POST /v1/customers
+        """
+        path = "/v1/customers"
+        headers = {
+            "Idempotency-Key": self._generate_idempotency_key(customer_data),
+        }
+        return await self._request("POST", path, payload=customer_data, headers=headers)
+    
+    async def get_customer(self, customer_id: str) -> Dict[str, Any]:
+        """Get customer details from VelaFi.
+        
+        Endpoint: GET /v1/customers/{customer_id}
+        """
+        path = f"/v1/customers/{customer_id}"
+        return await self._request("GET", path)
+    
+    async def update_customer(self, customer_id: str, customer_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Update customer information in VelaFi.
+        
+        Endpoint: PUT /v1/customers/{customer_id}
+        """
+        path = f"/v1/customers/{customer_id}"
+        headers = {
+            "Idempotency-Key": self._generate_idempotency_key(customer_data),
+        }
+        return await self._request("PUT", path, payload=customer_data, headers=headers)
+    
+    async def create_kyc_session(self, customer_id: str, kyc_data: Dict[str, Any]) -> Dict[str, Any]:
+        """Create a KYC session for document verification.
+        
+        Endpoint: POST /v1/customers/{customer_id}/kyc_sessions
+        """
+        path = f"/v1/customers/{customer_id}/kyc_sessions"
+        headers = {
+            "Idempotency-Key": self._generate_idempotency_key(kyc_data),
+        }
+        return await self._request("POST", path, payload=kyc_data, headers=headers)
+    
+    async def get_kyc_status(self, customer_id: str) -> Dict[str, Any]:
+        """Get KYC verification status for a customer.
+        
+        Endpoint: GET /v1/customers/{customer_id}/kyc_status
+        """
+        path = f"/v1/customers/{customer_id}/kyc_status"
+        return await self._request("GET", path)
+    
+    async def upload_document(self, customer_id: str, document_type: str, file_data: bytes, filename: str) -> Dict[str, Any]:
+        """Upload a KYC document to VelaFi.
+        
+        Endpoint: POST /v1/customers/{customer_id}/documents
+        """
+        path = f"/v1/customers/{customer_id}/documents"
+        
+        # Prepare multipart form data
+        form_data = aiohttp.FormData()
+        form_data.add_field('document_type', document_type)
+        form_data.add_field('file', file_data, filename=filename)
+        
+        headers = {
+            "Idempotency-Key": self._generate_idempotency_key({"document_type": document_type, "filename": filename}),
+        }
+        
+        return await self._request("POST", path, form_data=form_data, headers=headers)
+    
+    async def list_kyc_documents(self, customer_id: str) -> list[Dict[str, Any]]:
+        """List all KYC documents for a customer.
+        
+        Endpoint: GET /v1/customers/{customer_id}/documents
+        """
+        path = f"/v1/customers/{customer_id}/documents"
+        return await self._request("GET", path)
+    
+    async def delete_kyc_document(self, customer_id: str, document_id: str) -> None:
+        """Delete a KYC document.
+
+        Endpoint: DELETE /v1/customers/{customer_id}/documents/{document_id}
+        """
+        path = f"/v1/customers/{customer_id}/documents/{document_id}"
+        await self._request("DELETE", path)
+
+    #Signature VErification ( Use a diff method for this later)
 
     def verify_signature(self, payload: bytes, signature_header: str, secret: str) -> bool:
-        """Verify `x-velafi-signature` HMAC header.
+        """Verify the `x-velafi-signature` HMAC header sent by VelaFi webhooks.
 
-        Header format: ``t=timestamp,v1=hex_signature``. Timestamp tolerance is
-        not checked here – caller should compare to an acceptable window.
+        Header format: ``t=timestamp,v1=hex_digest``.  We recompute the digest
+        using the shared webhook secret and constant-time compare.
         """
+
         try:
-            parts = {k: v for k, v in (kv.split("=", 1) for kv in signature_header.split(","))}
+            # Split header like "t=1705368000,v1=abc123..."
+            parts = dict(kv.split("=", 1) for kv in signature_header.split(","))
+            timestamp = parts.get("t")
+            their_sig = parts.get("v1")
         except ValueError:
             return False
 
-        timestamp = parts.get("t")
-        signature = parts.get("v1")
-        if not (timestamp and signature):
+        if not (timestamp and their_sig):
             return False
 
-        signed_payload = f"{timestamp}.{payload.decode()}".encode()
-        expected_sig = hmac.new(secret.encode(), signed_payload, hashlib.sha256).hexdigest()
-        return hmac.compare_digest(expected_sig, signature)
-
-    # ------------------------------------------------------------------
-    # Internal helpers
-    # ------------------------------------------------------------------
-
-    async def _ensure_session(self) -> aiohttp.ClientSession:
-        if self._session is None or self._session.closed:
-            timeout = aiohttp.ClientTimeout(total=self.timeout, connect=10)
-            self._session = aiohttp.ClientSession(
-                timeout=timeout,
-                headers={
-                    "Authorization": f"Bearer {self.api_key}",
-                    "Content-Type": "application/json",
-                    "User-Agent": "Liquicity-VelaFi-Client/1.0",
-                },
-            )
-        return self._session
-
-    async def _request(
-        self,
-        method: str,
-        path: str,
-        *,
-        payload: Optional[Dict[str, Any]] = None,
-        headers: Optional[Dict[str, str]] = None,
-    ) -> Dict[str, Any]:
-        url = f"{self.base_url}{path}"
-        attempt = 0
-        while True:
-            attempt += 1
-            try:
-                session = await self._ensure_session()
-                req_headers = headers or {}
-                async with session.request(method.upper(), url, json=payload, headers=req_headers) as resp:
-                    if resp.status >= 400:
-                        text = await resp.text()
-                        raise VelafiError(resp.status, text)
-                    return await resp.json()
-            except Exception as exc:  # noqa: BLE001 – propagate generic
-                if attempt > self.retry_attempts:
-                    _logger.error("VelaFi request failed after %s attempts: %s", attempt, exc)
-                    raise
-                backoff = self.retry_backoff * (2 ** (attempt - 1))
-                _logger.warning("VelaFi request failed (attempt %s), retrying in %.2fs", attempt, backoff)
-                await asyncio.sleep(backoff)
-
-    @staticmethod
-    def _generate_idempotency_key(seed: Dict[str, Any]) -> str:
-        """Return a SHA-256 digest suitable for VelaFi idempotency header."""
-        json_blob = json.dumps(seed, sort_keys=True).encode()
-        return hashlib.sha256(json_blob).hexdigest()
-
-    # ------------------------------------------------------------------
-    # Parsing helpers
-    # ------------------------------------------------------------------
-
-    @staticmethod
-    def _parse_order(data: Dict[str, Any]) -> OnRampOrder:
-        return OnRampOrder(
-            id=data.get("id"),
-            status=data.get("status"),
-            fiat_amount=str(data.get("fiat_amount") or data.get("amount")),
-            fiat_currency=data.get("fiat_currency", "USD"),
-            usdc_amount=str(data.get("usdc_amount") or data.get("crypto_amount")) if data.get("usdc_amount") or data.get("crypto_amount") else None,
-            quote_rate=str(data.get("quote_rate")) if data.get("quote_rate") else None,
-            fee_usd=str(data.get("fee_usd")) if data.get("fee_usd") else None,
-            raw=data,
-        ) 
+        signed = f"{timestamp}.{payload.decode()}".encode()
+        expected_sig = hmac.new(secret.encode(), signed, hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected_sig, their_sig)

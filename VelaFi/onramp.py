@@ -6,27 +6,26 @@ These routes are consumed by the frontend Plaid flow and internal services to
 kick-off fiat→crypto on-ramp orders.
 """
 
+import hashlib
 import logging
 from decimal import Decimal
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field, PositiveInt, constr
 from sqlalchemy.orm import Session
-
-import hashlib
-
-from VelaFi.models import OnRampPaymentMethod, OnRampOrder, OrderStatus
 
 # NOTE: These imports reference the existing backend modules. Adjust paths if your
 # project structure differs.
 from clean_backend.auth import get_current_user  # Auth0 dependency
 from clean_backend.database import get_db
 from clean_backend.services.security import EnhancedSecurityService, SecurityContext
+from VelaFi.deps import velafi_client_dep
+from VelaFi.models import OnRampOrder, OnRampPaymentMethod, OrderStatus
+from VelaFi.services.payment_method_service import PaymentMethodService
 
 # VelaFi client wrapper
 from VelaFi.velafi_client import VelafiError
-from VelaFi.deps import velafi_client_dep
 
 _log = logging.getLogger(__name__)
 
@@ -79,32 +78,14 @@ async def create_payment_method(
     """Add a new payment method in VelaFi based on Plaid public token."""
 
     user_id = jwt.get("sub")
+    svc = PaymentMethodService(db)
     try:
-        pm = await velafi_client.add_payment_method(body.plaid_token, user_id=user_id)
+        remote_pm = await svc.add_payment_method(body.plaid_token, user_id=user_id)
     except VelafiError as e:
         _log.error("VelaFi add_payment_method failed: %s", e)
         raise HTTPException(status_code=502, detail="VelaFi unreachable")
 
-    # Persist record (upsert by payment_method_id)
-    plaid_hash = hashlib.sha256(body.plaid_token.encode()).hexdigest()
-    existing = db.query(OnRampPaymentMethod).filter_by(payment_method_id=pm.id).first()
-    if existing:
-        existing.raw_payload = pm.raw  # update in case of changes
-        db.commit()
-    else:
-        rec = OnRampPaymentMethod(
-            user_id=user_id,
-            payment_method_id=pm.id,
-            plaid_token_hash=plaid_hash,
-            fiat_rail=pm.fiat_rail,
-            country=pm.country,
-            currency=pm.currency,
-            raw_payload=pm.raw,
-        )
-        db.add(rec)
-        db.commit()
-
-    return PaymentMethodRes.model_validate(pm.model_dump())
+    return PaymentMethodRes.model_validate(remote_pm)
 
 
 @router.post("/order", response_model=OrderRes, status_code=status.HTTP_201_CREATED)
