@@ -292,6 +292,18 @@ export const transferAPI = {
   getTransfers: (params) => api.get('/transfers', { params }),
 };
 
+// VelaFi LATAM endpoints
+export const velafiAPI = {
+  // KYC
+  createCustomer: (data) => api.post('/velafi/customers', data),
+  uploadDocument: (customerId, data) => api.post(`/velafi/customers/${customerId}/documents`, data),
+  
+  // Quotes & Orders
+  getQuote: (data) => api.post('/velafi/quote', data),
+  createOrder: (data) => api.post('/velafi/orders', data),
+  getOrder: (orderId) => api.get(`/velafi/orders/${orderId}`),
+};
+
 // Requests (P2P payment requests)
 export const requestsAPI = {
   create: (payload, options = {}) => api.post('/requests', payload, options),

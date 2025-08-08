@@ -3,9 +3,14 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from clean_backend.routers.velafi import (
+    router as velafi_router,
+)
+from clean_backend.routers.velafi import (
+    webhook_router as velafi_webhook_router,
+)
 from clean_backend.services.velafi_monitor import run_monitor
 from VelaFi.onramp import router as onramp_router
-from VelaFi.webhooks import router as velafi_webhook_router
 
 from .routers.card import router as card_router
 from .routers.crypto import router as crypto_router
@@ -36,6 +41,7 @@ app.include_router(crypto_router)
 
 # VelaFi on-ramp routes
 app.include_router(onramp_router)
+app.include_router(velafi_router)
 app.include_router(velafi_webhook_router)
 
 # Start background tasks

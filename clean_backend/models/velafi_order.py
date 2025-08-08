@@ -4,8 +4,8 @@ A separate file keeps the LATAM-specific integration isolated from the core Brid
 models defined in `clean_backend/models.py`.
 """
 import enum
-# Note: no direct datetime usage required here; timestamps come from SQL defaults
 
+# Note: no direct datetime usage required here; timestamps come from SQL defaults
 from sqlalchemy import (
     Column,
     DateTime,

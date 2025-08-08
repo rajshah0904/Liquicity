@@ -14,13 +14,12 @@ import {
   ListItemText,
   Paper,
   TextField,
-  Typography,
-  useMediaQuery,
-  useTheme
+  Typography
 } from '@mui/material';
 import { motion } from 'framer-motion';
 import React, { useEffect, useState } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useLocation } from 'react-router-dom';
+import LatamDepositForm from '../../components/LatamDepositForm';
 import useBridgeWallet from '../../hooks/useBridgeWallet';
 import { authAPI, externalAccountsAPI, transferAPI } from '../../utils/api';
 
@@ -38,8 +37,12 @@ const getUserRegion = (userData) => {
   const country = userData?.country || 'US';
   
   // Map country to region and currency
-  if (country === 'MX') return { region: 'mx', currency: 'mxn' };
-  if (country === 'US') return { region: 'us', currency: 'usd' };
+  if (country === 'MX') return { region: 'mx', currency: 'mxn', country_code: 'MX' };
+  if (country === 'BR') return { region: 'br', currency: 'brl', country_code: 'BR' };
+  if (country === 'AR') return { region: 'ar', currency: 'ars', country_code: 'AR' };
+  if (country === 'CO') return { region: 'co', currency: 'cop', country_code: 'CO' };
+  if (country === 'PE') return { region: 'pe', currency: 'pen', country_code: 'PE' };
+  if (country === 'US') return { region: 'us', currency: 'usd', country_code: 'US' };
   
   // Check if country is in EU
   const EU_COUNTRIES = [
@@ -48,10 +51,10 @@ const getUserRegion = (userData) => {
     'PL','PT','RO','SE','SI','SK'
   ];
   
-  if (EU_COUNTRIES.includes(country)) return { region: 'eu', currency: 'eur' };
+  if (EU_COUNTRIES.includes(country)) return { region: 'eu', currency: 'eur', country_code: country };
   
   // Default to US if unknown
-  return { region: 'us', currency: 'usd' };
+  return { region: 'us', currency: 'usd', country_code: 'US' };
 };
 
 // Add a helper function to get the correct currency symbol
@@ -96,16 +99,15 @@ export default function Deposit() {
     }
   });
   
-  const [plaidLinkToken, setPlaidLinkToken] = useState(null);
+  // const [plaidLinkToken, setPlaidLinkToken] = useState(null);
   
-  const { wallet: bridgeWallet, loading: walletLoading } = useBridgeWallet();
+  const { wallet: bridgeWallet } = useBridgeWallet();
   const [balanceData, setBalanceData] = useState({ total: 0, available: 0, currency: 'USD' });
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
   
-  const navigate = useNavigate();
+  // const navigate = useNavigate();
   const location = useLocation();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  // const theme = useTheme();
   const isLinkBankMode = location.pathname.includes('/link-bank');
 
   // If deposit page is opened with ?action=link-account, just show link-bank step
@@ -114,7 +116,7 @@ export default function Deposit() {
     if (params.get('action') === 'link-account' || isLinkBankMode) {
       setStep('link-bank');
     }
-  }, [location.pathname, location.search]);
+  }, [location.pathname, location.search, isLinkBankMode]);
 
   const fetchLinkedAccounts = async () => {
     setLoading(true);
@@ -180,13 +182,13 @@ export default function Deposit() {
     }));
   };
 
-  const handleNewAccountChange = (e) => {
-    const { name, value } = e.target;
-    setNewAccountForm((prev) => ({ 
-      ...prev, 
-      [name]: value 
-    }));
-  };
+  // const handleNewAccountChange = (e) => {
+  //   const { name, value } = e.target;
+  //   setNewAccountForm((prev) => ({ 
+  //     ...prev, 
+  //     [name]: value 
+  //   }));
+  // };
 
   const handleSelectAccount = (accountId) => {
     setForm((prev) => ({ 
@@ -372,35 +374,35 @@ export default function Deposit() {
     }
   };
 
-  const itemVariants = {
-    initial: { opacity: 0, y: 20 },
-    animate: { 
-      opacity: 1, 
-      y: 0,
-      transition: { type: "spring", damping: 15 }
-    }
-  };
+  // const itemVariants = {
+  //   initial: { opacity: 0, y: 20 },
+  //   animate: { 
+  //     opacity: 1, 
+  //     y: 0,
+  //     transition: { type: "spring", damping: 15 }
+  //   }
+  // };
 
   // Get rail name based on user's region
-  const getRailName = () => {
-    switch (userRegion.region) {
-      case 'us': return 'ACH';
-      case 'eu': return 'SEPA';
-      case 'mx': return 'SPEI';
-      default: return 'Bank Transfer';
-    }
-  };
+  // const getRailName = () => {
+  //   switch (userRegion.region) {
+  //     case 'us': return 'ACH';
+  //     case 'eu': return 'SEPA';
+  //     case 'mx': return 'SPEI';
+  //     default: return 'Bank Transfer';
+  //   }
+  // };
 
   // Set up the "Add Account" click handler to automatically direct users based on region
-  const handleAddAccount = () => {
-    if (userRegion.region === 'us') {
-      // US users go to Plaid
-      initializePlaidLink();
-    } else {
-      // Non-US users go to manual entry
-      setStep('link-bank');
-    }
-  };
+  // const handleAddAccount = () => {
+  //   if (userRegion.region === 'us') {
+  //     // US users go to Plaid
+  //     initializePlaidLink();
+  //   } else {
+  //     // Non-US users go to manual entry
+  //     setStep('link-bank');
+  //   }
+  // };
 
   return (
     <Box 
@@ -753,8 +755,18 @@ export default function Deposit() {
                 </>
               )}
               
-              {/* Step 3: Deposit Form */}
+              {/* Step 3: Deposit Form (Bridge for US/EU) or LATAM VelaFi */}
               {step === 'deposit-form' && (
+                userRegion.region === 'mx' || userRegion.region === 'br' || userRegion.region === 'ar' || userRegion.region === 'co' || userRegion.region === 'pe' ? (
+                  <LatamDepositForm
+                    userRegion={userRegion}
+                    onBack={handleBack}
+                    onSuccess={(data) => {
+                      setSuccess(data);
+                      setStep('select-method');
+                    }}
+                  />
+                ) : (
                 <>
                   <Typography variant="h6" fontWeight="600" sx={{ mb: 3 }}>
                     Make a Deposit
@@ -830,6 +842,7 @@ export default function Deposit() {
                     </Alert>
                   )}
                 </>
+                )
               )}
             </Paper>
           </Grid>
