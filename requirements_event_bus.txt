@@ -1,0 +1,16 @@
+# Event Bus Dependencies
+redis>=5.0.0
+aioredis>=2.0.0
+
+# Optional: For advanced message brokers
+# kafka-python>=2.0.0
+# nats-py>=2.0.0
+# pika>=1.3.0  # RabbitMQ
+
+# Monitoring and observability
+prometheus-client>=0.17.0
+structlog>=23.0.0
+
+# Testing
+pytest-asyncio>=0.21.0
+pytest-mock>=3.10.0 

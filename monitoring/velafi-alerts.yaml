@@ -1,0 +1,145 @@
+# Cloud Monitoring alert policies for VelaFi integration
+displayName: VelaFi Integration Alerts
+documentation:
+  content: |
+    Alert policies for monitoring VelaFi LATAM on/off-ramp integration:
+    - Webhook signature verification failures
+    - Order status polling failures
+    - Long-pending orders
+    - API errors and timeouts
+    - KYC status changes
+  mimeType: text/markdown
+
+policies:
+  # Monitor webhook signature verification failures
+  - displayName: VelaFi Webhook Signature Failures
+    conditions:
+      - displayName: High webhook signature verification failure rate
+        filter: |
+          resource.type = "cloud_run_revision"
+          resource.labels.service_name = "liquicity-backend"
+          severity = "ERROR"
+          jsonPayload.message =~ "Invalid webhook signature"
+        thresholdValue: 5
+        duration: 300s
+        trigger:
+          count: 1
+    alertStrategy:
+      autoClose: 7200s
+    notificationChannels:
+      - channel: slack
+        name: "#velafi-alerts"
+
+  # Monitor order status polling failures
+  - displayName: VelaFi Order Status Polling Failures
+    conditions:
+      - displayName: High order polling failure rate
+        filter: |
+          resource.type = "cloud_run_revision"
+          resource.labels.service_name = "liquicity-backend"
+          severity = "ERROR"
+          jsonPayload.message =~ "Error polling order"
+        thresholdValue: 10
+        duration: 300s
+        trigger:
+          count: 1
+    alertStrategy:
+      autoClose: 7200s
+    notificationChannels:
+      - channel: slack
+        name: "#velafi-alerts"
+
+  # Monitor long-pending orders
+  - displayName: VelaFi Long-Pending Orders
+    conditions:
+      - displayName: Orders pending for more than 30 minutes
+        filter: |
+          resource.type = "cloud_run_revision"
+          resource.labels.service_name = "liquicity-backend"
+          severity = "WARNING"
+          jsonPayload.message =~ "Order pending for more than 30 minutes"
+        thresholdValue: 1
+        duration: 1800s
+        trigger:
+          count: 1
+    alertStrategy:
+      autoClose: 7200s
+    notificationChannels:
+      - channel: slack
+        name: "#velafi-alerts"
+
+  # Monitor API errors and timeouts
+  - displayName: VelaFi API Errors
+    conditions:
+      - displayName: High API error rate
+        filter: |
+          resource.type = "cloud_run_revision"
+          resource.labels.service_name = "liquicity-backend"
+          severity = "ERROR"
+          jsonPayload.message =~ "VelaFiError"
+        thresholdValue: 10
+        duration: 300s
+        trigger:
+          count: 1
+    alertStrategy:
+      autoClose: 7200s
+    notificationChannels:
+      - channel: slack
+        name: "#velafi-alerts"
+
+  # Monitor KYC status changes
+  - displayName: VelaFi KYC Status Changes
+    conditions:
+      - displayName: KYC status changes to failed
+        filter: |
+          resource.type = "cloud_run_revision"
+          resource.labels.service_name = "liquicity-backend"
+          severity = "WARNING"
+          jsonPayload.message =~ "KYC status changed to failed"
+        thresholdValue: 1
+        duration: 60s
+        trigger:
+          count: 1
+    alertStrategy:
+      autoClose: 7200s
+    notificationChannels:
+      - channel: slack
+        name: "#velafi-alerts"
+
+  # Monitor order completion failures
+  - displayName: VelaFi Order Completion Failures
+    conditions:
+      - displayName: Order completion failures
+        filter: |
+          resource.type = "cloud_run_revision"
+          resource.labels.service_name = "liquicity-backend"
+          severity = "ERROR"
+          jsonPayload.message =~ "Order failed"
+        thresholdValue: 1
+        duration: 60s
+        trigger:
+          count: 1
+    alertStrategy:
+      autoClose: 7200s
+    notificationChannels:
+      - channel: slack
+        name: "#velafi-alerts"
+
+  # Monitor monitor service health
+  - displayName: VelaFi Monitor Service Health
+    conditions:
+      - displayName: Monitor service failures
+        filter: |
+          resource.type = "cloud_run_revision"
+          resource.labels.service_name = "liquicity-backend"
+          severity = "ERROR"
+          jsonPayload.message =~ "Monitor run failed"
+        thresholdValue: 3
+        duration: 300s
+        trigger:
+          count: 1
+    alertStrategy:
+      autoClose: 7200s
+    notificationChannels:
+      - channel: slack
+        name: "#velafi-alerts"

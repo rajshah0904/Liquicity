@@ -1,12 +1,13 @@
+import enum
 import uuid
 from datetime import datetime
-from sqlalchemy import (
-    Column, String, DateTime, ForeignKey,
-    Enum as SQLEnum, Numeric, JSON, Boolean
-)
+
+from sqlalchemy import JSON, Boolean, Column, DateTime, ForeignKey, Numeric, String
+from sqlalchemy import Enum as SQLEnum
 from sqlalchemy.dialects.postgresql import UUID
 from sqlalchemy.orm import relationship
-import enum
+from sqlalchemy.sql import func
+
 from .database import Base
 
 # --- ENUMS ---
@@ -53,6 +54,7 @@ class User(Base):
     virtual_accounts      = relationship("VirtualAccount", back_populates="user")
     transfers             = relationship("Transfer", back_populates="user")
     liquidation_addresses = relationship("LiquidationAddress", back_populates="user")
+    velafi_orders         = relationship("VelafiOrder", back_populates="user")
 
 
 # --- BRIDGE CUSTOMER ---
@@ -175,23 +177,28 @@ class VirtualAccount(Base):
 
 class Transfer(Base):
     __tablename__ = "transfers"
-    transfer_id               = Column(String(50), primary_key=True)  # Bridge transfer ID from API
-    customer_id               = Column(String(50), ForeignKey("bridge_customers.id"), nullable=False)
-    user_id                   = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
-    
-    client_reference_id       = Column(String(256))                  # Bridge API field
-    amount                    = Column(String(50), nullable=False)   # Decimal string from Bridge API
-    currency                  = Column(String(8), nullable=False)    # Bridge API field
-    on_behalf_of              = Column(String(50), nullable=False)   # Bridge customer ID
-    developer_fee             = Column(String(50), nullable=False)   # Decimal string from Bridge API
-    source                    = Column(JSON, nullable=False)         # Complete source object from Bridge API
-    destination               = Column(JSON, nullable=False)         # Complete destination object from Bridge API
+    transfer_id = Column(String(50), primary_key=True)  # Bridge transfer ID
+    customer_id = Column(String(50), ForeignKey("bridge_customers.id"), nullable=False, index=True)
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
+
+    client_reference_id = Column(String(256))                   # Bridge API field
+    amount = Column(Numeric(18, 6), nullable=False)             # Decimal string from Bridge API
+    currency = Column(String(8), nullable=False)                # Bridge API field
+    on_behalf_of = Column(String(50), nullable=False)           # Bridge customer ID        
+    developer_fee = Column(Numeric(18, 6), nullable=False)      # Decimal string from Bridge API
+    source = Column(JSON, nullable=False, default=dict)         # Complete source object from Bridge API
+    destination = Column(JSON, nullable=False, default=dict)    # Complete destination object from Bridge API
     state                     = Column(String(32), nullable=False)   # Bridge API state field
-    source_deposit_instructions = Column(JSON)                       # Bridge API object
-    receipt                   = Column(JSON, nullable=False)         # Bridge API receipt object
-    return_details            = Column(JSON)                         # Bridge API return details object
-    created_at                = Column(DateTime, nullable=False)     # Bridge API timestamp
-    updated_at                = Column(DateTime, nullable=False)     # Bridge API timestamp
+    status = Column(
+        SQLEnum(TransferStatus, name="transfer_status"),
+        nullable=False,
+        default=TransferStatus.PENDING,
+    )
+    source_deposit_instructions = Column(JSON, default=dict)
+    receipt = Column(JSON, nullable=False, default=dict)
+    return_details = Column(JSON, default=dict)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 
     user       = relationship("User", back_populates="transfers")
     encumbrances = relationship("Encumbrance", back_populates="transfer")

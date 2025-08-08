@@ -4,11 +4,13 @@ Comprehensive configuration management with validation
 """
 
 import os
-from typing import Dict, List, Optional
-from pydantic import Field, validator
-from pydantic_settings import BaseSettings, SettingsConfigDict
-from pydantic.types import SecretStr
 from enum import Enum
+from typing import Dict, List, Optional
+
+from pydantic import Field, validator
+from pydantic.types import SecretStr
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
 
 class Environment(str, Enum):
     DEVELOPMENT = "development"
@@ -187,6 +189,16 @@ class Settings(BaseSettings):
     # Encryption
     encryption_key: SecretStr = Field("dev-encryption-key-please-change-1234567890", env="ENCRYPTION_KEY")
     encryption_algorithm: str = Field(default="AES-256-GCM", env="ENCRYPTION_ALGORITHM")
+    
+    # VelaFi Configuration
+    velafi_api_key: SecretStr = Field(default=None, env="VELAFI_API_KEY")
+    velafi_api_secret: SecretStr = Field(default=None, env="VELAFI_API_SECRET")
+    velafi_webhook_secret: SecretStr = Field(default=None, env="VELAFI_WEBHOOK_SECRET")
+    velafi_base_url: str = Field(default="https://api.velafi.com/v1", env="VELAFI_BASE_URL")
+    velafi_monitor_interval: int = Field(default=60, env="VELAFI_MONITOR_INTERVAL")
+    velafi_monitor_min_age: int = Field(default=10, env="VELAFI_MONITOR_MIN_AGE")
+    velafi_monitor_max_retries: int = Field(default=3, env="VELAFI_MONITOR_MAX_RETRIES")
+    velafi_monitor_base_delay: int = Field(default=5, env="VELAFI_MONITOR_BASE_DELAY")
     
     # Webhook Configuration
     webhook_secret: Optional[SecretStr] = Field(default=None, env="WEBHOOK_SECRET")

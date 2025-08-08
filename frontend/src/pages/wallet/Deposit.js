@@ -1,68 +1,33 @@
-import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
-  TextField, 
-  FormControlLabel, 
-  Switch, 
-  Button, 
-  Alert, 
-  CircularProgress, 
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import AddIcon from '@mui/icons-material/Add';
+import ArrowBackIcon from '@mui/icons-material/ArrowBack';
+import {
+  Alert,
+  Box,
+  Button,
+  CircularProgress,
   Container,
   Grid,
-  Stack,
+  List,
   ListItem,
   ListItemIcon,
   ListItemText,
-  List,
-  Radio,
-  RadioGroup,
-  FormControl,
-  FormLabel,
-  useTheme,
-  useMediaQuery,
-  IconButton,
-  Divider,
   Paper,
-  InputAdornment,
-  MenuItem,
-  Tooltip,
-  Stepper,
-  Step,
-  StepLabel
+  TextField,
+  Typography,
+  useMediaQuery,
+  useTheme
 } from '@mui/material';
 import { motion } from 'framer-motion';
-import { format } from 'date-fns';
-import { transferAPI, bridgeAPI, authAPI, externalAccountsAPI } from '../../utils/api';
+import React, { useEffect, useState } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import useBridgeWallet from '../../hooks/useBridgeWallet';
-import { useNavigate, useLocation } from 'react-router-dom';
-import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
-import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import BoltIcon from '@mui/icons-material/Bolt';
-import VerifiedIcon from '@mui/icons-material/Verified';
-import AddIcon from '@mui/icons-material/Add';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-import { 
-  INSTANT_DEPOSIT_FEE_RATE, 
-  UI_INSTANT_DEPOSIT_FEE,
-  calculateFee
-} from '../../utils/feeConstants';
+import { authAPI, externalAccountsAPI, transferAPI } from '../../utils/api';
 
 import {
-  FloatingCard,
-  GlassContainer,
-  GradientText,
-  GradientDivider,
-  AnimatedBackground,
-  NeonButton
+  AnimatedBackground
 } from '../../components/ui/ModernUIComponents';
 
-import {
-  SlideRightBox,
-  StaggerContainer,
-  StaggerItem
-} from '../../components/animations/AnimatedComponents';
 
 import LinkPaymentDialog from '../../components/LinkPaymentDialog';
 
