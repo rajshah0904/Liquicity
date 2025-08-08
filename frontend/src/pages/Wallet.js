@@ -1,39 +1,51 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { 
-  Box, 
-  Typography, 
-  Grid, 
-  CircularProgress, 
-  Alert, 
-  Container, 
-  List, 
-  ListItem, 
-  ListItemText, 
-  ListItemIcon, 
-  Accordion, 
-  AccordionSummary, 
-  AccordionDetails,
-  IconButton, 
+import React, { useState, useEffect, useMemo } from 'react';
+import {
+  Box,
+  Typography,
+  Grid,
+  Container,
+  Button,
+  Card,
+  CardContent,
+  List,
+  ListItem,
+  ListItemIcon,
+  ListItemText,
+  CircularProgress,
   useTheme,
   useMediaQuery,
-  Button
+  LinearProgress,
+  Tooltip,
+  IconButton,
+  Alert,
+  Accordion,
+  AccordionSummary,
+  AccordionDetails
 } from '@mui/material';
-import { walletAPI, externalAccountsAPI } from '../utils/api';
 import { motion } from 'framer-motion';
-import { format } from 'date-fns';
 import { useNavigate } from 'react-router-dom';
-import AccountBalanceWalletIcon from '@mui/icons-material/AccountBalanceWallet';
-import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
-import RefreshIcon from '@mui/icons-material/Refresh';
-import BoltIcon from '@mui/icons-material/Bolt';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
-import VerifiedIcon from '@mui/icons-material/Verified';
-import ArrowDownwardIcon from '@mui/icons-material/ArrowDownward';
-import ArrowUpwardIcon from '@mui/icons-material/ArrowUpward';
-import LockIcon from '@mui/icons-material/Lock';
-import AddIcon from '@mui/icons-material/Add';
-import TrendingUpIcon from '@mui/icons-material/TrendingUp';
+import { format } from 'date-fns';
 import CountUp from 'react-countup';
+import {
+  AccountBalance as AccountBalanceIcon,
+  TrendingUp as TrendingUpIcon,
+  Security as SecurityIcon,
+  SwapHoriz as SwapHorizIcon,
+  Add as AddIcon,
+  Download as DepositIcon,
+  Upload as WithdrawIcon,
+  Send as SendIcon,
+  Refresh as RefreshIcon,
+  ArrowDownward as ArrowDownwardIcon,
+  ArrowUpward as ArrowUpwardIcon,
+  ExpandMore as ExpandMoreIcon
+} from '@mui/icons-material';
+import VerifiedIcon from '@mui/icons-material/Verified';
+
+// Use clean_backend hooks
+import useBridgeWallet from '../hooks/useBridgeWallet';
+import { externalAccountsAPI } from '../utils/api';
+import { calculateLiquicityBalance } from '../utils/balanceUtils';
 
 import {
   FloatingCard,
@@ -41,8 +53,6 @@ import {
   GradientText,
   GradientDivider,
   AnimatedBackground,
-  GradientBorder,
-  FuturisticAvatar,
   NeonButton
 } from '../components/ui/ModernUIComponents';
 
@@ -52,7 +62,6 @@ import {
   StaggerItem
 } from '../components/animations/AnimatedComponents';
 
-import useBridgeWallet from '../hooks/useBridgeWallet';
 import LinkPaymentDialog from '../components/LinkPaymentDialog';
 
 export default function Wallet() {
@@ -75,10 +84,7 @@ export default function Wallet() {
     // Fetch linked accounts
     async function fetchLinkedAccounts() {
       try {
-        // First sync accounts with Bridge to get latest status and balance
-        await externalAccountsAPI.syncAccounts();
-        
-        // Then fetch the updated accounts
+        // Fetch the accounts directly from our local database
         const response = await externalAccountsAPI.getAccounts();
         setLinkedAccounts(response.data.accounts || []);
       } catch (err) {
@@ -90,10 +96,7 @@ export default function Wallet() {
   }, []);
 
   const totalLocalBalance = useMemo(() => {
-    if (bridgeWallet?.balances?.length) {
-      return bridgeWallet.balances.reduce((acc, b) => acc + parseFloat(b.balance || 0), 0);
-    }
-    return 0;
+    return calculateLiquicityBalance(bridgeWallet);
   }, [bridgeWallet]);
 
   const pendingBalance = useMemo(() => {
@@ -375,9 +378,9 @@ export default function Wallet() {
                     primary={
                       <Box sx={{ display: 'flex', alignItems: 'center' }}>
                         <Typography variant="subtitle1" fontWeight={500}>
-                          {account.name}
+                          {account.bank_name}
                         </Typography>
-                        {account.status === 'verified' && (
+                        {account.active && (
                           <Box sx={{ 
                             display: 'flex', 
                             alignItems: 'center', 
@@ -386,12 +389,12 @@ export default function Wallet() {
                             fontSize: '0.75rem'
                           }}>
                             <VerifiedIcon fontSize="inherit" sx={{ mr: 0.5 }} />
-                            <Typography variant="caption" color="success.main">Verified</Typography>
+                            <Typography variant="caption" color="success.main">Active</Typography>
                           </Box>
                         )}
                       </Box>
                     }
-                    secondary={`Checking ${account.accountNumber}`}
+                    secondary={`****${account.last4}`}
                   />
                 </ListItem>
               ))}

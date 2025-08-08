@@ -368,23 +368,25 @@ def exchange_plaid_token(link_token: str, payload: PublicTokenSchema, db: Sessio
 
 @router.get("/accounts")
 def list_external_accounts(db: Session = Depends(get_db), jwt = Depends(get_current_user)):
-    """Return all Bridge external accounts for the authenticated user."""
+    """Return all external accounts for the authenticated user from our local database."""
     user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Get bridge customer from related table
-    bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
-    if not bridge_customer:
-        raise HTTPException(status_code=404, detail="Bridge customer not found")
-
-    try:
-        bridge_resp = BridgeClient().list_external_accounts(bridge_customer.id)
-        accounts = bridge_resp.get("data", [])
-    except Exception as e:
-        raise HTTPException(status_code=502, detail="Bridge unreachable") from e
-
-    mapped_accounts = _upsert_accounts(db, user, accounts)
+    # Get external accounts directly from our local database
+    external_accounts = db.query(ExternalAccount).filter(ExternalAccount.user_id == user.id).all()
+    
+    # Map to frontend-friendly format
+    mapped_accounts = []
+    for acc in external_accounts:
+        mapped_accounts.append({
+            "id": acc.external_account_id,
+            "bank_name": acc.bank_name,
+            "last4": acc.last_4,
+            "currency": acc.currency.upper() if acc.currency else "USD",
+            "active": acc.active
+        })
+    
     return {"accounts": mapped_accounts}
 
 
@@ -402,24 +404,35 @@ def _upsert_accounts(db: Session, user: User, accounts: List[Dict]):
         )
         currency = acc.get("currency")
         status = acc.get("status")
+        account_type = acc.get("account_type", "us")  # us, eu, etc.
+        account_name = acc.get("account_name", f"{bank_name} Account")
+        
+        # Determine account subtype (checking, savings, etc.)
+        checking_or_savings = acc.get("account", {}).get("checking_or_savings", "checking")
 
-        ext = db.query(ExternalAccount).filter(ExternalAccount.id == acc["id"]).first()
+        ext = db.query(ExternalAccount).filter(ExternalAccount.external_account_id == acc["id"]).first()
         if not ext:
-            ext = ExternalAccount(id=acc["id"], user_id=user.id)
+            ext = ExternalAccount(external_account_id=acc["id"], user_id=user.id)
             db.add(ext)
         ext.bank_name = bank_name
-        ext.last4 = last4
+        ext.last_4 = last4
         ext.currency = currency
-        ext.status = status
+        
+        # Active status from Bridge API
+        active = acc.get("active", True)
 
         mapped.append({
             "id": acc["id"],
             "bank_name": bank_name,
-            "name": bank_name,
+            "account_name": account_name,
+            "account_type": checking_or_savings.title(),  # "Checking", "Savings"
             "last4": last4,
-            "accountNumber": f"****{last4}" if last4 else None,
-            "currency": currency,
-            "status": status,
+            "masked_account": f"****{last4}" if last4 else None,
+            "currency": currency.upper() if currency else "USD",
+            "status": "Active" if active else "Inactive",
+            "active": active,
+            "payment_method_type": "bank_account",
+            "display_name": f"{bank_name} {checking_or_savings.title()} ****{last4}" if last4 else f"{bank_name} Account"
         })
     db.commit()
     return mapped 
@@ -430,62 +443,34 @@ def _upsert_accounts(db: Session, user: User, accounts: List[Dict]):
 
 @router.get("/accounts/{account_id}")
 def get_external_account_details(account_id: str, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
-    """Return details for a single external account belonging to the authenticated user.
-
-    This is a thin wrapper around Bridge's GET /customers/{customer_id}/external_accounts/{id}
-    (falling back to /external_accounts/{id}). We also upsert the latest metadata into
-    the local `external_accounts_v2` table so cached lists stay in sync.
-    """
+    """Return details for a single external account from our local database."""
     # Authorize user
     user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Get bridge customer from related table
-    bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
-    if not bridge_customer:
-        raise HTTPException(status_code=404, detail="Bridge customer not found")
-
-    try:
-        bridge_resp = BridgeClient().get_external_account(account_id, bridge_customer.id)
-    except requests.HTTPError as e:
-        status = e.response.status_code if e.response else 502
-        detail = e.response.text if e.response else str(e)
-        raise HTTPException(status_code=status, detail=detail)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail="Bridge unreachable") from e
-
-    # Upsert into DB for caching/display purposes
-    bank_name = bridge_resp.get("bank_name") or bridge_resp.get("name")
-    last4 = (
-        bridge_resp.get("account", {}).get("last_4")
-        or bridge_resp.get("account", {}).get("last4")
-        or bridge_resp.get("last_4")
-        or bridge_resp.get("last4")
-    )
-    currency = bridge_resp.get("currency")
-    status = bridge_resp.get("status")
-
-    ext = db.query(ExternalAccount).filter(ExternalAccount.id == account_id).first()
+    # Get external account from our local database
+    ext = db.query(ExternalAccount).filter(
+        ExternalAccount.external_account_id == account_id, 
+        ExternalAccount.user_id == user.id
+    ).first()
+    
     if not ext:
-        ext = ExternalAccount(id=account_id, user_id=user.id)
-        db.add(ext)
-    ext.bank_name = bank_name
-    ext.last4 = last4
-    ext.currency = currency
-    ext.status = status
-    db.commit()
+        raise HTTPException(status_code=404, detail="Account not found")
 
     return {
-        "id": account_id,
-        "bank_name": bank_name,
-        "name": bank_name,
-        "last4": last4,
-        "accountNumber": f"****{last4}" if last4 else None,
-        "currency": currency,
-        "status": status,
-        "raw": bridge_resp,  # Expose full Bridge response for frontend flexibility
-    } 
+        "id": ext.external_account_id,
+        "bank_name": ext.bank_name,
+        "account_name": f"{ext.bank_name} Account",
+        "account_type": "Checking",
+        "last4": ext.last_4,
+        "masked_account": f"****{ext.last_4}" if ext.last_4 else None,
+        "currency": ext.currency.upper() if ext.currency else "USD",
+        "status": "Active" if ext.active else "Inactive",
+        "active": ext.active,
+        "payment_method_type": "bank_account",
+        "display_name": f"{ext.bank_name} ****{ext.last_4}" if ext.last_4 else f"{ext.bank_name} Account"
+    }
 
 # ---------------------------------------------------------------------------
 # Delete external account                                                    
@@ -504,7 +489,7 @@ def delete_external_account(account_id: str, db: Session = Depends(get_db), jwt 
         raise HTTPException(status_code=404, detail="Bridge customer not found")
 
     # Verify ownership locally first
-    ext = db.query(ExternalAccount).filter(ExternalAccount.id == account_id, ExternalAccount.user_id == user.id).first()
+    ext = db.query(ExternalAccount).filter(ExternalAccount.external_account_id == account_id, ExternalAccount.user_id == user.id).first()
     if not ext:
         raise HTTPException(status_code=404, detail="Account not found")
 
@@ -549,7 +534,7 @@ def create_processor_token(
 
     ext = (
         db.query(ExternalAccount)
-        .filter(ExternalAccount.id == account_id, ExternalAccount.user_id == user.id)
+        .filter(ExternalAccount.external_account_id == account_id, ExternalAccount.user_id == user.id)
         .first()
     )
     if not ext:

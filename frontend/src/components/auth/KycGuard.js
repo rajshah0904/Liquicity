@@ -15,20 +15,20 @@ const KycGuard = ({ children }) => {
         return;
       }
       try {
-        const token = await getAccessTokenSilently();
+        const token = await getAccessTokenSilently({
+          authorizationParams: {
+            scope: 'openid profile email'
+          }
+        });
         const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
-        const { exists, kyc_complete } = res.data;
+        const { exists, next_step } = res.data;
         if (!exists) {
-          if (localStorage.getItem('isNewSignup') === 'true') {
-            // Allow through; KYC page will handle registration
-          } else {
-            // user not registered and not in signup flow
+          if (localStorage.getItem('isNewSignup') !== 'true') {
             navigate('/signup?noaccount=true');
             return;
           }
         }
-        if (kyc_complete) {
-          // already completed KYC; send to dashboard
+        if (next_step === 'done') {
           navigate('/dashboard');
           return;
         }

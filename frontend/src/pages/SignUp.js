@@ -109,9 +109,55 @@ const DividerWithText = styled(Box)(({ theme }) => ({
 }));
 
 const SignUp = () => {
-  const { loginWithPopup, getAccessTokenSilently, isAuthenticated, logout, user } = useAuth0();
+  const { loginWithPopup, loginWithRedirect, getAccessTokenSilently, isAuthenticated, logout, user } = useAuth0();
   const navigate = useNavigate();
   const location = useLocation();
+
+  // Production-level security: Strategic cache management
+  useEffect(() => {
+    const initializeFreshSignup = async () => {
+      console.log('SignUp: Initializing fresh signup state');
+      
+      // Only clear app-specific cache, preserve Auth0 if needed
+      const appKeys = ['isNewSignup', 'signupEmail', 'auth_token', 'current_user'];
+      appKeys.forEach(key => localStorage.removeItem(key));
+      
+      if (isAuthenticated && user) {
+        console.log('SignUp: User already authenticated - routing based on current state');
+        try {
+          const token = await getAccessTokenSilently({ authorizationParams: { scope: 'openid profile email' } });
+          const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
+          const { next_step } = res.data;
+          if (next_step === 'done') {
+            navigate('/dashboard');
+          } else {
+            navigate('/kyc-verification');
+          }
+          return;
+        } catch (e) {
+          console.error('SignUp: state check failed, sending to login', e);
+          navigate('/login');
+          return;
+        }
+      }
+    };
+    
+    initializeFreshSignup();
+    
+    // Clear sensitive data when user leaves the page
+          const handleBeforeUnload = () => {
+        console.log('SignUp: Page unload - clearing sensitive data');
+        // Keep isNewSignup across redirects so KYC guard allows flow to continue
+        const sensitiveKeys = ['signupEmail', 'auth_token'];
+        sensitiveKeys.forEach(key => localStorage.removeItem(key));
+      };
+    
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+    };
+  }, [isAuthenticated, user]); // React to auth state changes
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
@@ -143,25 +189,28 @@ const SignUp = () => {
     try {
       const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
 
-      // If the user record does not yet exist, explicitly register it now
+      // If the user record does not yet exist, registration will be handled by the main flow
       if (!res.data.exists) {
-        try {
-          const regResp = await api.post('/onboard/register', undefined, { headers: { Authorization: `Bearer ${token}` } });
-          if (regResp.data.tos_url) {
-            const cb = encodeURIComponent(`${window.location.origin}/tos-callback`);
-            window.location.href = `${regResp.data.tos_url}&redirect_uri=${cb}`;
-            return true; // browser navigation triggered – abort remaining flow
-          }
-        } catch (regErr) {
-          console.error('Registration failed', regErr);
-          setError('Unable to complete registration. Please try again.');
-        }
+        console.log('SignUp: New user detected, will register in main flow');
+        return false; // Continue with main signup flow
       }
 
-      // If the user already exists, prompt them to log in instead of signing up
+      // If the user already exists, route them based on their onboarding state
       if (res.data.exists) {
-        setError('Account already exists. Please log in.');
-        await logout({ logoutParams: { returnTo: `${window.location.origin}/signup?existing=true` } });
+        console.log('SignUp: User exists, checking their state:', res.data);
+        if (res.data.next_step === 'kyc') {
+          console.log('SignUp: Existing user needs KYC, redirecting');
+          navigate('/kyc-verification');
+          return true; // Navigation triggered
+        } else if (res.data.next_step === 'done') {
+          console.log('SignUp: User is fully onboarded, redirecting to dashboard');
+          navigate('/dashboard');
+          return true; // Navigation triggered
+        } else {
+          // For other states, suggest they log in normally
+          setError('Account already exists. Please log in.');
+          await logout({ logoutParams: { returnTo: `${window.location.origin}/login` } });
+        }
       }
     } catch (e) {
       console.error('check user error', e);
@@ -175,11 +224,25 @@ const SignUp = () => {
       if (!isAuthenticated) return;
       if (localStorage.getItem('isNewSignup') === 'true') return; // skip duplicate guard during fresh signup
       try {
-        const token = await getAccessTokenSilently();
+        const token = await getAccessTokenSilently({
+          authorizationParams: {
+            scope: 'openid profile email'
+          }
+        });
         const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
         if (res.data.exists) {
-          setError('Account already exists. Please log in.');
-          await logout({ logoutParams: { returnTo: `${window.location.origin}/signup?existing=true` } });
+          console.log('SignUp Guard: User exists, checking their state:', res.data);
+          if (res.data.next_step === 'kyc') {
+            console.log('SignUp Guard: Existing user needs KYC, redirecting');
+            navigate('/kyc-verification');
+          } else if (res.data.next_step === 'done') {
+            console.log('SignUp Guard: User is fully onboarded, redirecting to dashboard');
+            navigate('/dashboard');
+          } else {
+            // For other states, suggest they log in normally
+            setError('Account already exists. Please log in.');
+            await logout({ logoutParams: { returnTo: `${window.location.origin}/login` } });
+          }
         }
       } catch(e) { console.error(e); }
     };
@@ -216,60 +279,50 @@ const SignUp = () => {
         return;
       }
 
-      // Register with Auth0 using popup
+      // PRODUCTION SECURITY: Strategic cache clearing and fresh authentication
+      console.log('SignUp: Starting fresh signup flow');
+      
+      // Force logout if any session exists
+      if (isAuthenticated) {
+        console.log('SignUp: Forcing logout of existing session');
+        await logout({ logoutParams: { returnTo: window.location.origin } });
+        // Wait for logout to complete
+        await new Promise(resolve => setTimeout(resolve, 1500));
+      }
+      
+      // Strategic cache clearing - preserve Auth0 session handling
+      // Clear app-specific data but not Auth0 session storage
+      const keysToKeep = ['auth0_cache_'];
+      Object.keys(localStorage).forEach(key => {
+        if (!keysToKeep.some(keep => key.startsWith(keep))) {
+          localStorage.removeItem(key);
+        }
+      });
+      
+      // Set flags for new signup
       localStorage.setItem('isNewSignup', 'true');
-      await loginWithPopup({
+      localStorage.setItem('signupEmail', email);
+      
+      // Force fresh authentication with Auth0 - use more specific scopes
+      console.log('SignUp: Redirecting to Auth0 for authentication');
+      await loginWithRedirect({
         authorizationParams: {
           screen_hint: 'signup',
           login_hint: email,
+          prompt: 'login', // Force fresh login screen
+          scope: 'openid profile email offline_access',
+          audience: process.env.REACT_APP_AUTH0_AUDIENCE,
+          redirect_uri: `${window.location.origin}/callback`
         },
-      });
-
-      // Get token for API calls
-      const token = await getAccessTokenSilently();
-
-      // Ask backend where the user is in the onboarding funnel
-      const { data: check } = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
-
-      const goToStep = async (stepData) => {
-        switch (stepData.next_step) {
-          case 'register': {
-            // brand-new user → create DB row and obtain ToS link
-            const reg = await api.post(
-              '/onboard/register',
-              { email: user?.email || email },
-              { headers: { Authorization: `Bearer ${token}` } },
-            );
-            localStorage.setItem('tos_url', reg.data.tos_url);
-            navigate('/select-country');
-            break;
-          }
-          case 'country':
-            navigate('/select-country');
-            break;
-          case 'tos': {
-            const cb = encodeURIComponent(`${window.location.origin}/tos-callback`);
-            const tos = stepData.tos_url || localStorage.getItem('tos_url');
-            if (tos) {
-              window.location.href = `${tos}&redirect_uri=${cb}`;
-            } else {
-              navigate('/signup');
-            }
-            break;
-          }
-          case 'kyc':
-            if (stepData.kyc_url) {
-              window.location.href = stepData.kyc_url;
-            } else {
-              navigate('/kyc-verification');
-            }
-            break;
-          default:
-            navigate('/dashboard');
+        appState: {
+          returnTo: '/callback',
+          isSignup: true,
+          email: email
         }
-      };
-
-      await goToStep(check);
+      });
+      
+      // Note: Code after loginWithRedirect doesn't execute - user is redirected to Auth0
+      // AuthCallback will handle the rest of the flow
 
     } catch (err) {
       setError(err.message);
@@ -293,7 +346,11 @@ const SignUp = () => {
       });
 
       // Get token for API calls
-      const token = await getAccessTokenSilently();
+                const token = await getAccessTokenSilently({
+            authorizationParams: {
+              scope: 'openid profile email'
+            }
+          });
 
       // Ask backend where the user is in the onboarding funnel
       const { data: check } = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
@@ -308,28 +365,12 @@ const SignUp = () => {
               { headers: { Authorization: `Bearer ${token}` } },
             );
             localStorage.setItem('tos_url', reg.data.tos_url);
-            navigate('/select-country');
-            break;
-          }
-          case 'country':
-            navigate('/select-country');
-            break;
-          case 'tos': {
-            const cb = encodeURIComponent(`${window.location.origin}/tos-callback`);
-            const tos = stepData.tos_url || localStorage.getItem('tos_url');
-            if (tos) {
-              window.location.href = `${tos}&redirect_uri=${cb}`;
-            } else {
-              navigate('/signup');
-            }
+            navigate('/kyc-verification');
             break;
           }
           case 'kyc':
-            if (stepData.kyc_url) {
-              window.location.href = stepData.kyc_url;
-            } else {
-              navigate('/kyc-verification');
-            }
+            console.log('Google SignUp: User exists, redirecting to KYC');
+            navigate('/kyc-verification');
             break;
           default:
             navigate('/dashboard');

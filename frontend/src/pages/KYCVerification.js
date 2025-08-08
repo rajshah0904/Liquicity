@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   Box, 
   Container, 
@@ -17,332 +17,259 @@ import {
   Stepper,
   Step,
   StepLabel,
-  Paper
+  Paper,
+  InputAdornment,
+  Chip
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { AnimatedBackground } from '../components/ui/ModernUIComponents';
 import api from '../utils/api';
-import { kycAPI } from '../utils/api';
 
-// Define KYC requirements for different countries
-const countryKycRequirements = {
-  US: {
-    name: 'United States',
-    fields: [
-      { name: 'firstName', label: 'First Name', type: 'text', required: true },
-      { name: 'lastName', label: 'Last Name', type: 'text', required: true },
-      { name: 'dateOfBirth', label: 'Date of Birth', type: 'date', required: true },
-      { name: 'streetAddress', label: 'Street Address', type: 'text', required: true },
-      { name: 'city', label: 'City', type: 'text', required: true },
-      { name: 'state', label: 'State', type: 'select', required: true, 
-        options: [
-          { value: 'AL', label: 'Alabama' },
-          { value: 'AK', label: 'Alaska' },
-          { value: 'AZ', label: 'Arizona' },
-          { value: 'AR', label: 'Arkansas' },
-          { value: 'CA', label: 'California' },
-          { value: 'CO', label: 'Colorado' },
-          { value: 'CT', label: 'Connecticut' },
-          { value: 'DE', label: 'Delaware' },
-          { value: 'FL', label: 'Florida' },
-          { value: 'GA', label: 'Georgia' },
-          { value: 'HI', label: 'Hawaii' },
-          { value: 'ID', label: 'Idaho' },
-          { value: 'IL', label: 'Illinois' },
-          { value: 'IN', label: 'Indiana' },
-          { value: 'IA', label: 'Iowa' },
-          { value: 'KS', label: 'Kansas' },
-          { value: 'KY', label: 'Kentucky' },
-          { value: 'LA', label: 'Louisiana' },
-          { value: 'ME', label: 'Maine' },
-          { value: 'MD', label: 'Maryland' },
-          { value: 'MA', label: 'Massachusetts' },
-          { value: 'MI', label: 'Michigan' },
-          { value: 'MN', label: 'Minnesota' },
-          { value: 'MS', label: 'Mississippi' },
-          { value: 'MO', label: 'Missouri' },
-          { value: 'MT', label: 'Montana' },
-          { value: 'NE', label: 'Nebraska' },
-          { value: 'NV', label: 'Nevada' },
-          { value: 'NH', label: 'New Hampshire' },
-          { value: 'NJ', label: 'New Jersey' },
-          { value: 'NM', label: 'New Mexico' },
-          { value: 'NY', label: 'New York' },
-          { value: 'NC', label: 'North Carolina' },
-          { value: 'ND', label: 'North Dakota' },
-          { value: 'OH', label: 'Ohio' },
-          { value: 'OK', label: 'Oklahoma' },
-          { value: 'OR', label: 'Oregon' },
-          { value: 'PA', label: 'Pennsylvania' },
-          { value: 'RI', label: 'Rhode Island' },
-          { value: 'SC', label: 'South Carolina' },
-          { value: 'SD', label: 'South Dakota' },
-          { value: 'TN', label: 'Tennessee' },
-          { value: 'TX', label: 'Texas' },
-          { value: 'UT', label: 'Utah' },
-          { value: 'VT', label: 'Vermont' },
-          { value: 'VA', label: 'Virginia' },
-          { value: 'WA', label: 'Washington' },
-          { value: 'WV', label: 'West Virginia' },
-          { value: 'WI', label: 'Wisconsin' },
-          { value: 'WY', label: 'Wyoming' },
-          { value: 'DC', label: 'District of Columbia' },
-          { value: 'PR', label: 'Puerto Rico' },
-        ]
-      },
-      { name: 'postalCode', label: 'ZIP Code', type: 'text', required: true },
-      { name: 'idType', label: 'ID Type', type: 'select', required: true,
-        options:[
-          {value:'ssn',label:'Social Security Number'},
-          {value:'drivers_license', label:'Driver License'},
-          {value:'passport', label:'Passport'}
-        ]
-      },
-      { name: 'idNumber', label: 'ID Number', type: 'text', required: true },
-      { name: 'idImageFront', label: 'ID Image (Front)', type: 'file', required: false,
-        dependsOn:{field:'idType', values:['drivers_license','passport']}
-      },
-      { name: 'idImageBack', label: 'ID Image (Back)', type: 'file', required: false,
-        dependsOn:{field:'idType', values:['drivers_license']}
-      },
-    ],
-    description: 'Per FinCEN CIP Rule (31 C.F.R. § 1020.220)'
-  },
-  MX: {
-    name: 'Mexico',
-    fields: [
-      { name: 'firstName', label: 'First Name', type: 'text', required: true },
-      { name: 'lastName', label: 'Last Name', type: 'text', required: true },
-      { name: 'dateOfBirth', label: 'Date of Birth', type: 'date', required: true },
-      { name: 'nationality', label: 'Nationality', type: 'text', required: true },
-      { name: 'streetAddress', label: 'Street Address', type: 'text', required: true },
-      { name: 'city', label: 'City', type: 'text', required: true },
-      { name: 'state', label: 'State', type: 'select', required: true, 
-        options: [
-          { value: 'AGS', label: 'Aguascalientes' },
-          { value: 'BC', label: 'Baja California' },
-          { value: 'BCS', label: 'Baja California Sur' },
-          { value: 'CAM', label: 'Campeche' },
-          { value: 'CHIS', label: 'Chiapas' },
-          { value: 'CHIH', label: 'Chihuahua' },
-          { value: 'CDMX', label: 'Ciudad de México' },
-          { value: 'COAH', label: 'Coahuila' },
-          { value: 'COL', label: 'Colima' },
-          { value: 'DGO', label: 'Durango' },
-          { value: 'GTO', label: 'Guanajuato' },
-          { value: 'GRO', label: 'Guerrero' },
-          { value: 'HGO', label: 'Hidalgo' },
-          { value: 'JAL', label: 'Jalisco' },
-          { value: 'MEX', label: 'México' },
-          { value: 'MICH', label: 'Michoacán' },
-          { value: 'MOR', label: 'Morelos' },
-          { value: 'NAY', label: 'Nayarit' },
-          { value: 'NL', label: 'Nuevo León' },
-          { value: 'OAX', label: 'Oaxaca' },
-          { value: 'PUE', label: 'Puebla' },
-          { value: 'QRO', label: 'Querétaro' },
-          { value: 'QROO', label: 'Quintana Roo' },
-          { value: 'SLP', label: 'San Luis Potosí' },
-          { value: 'SIN', label: 'Sinaloa' },
-          { value: 'SON', label: 'Sonora' },
-          { value: 'TAB', label: 'Tabasco' },
-          { value: 'TAMPS', label: 'Tamaulipas' },
-          { value: 'TLAX', label: 'Tlaxcala' },
-          { value: 'VER', label: 'Veracruz' },
-          { value: 'YUC', label: 'Yucatán' },
-          { value: 'ZAC', label: 'Zacatecas' }
-        ]
-      },
-      { name: 'postalCode', label: 'Postal Code', type: 'text', required: true },
-      { name: 'idType', label: 'ID Type', type: 'select', required: true,
-        options:[
-          {value:'consular_id', label:'Consular ID'},
-          {value:'permanent_residency_id', label:'Residency Permit'},
-          {value:'passport', label:'Passport'}
-        ]
-      },
-      { name: 'idNumber', label: 'ID Number', type: 'text', required: true },
-      { name: 'idImageFront', label: 'ID Image (Front)', type: 'file', required: true,
-        dependsOn:{field:'idType', values:['consular_id','permanent_residency_id','passport']}
-      },
-      { name: 'idImageBack', label: 'ID Image (Back)', type: 'file', required: false },
-      { name: 'rfc', label: 'Tax Identification Number (RFC)', type: 'text', required: true },
-      { name: 'email', label: 'Email Address', type: 'email', required: true },
-    ],
-    description: 'According to CNBV and AML law (LFPIORPI)'
-  },
-  EU: {
-    name: 'European Union',
-    fields: [
-      { name: 'firstName', label: 'First Name', type: 'text', required: true },
-      { name: 'lastName', label: 'Last Name', type: 'text', required: true },
-      { name: 'dateOfBirth', label: 'Date of Birth', type: 'date', required: true },
-      { name: 'streetAddress', label: 'Street Address (Line 1)', type: 'text', required: true },
-      { name: 'streetAddress2', label: 'Street Address (Line 2)', type: 'text', required: false },
-      { name: 'city', label: 'City', type: 'text', required: true },
-      { name: 'region', label: 'Subdivision (ISO-3166-2 code, e.g. MAN)', type: 'text', required: true },
-      { name: 'postalCode', label: 'Postal Code', type: 'text', required: true },
-      { name: 'countryOfResidence', label: 'Country of Residence', type: 'select', required: true,
-        options: [
-          { value: 'AT', label: 'Austria' },
-          { value: 'BE', label: 'Belgium' },
-          { value: 'BG', label: 'Bulgaria' },
-          { value: 'HR', label: 'Croatia' },
-          { value: 'CY', label: 'Cyprus' },
-          { value: 'CZ', label: 'Czechia' },
-          { value: 'DK', label: 'Denmark' },
-          { value: 'EE', label: 'Estonia' },
-          { value: 'FI', label: 'Finland' },
-          { value: 'FR', label: 'France' },
-          { value: 'DE', label: 'Germany' },
-          { value: 'EL', label: 'Greece' },
-          { value: 'HU', label: 'Hungary' },
-          { value: 'IE', label: 'Ireland' },
-          { value: 'IT', label: 'Italy' },
-          { value: 'LV', label: 'Latvia' },
-          { value: 'LI', label: 'Liechtenstein' },
-          { value: 'LT', label: 'Lithuania' },
-          { value: 'LU', label: 'Luxembourg' },
-          { value: 'MT', label: 'Malta' },
-          { value: 'NL', label: 'Netherlands' },
-          { value: 'NO', label: 'Norway' },
-          { value: 'PL', label: 'Poland' },
-          { value: 'PT', label: 'Portugal' },
-          { value: 'RO', label: 'Romania' },
-          { value: 'SK', label: 'Slovakia' },
-          { value: 'SI', label: 'Slovenia' },
-          { value: 'ES', label: 'Spain' },
-          { value: 'SE', label: 'Sweden' },
-          { value: 'CH', label: 'Switzerland' },
-          { value: 'GB', label: 'United Kingdom' }
-        ]
-      },
-      { name: 'idType', label:'ID Type', type:'select', required:true,
-        options:[
-          {value:'drivers_license', label:'Driver License'},
-          {value:'national_id', label:'National ID'},
-          {value:'passport', label:'Passport'}
-        ]
-      },
-      { name: 'idNumber', label: 'ID Number', type: 'text', required: true },
-      { name: 'idImageFront', label: 'ID Image (Front)', type: 'file', required: true,
-        dependsOn:{field:'idType', values:['drivers_license','national_id','passport']}
-      },
-      { name: 'idImageBack', label: 'ID Image (Back)', type: 'file', required: false,
-        dependsOn:{field:'idType', values:['drivers_license']}
-      },
-      { name: 'proofOfAddress', label: 'Proof of Address Document', type: 'file', required: false },
-      { name: 'personalIdNumber', label: 'Personal Identification Number (if applicable)', type: 'text', required: false },
-    ],
-    description: 'Under EU AML/CFT rules (Directive (EU) 2015/849 and delegations)'
-  }
-};
+// Regions for dropdown selection
+const regions = [
+  { code: 'US', name: 'United States', region: 'us', available: true },
+  { code: 'EU', name: 'European Union', region: 'eu', available: false },
+  { code: 'MX', name: 'Mexico', region: 'mexico', available: false },
+  { code: 'BR', name: 'Brazil', region: 'brazil', available: false },
+  { code: 'CO', name: 'Colombia', region: 'colombia', available: false },
+  { code: 'PE', name: 'Peru', region: 'peru', available: false },
+  { code: 'AR', name: 'Argentina', region: 'argentina', available: false },
+];
 
-// Countries for dropdown selection
-const countries = [
-  { code: 'US', name: 'United States' },
-  { code: 'MX', name: 'Mexico' },
-  { code: 'EU', name: 'European Union' },
+// ID Types for Bridge API
+const ID_TYPES = [
+  { value: 'drivers_license', label: 'Driver\'s License' },
+  { value: 'passport', label: 'Passport' }
 ];
 
 const KYCVerification = () => {
   const navigate = useNavigate();
   const { user, isAuthenticated, isLoading, getAccessTokenSilently } = useAuth0();
-  const [dbUserId, setDbUserId] = useState(null);
-  const [selectedCountry, setSelectedCountry] = useState('');
-  const [formData, setFormData] = useState({});
+  const addressRef = useRef(null);
+  const autocompleteRef = useRef(null);
+  
+  // State management
+  const [selectedRegion, setSelectedRegion] = useState('');
+  const [formData, setFormData] = useState({
+    first_name: '',
+    last_name: '',
+    birth_date: '',
+    street_line_1: '',
+    city: '',
+    subdivision: '', // state/province
+    postal_code: '',
+    country: '',
+    ssn: '', // for US users
+    id_type: '',
+    id_number: '',
+    id_image_front: null,
+    id_image_back: null
+  });
+  
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitSuccess, setSubmitSuccess] = useState(false);
   const [submitError, setSubmitError] = useState('');
   const [activeStep, setActiveStep] = useState(0);
-  const [verificationStatus, setVerificationStatus] = useState(null);
-  
-  // Initialize form data when country is selected
+  const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false);
+  const [signedAgreementId, setSignedAgreementId] = useState('');
+  const restoredFromSnapshotRef = useRef(false);
+  const SNAPSHOT_KEY = 'kycFormSnapshot_v1';
+
+  // Restore snapshot if returning from redirect (e.g., ToS)
   useEffect(() => {
-    if (selectedCountry) {
-      const countryConfig = countryKycRequirements[selectedCountry];
-      if (countryConfig) {
-        // Initialize form data for selected country
-        const initialData = {};
-        countryConfig.fields.forEach(field => {
-          initialData[field.name] = '';
-        });
-        
-        // Pre-populate with user data if available
-        if (user) {
-          const parts = user.name ? user.name.split(' ') : [''];
-          initialData.firstName = parts[0];
-          initialData.lastName = parts.slice(1).join(' ');
-          initialData.email = user.email || '';
-        }
-        
-        setFormData(initialData);
-        setErrors({});
+    try {
+      const raw = sessionStorage.getItem(SNAPSHOT_KEY);
+      if (raw) {
+        const snapshot = JSON.parse(raw);
+        if (snapshot.selectedRegion) setSelectedRegion(snapshot.selectedRegion);
+        if (snapshot.formData) setFormData(snapshot.formData);
+        if (typeof snapshot.activeStep === 'number') setActiveStep(snapshot.activeStep);
+        restoredFromSnapshotRef.current = true;
       }
+    } catch (e) {
+      console.error('Failed to restore KYC snapshot', e);
     }
-  }, [selectedCountry, user]);
-  
-  // Update required fields based on ID type for US
+  }, []);
+
+  // Capture signed_agreement_id from query params
   useEffect(() => {
-    if (selectedCountry === 'US' && formData.idType) {
-      // Clear errors for conditional fields when ID type changes
-      const fieldsToCheck = ['idIssuingState', 'idExpiryDate'];
-      const updatedErrors = { ...errors };
+    const params = new URLSearchParams(window.location.search);
+    const sid = params.get('signed_agreement_id');
+    if (sid) {
+      setSignedAgreementId(sid);
+    }
+  }, []);
+  
+  // Initialize Google Maps API
+  useEffect(() => {
+    const loadGoogleMapsScript = () => {
+      if (window.google && window.google.maps) {
+        setGoogleMapsLoaded(true);
+        return;
+      }
       
-      fieldsToCheck.forEach(field => {
-        if (updatedErrors[field]) {
-          delete updatedErrors[field];
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${process.env.REACT_APP_GOOGLE_MAPS_API_KEY}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.onload = () => setGoogleMapsLoaded(true);
+      script.onerror = () => console.error('Failed to load Google Maps API');
+      document.head.appendChild(script);
+    };
+    
+    loadGoogleMapsScript();
+  }, []);
+  
+  // Initialize Google Places Autocomplete
+  useEffect(() => {
+    if (googleMapsLoaded && addressRef.current && !autocompleteRef.current) {
+      autocompleteRef.current = new window.google.maps.places.Autocomplete(
+        addressRef.current,
+        {
+          types: ['address'],
+          componentRestrictions: selectedRegion === 'US' ? { country: 'us' } : undefined
+        }
+      );
+      
+      autocompleteRef.current.addListener('place_changed', () => {
+        const place = autocompleteRef.current.getPlace();
+        if (place.address_components) {
+          parseGoogleAddress(place);
         }
       });
-      
-      setErrors(updatedErrors);
     }
-  }, [selectedCountry, formData.idType]);
+  }, [googleMapsLoaded, selectedRegion]);
   
-  // If we already know user ID, check KYC status so we can skip the form when pending/approved
-  useEffect(() => {
-    const fetchKycStatus = async () => {
-      if (!dbUserId) return;
-      try {
-        const { data } = await kycAPI.getKycStatus(dbUserId);
-        setVerificationStatus(data.verification_status);
-
-        if (data.verification_status === 'approved') {
-          navigate('/dashboard');
-        } else if (data.verification_status === 'pending') {
-          setActiveStep(2); // show pending screen
-        }
-      } catch (err) {
-        console.error('Failed to fetch KYC status', err);
-      }
+  // Parse Google Maps address into form fields
+  const parseGoogleAddress = (place) => {
+    const components = place.address_components;
+    const addressData = {
+      street_line_1: '',
+      city: '',
+      subdivision: '',
+      postal_code: '',
+      country: ''
     };
-
-    fetchKycStatus();
-  }, [dbUserId, navigate]);
-  
-  // Handle country selection change
-  const handleCountryChange = (e) => {
-    setSelectedCountry(e.target.value);
-    setActiveStep(1);
+    
+    // Build street address
+    const streetNumber = components.find(c => c.types.includes('street_number'))?.long_name || '';
+    const streetName = components.find(c => c.types.includes('route'))?.long_name || '';
+    addressData.street_line_1 = `${streetNumber} ${streetName}`.trim();
+    
+    // Get other components
+    addressData.city = components.find(c => c.types.includes('locality'))?.long_name || '';
+    addressData.subdivision = components.find(c => 
+      c.types.includes('administrative_area_level_1')
+    )?.short_name || '';
+    addressData.postal_code = components.find(c => c.types.includes('postal_code'))?.long_name || '';
+    addressData.country = components.find(c => c.types.includes('country'))?.short_name || '';
+    
+    setFormData(prev => ({
+      ...prev,
+      ...addressData
+    }));
+    
+    // Clear address-related errors
+    const addressFields = ['street_line_1', 'city', 'subdivision', 'postal_code', 'country'];
+    setErrors(prev => {
+      const newErrors = { ...prev };
+      addressFields.forEach(field => delete newErrors[field]);
+      return newErrors;
+    });
   };
   
-  // Go back to country selection and clear previously entered data
-  const handleBackToCountry = () => {
-    setSelectedCountry('');
-    setFormData({});
+  // Pre-populate user data when Auth0 user is available
+  useEffect(() => {
+    if (user && user.name) {
+      const nameParts = user.name.split(' ');
+      setFormData(prev => ({
+        ...prev,
+        first_name: nameParts[0] || '',
+        last_name: nameParts.slice(1).join(' ') || ''
+      }));
+    }
+  }, [user]);
+
+  // Clear validation errors when region changes (preserve form data)
+  useEffect(() => {
     setErrors({});
-    setActiveStep(0);
+  }, [selectedRegion]);
+
+  // Persist snapshot whenever region/form/step changes
+  useEffect(() => {
+    try {
+      const snapshot = { selectedRegion, formData, activeStep };
+      sessionStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
+    } catch (e) {
+      // ignore
+    }
+  }, [selectedRegion, formData, activeStep]);
+  
+  // Ensure user record exists (register if missing)
+  useEffect(() => {
+    const ensureRegistration = async () => {
+      try {
+        const token = await getAccessTokenSilently({ authorizationParams: { scope: 'openid profile email' } });
+        const check = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
+        if (!check.data.exists && user?.email) {
+          await api.post('/onboard/register', { email: user.email }, { headers: { Authorization: `Bearer ${token}` } });
+        }
+      } catch (e) {
+        console.error('KYC: ensureRegistration failed', e);
+      }
+    };
+    if (isAuthenticated) {
+      ensureRegistration();
+    }
+  }, [isAuthenticated, getAccessTokenSilently, user]);
+  
+  // Ensure token is persisted and axios default header is set on mount so subsequent hooks use it.
+  useEffect(() => {
+    const ensureToken = async () => {
+      try {
+        const token = await getAccessTokenSilently({ authorizationParams: { scope: 'openid profile email' } });
+        if (token) {
+          localStorage.setItem('auth_token', token);
+          api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        }
+      } catch (e) {
+        // ignore here; guards will handle auth redirects
+      }
+    };
+    if (isAuthenticated) ensureToken();
+  }, [isAuthenticated, getAccessTokenSilently]);
+  
+  // Handle region selection
+  const handleRegionChange = async (e) => {
+    const regionCode = e.target.value;
+    setSelectedRegion(regionCode);
+    
+    // Check if region is available for KYC
+    const region = regions.find(r => r.code === regionCode);
+    if (!region?.available) {
+      console.log(`KYC: Region '${regionCode}' not yet available - redirecting to coming soon`);
+      navigate(`/coming-soon?country=${regionCode}&region=${region?.region}`);
+      return;
+    }
+    
+    // Set country based on region
+    if (regionCode === 'US') {
+      setFormData(prev => ({ ...prev, country: 'USA' }));
+    }
+    
+    console.log(`KYC: Region '${regionCode}' selected locally (not saved until KYC complete)`);
+    setActiveStep(1);
   };
   
   // Handle form field changes
   const handleChange = (e) => {
     const { name, value } = e.target;
-
-    // Auto-format SSN while typing for US users
+    
+    // Format SSN as user types
     let newValue = value;
-    if (selectedCountry === 'US' && formData.idType === 'ssn' && name === 'idNumber') {
+    if (name === 'ssn') {
       const digits = value.replace(/\D/g, '').slice(0, 9);
       if (digits.length > 5) {
         newValue = digits.replace(/^(\d{3})(\d{2})(\d+)/, '$1-$2-$3');
@@ -352,18 +279,18 @@ const KYCVerification = () => {
         newValue = digits;
       }
     }
-
-    setFormData({
-      ...formData,
+    
+    setFormData(prev => ({
+      ...prev,
       [name]: newValue
-    });
+    }));
     
     // Clear error when field is changed
     if (errors[name]) {
-      setErrors({
-        ...errors,
+      setErrors(prev => ({
+        ...prev,
         [name]: ''
-      });
+      }));
     }
   };
   
@@ -371,68 +298,153 @@ const KYCVerification = () => {
   const handleFileChange = (e) => {
     const { name, files } = e.target;
     if (files && files[0]) {
-      setFormData({
-        ...formData,
-        [name]: files[0]
-      });
+      const file = files[0];
+      
+      // Validate file type (images only)
+      if (!file.type.startsWith('image/')) {
+        setErrors(prev => ({
+          ...prev,
+          [name]: 'Please select an image file'
+        }));
+        return;
+      }
+      
+      // Validate file size (max 10MB)
+      if (file.size > 10 * 1024 * 1024) {
+        setErrors(prev => ({
+          ...prev,
+          [name]: 'File size must be less than 10MB'
+        }));
+        return;
+      }
+      
+      setFormData(prev => ({
+        ...prev,
+        [name]: file
+      }));
       
       if (errors[name]) {
-        setErrors({
-          ...errors,
+        setErrors(prev => ({
+          ...prev,
           [name]: ''
-        });
+        }));
       }
     }
   };
   
-  // Validate the form based on selected country
+  // Go back to region selection
+  const handleBackToRegion = () => {
+    setSelectedRegion('');
+    setFormData({
+      first_name: '',
+      last_name: '',
+      birth_date: '',
+      street_line_1: '',
+      city: '',
+      subdivision: '',
+      postal_code: '',
+      country: '',
+      ssn: '',
+      id_type: '',
+      id_number: '',
+      id_image_front: null,
+      id_image_back: null
+    });
+    setErrors({});
+    setActiveStep(0);
+  };
+  
+  // Handle ToS generation (snapshot before navigating)
+  const handleGenerateTos = async () => {
+    try {
+      // snapshot explicitly
+      sessionStorage.setItem(SNAPSHOT_KEY, JSON.stringify({ selectedRegion, formData, activeStep }));
+      const token = await getAccessTokenSilently({ authorizationParams: { scope: 'openid profile email' } });
+      const resp = await api.post('/kyc/tos_link', {}, { headers: { Authorization: `Bearer ${token}` } });
+      const baseUrl = resp.data.url || resp.data.kyc_link || resp.data.tos_link || resp.data;
+      if (baseUrl) {
+        const redirect = encodeURIComponent(`${window.location.origin}/kyc-verification`);
+        const sep = baseUrl.includes('?') ? '&' : '?';
+        const url = `${baseUrl}${sep}redirect_uri=${redirect}`;
+        window.location.href = url;
+      }
+    } catch (e) {
+      console.error('Failed to generate ToS link', e);
+      setSubmitError('Failed to generate Terms of Service link. Please try again.');
+    }
+  };
+  
+  // Form validation
   const validateForm = () => {
     const newErrors = {};
-    const countryConfig = countryKycRequirements[selectedCountry];
     
-    if (!countryConfig) {
-      return false;
+    // Required fields
+    const requiredFields = [
+      { field: 'first_name', label: 'First Name' },
+      { field: 'last_name', label: 'Last Name' },
+      { field: 'birth_date', label: 'Date of Birth' },
+      { field: 'street_line_1', label: 'Street Address' },
+      { field: 'city', label: 'City' },
+      { field: 'subdivision', label: 'State/Province' },
+      { field: 'postal_code', label: 'Postal Code' },
+      { field: 'country', label: 'Country' },
+      { field: 'id_type', label: 'ID Type' },
+      { field: 'id_number', label: 'ID Number' }
+    ];
+    
+    // Add SSN requirement for US users
+    if (selectedRegion === 'US') {
+      requiredFields.push({ field: 'ssn', label: 'Social Security Number' });
     }
     
-    // Validate required fields
-    countryConfig.fields.forEach(field => {
-      // Check if the field should be validated based on dependencies
-      if (field.dependsOn) {
-        const dependentField = field.dependsOn.field;
-        const allowedValues = field.dependsOn.values;
-        
-        // Skip validation if the dependency condition is not met
-        if (!formData[dependentField] || !allowedValues.includes(formData[dependentField])) {
-          return;
-        }
-      }
-      
-      if (field.required && !formData[field.name]) {
-        newErrors[field.name] = `${field.label} is required`;
+    // Check required fields
+    requiredFields.forEach(({ field, label }) => {
+      if (!formData[field]) {
+        newErrors[field] = `${label} is required`;
       }
     });
     
-    // Special validations
-    if (selectedCountry === 'US') {
-      // Conditional validations based on ID type
-      if (formData.idNumber) {
-        const digits = formData.idNumber.replace(/\D/g, '');
-        if (digits.length !== 9) {
-          newErrors.idNumber = 'Enter a valid SSN (9 digits)';
-        }
+    // Validate SSN format for US users
+    if (selectedRegion === 'US' && formData.ssn) {
+      const ssnDigits = formData.ssn.replace(/\D/g, '');
+      if (ssnDigits.length !== 9) {
+        newErrors.ssn = 'Please enter a valid 9-digit SSN';
       }
     }
     
-    // Image requirements based on idType
-    if (formData.idType === 'drivers_license') {
-      if (!formData.idImageFront) newErrors.idImageFront = 'Front image required';
-      if (!formData.idImageBack) newErrors.idImageBack = 'Back image required';
-    } else if (formData.idType && formData.idType !== 'ssn') {
-      if (!formData.idImageFront) newErrors.idImageFront = 'Front image required';
+    // Validate birth date (must be 18 or older)
+    if (formData.birth_date) {
+      const birthDate = new Date(formData.birth_date);
+      const today = new Date();
+      const age = today.getFullYear() - birthDate.getFullYear();
+      if (age < 18) {
+        newErrors.birth_date = 'You must be at least 18 years old';
+      }
+    }
+    
+    // Validate file uploads based on ID type
+    if (formData.id_type) {
+      if (!formData.id_image_front) {
+        newErrors.id_image_front = 'Front image of ID is required';
+      }
+      
+      if (formData.id_type === 'drivers_license' && !formData.id_image_back) {
+        newErrors.id_image_back = 'Back image of driver\'s license is required';
+      }
     }
     
     setErrors(newErrors);
     return Object.keys(newErrors).length === 0;
+  };
+  
+  // Convert file to base64
+  const fileToBase64 = (file) => {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = error => reject(error);
+    });
   };
   
   // Handle form submission
@@ -444,66 +456,91 @@ const KYCVerification = () => {
     setSubmitError('');
     
     try {
-      // Create a new FormData object for file uploads
-      const submitData = new FormData();
+      // Get access token
+      const token = await getAccessTokenSilently({
+        authorizationParams: {
+          scope: 'openid profile email'
+        }
+      });
       
-      // Process full name into first/last name for backend
-      submitData.append('first_name', formData.firstName);
-      submitData.append('last_name', formData.lastName);
+      // Prepare data for Bridge customer creation
+      const customerData = {
+        type: 'individual',
+        first_name: formData.first_name,
+        last_name: formData.last_name,
+        birth_date: formData.birth_date,
+        residential_address: {
+          street_line_1: formData.street_line_1,
+          city: formData.city,
+          subdivision: formData.subdivision,
+          postal_code: formData.postal_code,
+          country: formData.country
+        },
+        identifying_information: []
+      };
       
-      // Add country information
-      submitData.append('kyc_country', selectedCountry);
-      
-      // Always include Auth0 email claim
-      if (user && user.email) {
-        submitData.append('email', user.email);
+      // Add SSN for US users
+      if (selectedRegion === 'US' && formData.ssn) {
+        customerData.identifying_information.push({
+          type: 'ssn',
+          issuing_country: 'usa',
+          number: formData.ssn.replace(/\D/g, '') // Remove formatting
+        });
       }
       
-      // Append all form fields, converting camelCase keys to snake_case
-      Object.entries(formData).forEach(([key, value]) => {
-        // Skip firstName and lastName as we've already processed them
-        if (key === 'firstName' || key === 'lastName') return;
-        
-        // Map specific fields to their backend names
-        const fieldMapping = {
-          'dateOfBirth': 'date_of_birth',
-          'streetAddress': 'street_address',
-          'streetAddress2': 'street_address_2',
-          'postalCode': 'postal_code',
-          'idType': 'id_type',
-          'idNumber': 'id_number',
-          'region': 'state',
-          'proofOfAddress': 'proof_of_address',
-          'countryOfResidence': 'country_of_residence',
-          'firstName': 'first_name',
-          'lastName': 'last_name',
-        };
-        
-        // Use mapped name if it exists, otherwise convert camelCase to snake_case
-        const snakeKey = fieldMapping[key] || key.replace(/([A-Z])/g, '_$1').toLowerCase();
-        submitData.append(snakeKey, value);
-      });
+      // Add ID document
+      const idDoc = {
+        type: formData.id_type,
+        issuing_country: formData.country.toLowerCase(),
+        number: formData.id_number
+      };
+      
+      // Convert images to base64
+      if (formData.id_image_front) {
+        const frontBase64 = await fileToBase64(formData.id_image_front);
+        idDoc.image_front = frontBase64;
+      }
+      
+      if (formData.id_image_back) {
+        const backBase64 = await fileToBase64(formData.id_image_back);
+        idDoc.image_back = backBase64;
+      }
+      
+      customerData.identifying_information.push(idDoc);
+      
+      // Also include the selected region for our backend
+      customerData.region = selectedRegion.toLowerCase();
+
+      if (signedAgreementId) {
+        customerData.signed_agreement_id = signedAgreementId;
+      }
       
       console.log('Submitting KYC data to backend...');
       
-      // Submit KYC data to backend
+      // Submit to our backend (which will handle Bridge API call)
       const response = await api.post(
         '/user/kyc/submit',
-        submitData,
-        { headers: { 'Content-Type': 'multipart/form-data' } }
+        customerData,
+        { 
+          headers: { 
+            'Authorization': `Bearer ${token}`,
+            'Content-Type': 'application/json'
+          } 
+        }
       );
       
       console.log('KYC submission response:', response.data);
       setSubmitSuccess(true);
+      setActiveStep(2);
+      sessionStorage.removeItem(SNAPSHOT_KEY);
       
-      // Wait for 2 seconds to show success message before redirecting
-      setTimeout(() => navigate('/dashboard'), 2000);
+      // Redirect to dashboard after success
+      setTimeout(() => navigate('/dashboard'), 3000);
+      
     } catch (error) {
       console.error('KYC submission error:', error);
       
-      // Handle specific error cases
       if (error.response) {
-        // The server responded with an error status
         const statusCode = error.response.status;
         const errorMessage = error.response.data?.detail || 'Unknown server error';
         
@@ -515,14 +552,8 @@ const KYCVerification = () => {
           setSubmitError(`Server error (${statusCode}): ${errorMessage}`);
         }
       } else if (error.request) {
-        // The request was made but no response was received
-        if (error.code === 'ECONNABORTED') {
-          setSubmitError('Request timed out. Please check your connection and try again.');
-        } else {
-          setSubmitError('Network error. Please check your connection and try again.');
-        }
+        setSubmitError('Network error. Please check your connection and try again.');
       } else {
-        // Something else happened while setting up the request
         setSubmitError('Failed to submit verification. Please try again or contact support.');
       }
     } finally {
@@ -530,6 +561,70 @@ const KYCVerification = () => {
     }
   };
   
+  // After submission (activeStep === 2), poll for completion
+  useEffect(() => {
+    let intervalId;
+    let attemptedWallet = false;
+
+    const pollStatus = async () => {
+      try {
+        const token = await getAccessTokenSilently({ authorizationParams: { scope: 'openid profile email' } });
+        const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
+        const { next_step } = res.data || {};
+        if (next_step === 'done') {
+          navigate('/dashboard');
+        } else if (next_step === 'create_wallet') {
+          if (!attemptedWallet) {
+            attemptedWallet = true;
+            try { await api.post('/user/create-wallet', {}, { headers: { Authorization: `Bearer ${token}` } }); } catch(e) {}
+          }
+        }
+      } catch (e) {
+        // ignore and keep polling
+      }
+    };
+
+    if (activeStep === 2) {
+      pollStatus();
+      intervalId = setInterval(pollStatus, 3000);
+    }
+
+    return () => { if (intervalId) clearInterval(intervalId); };
+  }, [activeStep, getAccessTokenSilently, navigate]);
+
+  // Utility to determine if submit should be enabled (all fields complete + ToS accepted)
+  const isTosAccepted = Boolean(signedAgreementId);
+  const isFormComplete = (() => {
+    const requiredFields = [
+      'first_name',
+      'last_name',
+      'birth_date',
+      'street_line_1',
+      'city',
+      'subdivision',
+      'postal_code',
+      'country',
+      'id_type',
+      'id_number'
+    ];
+    if (selectedRegion === 'US') requiredFields.push('ssn');
+
+    const allTextPresent = requiredFields.every((field) => {
+      const value = formData[field];
+      return typeof value === 'string' ? value.trim().length > 0 : Boolean(value);
+    });
+
+    const imagesPresent = Boolean(formData.id_image_front) && (
+      formData.id_type !== 'drivers_license' || Boolean(formData.id_image_back)
+    );
+
+    const ssnValid = selectedRegion !== 'US'
+      ? true
+      : (formData.ssn ? formData.ssn.replace(/\D/g, '').length === 9 : false);
+
+    return allTextPresent && imagesPresent && ssnValid && isTosAccepted;
+  })();
+
   // Show loading state while Auth0 loads
   if (isLoading) {
     return (
@@ -545,153 +640,424 @@ const KYCVerification = () => {
     return null;
   }
   
-  // Render form fields for selected country
-  const renderFormFields = () => {
-    if (!selectedCountry) return null;
-    
-    const countryConfig = countryKycRequirements[selectedCountry];
-    if (!countryConfig) return null;
-  
-  return (
-    <>
+  // Render region selection step
+  const renderRegionSelection = () => (
+    <Grid container spacing={3}>
+      <Grid item xs={12}>
         <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
-          {countryConfig.name} KYC Requirements
-          </Typography>
-          
+          Select Your Region
+        </Typography>
         <Typography variant="body2" sx={{ mb: 3, color: 'rgba(255,255,255,0.7)' }}>
-          {countryConfig.description}
-          </Typography>
-          
-            <Grid container spacing={3}>
-          {countryConfig.fields.map((field, index) => {
-            // Check if the field should be displayed based on dependencies
-            if (field.dependsOn) {
-              const dependentField = field.dependsOn.field;
-              const allowedValues = field.dependsOn.values;
-              
-              // Skip rendering if the dependency condition is not met
-              if (!formData[dependentField] || !allowedValues.includes(formData[dependentField])) {
-                return null;
-              }
-            }
-            
-            return (
-              <Grid item xs={12} md={field.type === 'text' || field.type === 'email' ? 6 : 12} key={index}>
-                {field.type === 'select' ? (
-                  <FormControl fullWidth error={!!errors[field.name]}>
-                    <InputLabel>{field.label}</InputLabel>
-                    <Select
-                      name={field.name}
-                      value={formData[field.name] || ''}
-                  onChange={handleChange}
-                      required={field.required}
-                      label={field.label}
-                    >
-                      {field.options.map((option) => (
-                        <MenuItem key={option.value} value={option.value}>
-                          {option.label}
-                        </MenuItem>
-                      ))}
-                    </Select>
-                    {errors[field.name] && <FormHelperText>{errors[field.name]}</FormHelperText>}
-                  </FormControl>
-                ) : field.type === 'file' ? (
-                  <Box>
-                    <Typography sx={{ mb: 1 }}>{field.label}</Typography>
-                    <Button
-                  variant="outlined"
-                      component="label"
-                      fullWidth
-                  sx={{ 
-                        height: '56px',
-                        borderColor: errors[field.name] ? 'error.main' : 'rgba(255,255,255,0.1)',
-                        color: 'white'
-                      }}
-                    >
-                      {formData[field.name] ? 'File selected' : 'Choose File'}
-                      <input
-                        type="file"
-                        name={field.name}
-                        onChange={handleFileChange}
-                        hidden
-                        required={field.required}
-                      />
-                    </Button>
-                    {errors[field.name] && (
-                      <FormHelperText error>{errors[field.name]}</FormHelperText>
-                    )}
-                  </Box>
-                ) : (
-                <TextField
-                  fullWidth
-                    label={field.label}
-                    name={field.name}
-                    type={field.type}
-                    value={formData[field.name] || ''}
-                  onChange={handleChange}
-                    error={!!errors[field.name]}
-                    helperText={errors[field.name]}
-                    required={field.required}
-                  InputLabelProps={{ 
-                      style: { color: 'rgba(255,255,255,0.7)' },
-                      shrink: field.type === 'date' ? true : undefined
-                  }}
-                  InputProps={{ style: { color: '#fff' } }}
-                  sx={{ 
-                    '& .MuiOutlinedInput-root': {
-                      '& fieldset': {
-                        borderColor: 'rgba(255,255,255,0.1)',
-                      },
-                      '&:hover fieldset': {
-                        borderColor: 'rgba(255,255,255,0.2)',
-                      },
-                    }
-                  }}
-                />
-                )}
-              </Grid>
-            );
-          })}
-        </Grid>
-      </>
-    );
-  };
-  
-  // Render country selection step
-  const renderCountrySelection = () => {
-    return (
-      <Grid container spacing={3}>
-        <Grid item xs={12}>
-          <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
-            Select Your Country
-          </Typography>
-          <Typography variant="body2" sx={{ mb: 3, color: 'rgba(255,255,255,0.7)' }}>
-            We'll show you the appropriate verification requirements based on your location
-          </Typography>
-          <FormControl fullWidth>
-            <InputLabel>Country</InputLabel>
-                  <Select
-              value={selectedCountry}
-              onChange={handleCountryChange}
-                    label="Country"
-                    sx={{ 
-                color: 'white',
-                      '& .MuiOutlinedInput-notchedOutline': {
-                        borderColor: 'rgba(255,255,255,0.1)',
-                      },
-                    }}
-                  >
-                    {countries.map((country) => (
-                      <MenuItem key={country.code} value={country.code}>
-                        {country.name}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
-              </Grid>
+          We'll collect the appropriate verification information based on your region
+        </Typography>
+        <FormControl fullWidth>
+          <InputLabel>Region</InputLabel>
+          <Select
+            value={selectedRegion}
+            onChange={handleRegionChange}
+            label="Region"
+            sx={{ 
+              color: 'white',
+              '& .MuiOutlinedInput-notchedOutline': {
+                borderColor: 'rgba(255,255,255,0.1)',
+              },
+            }}
+          >
+            {regions.map((region) => (
+              <MenuItem key={region.code} value={region.code}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                  {region.name}
+                  {!region.available && (
+                    <Chip label="Coming Soon" size="small" color="default" />
+                  )}
+                </Box>
+              </MenuItem>
+            ))}
+          </Select>
+        </FormControl>
       </Grid>
-    );
-  };
+    </Grid>
+  );
+  
+  // Render KYC form
+  const renderKYCForm = () => (
+    <>
+      <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
+        Personal Information & Identity Verification
+      </Typography>
+      <Typography variant="body2" sx={{ mb: 3, color: 'rgba(255,255,255,0.7)' }}>
+        Please provide accurate information as it appears on your government-issued ID
+      </Typography>
+      
+      <Grid container spacing={3}>
+        {/* Personal Information */}
+        <Grid item xs={12}>
+          <Typography variant="subtitle1" sx={{ mb: 2, fontWeight: 600 }}>
+            Personal Details
+          </Typography>
+        </Grid>
+        
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            label="First Name"
+            name="first_name"
+            value={formData.first_name}
+            onChange={handleChange}
+            error={!!errors.first_name}
+            helperText={errors.first_name}
+            required
+            InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
+            InputProps={{ style: { color: '#fff' } }}
+            sx={{ 
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+              }
+            }}
+          />
+        </Grid>
+        
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            label="Last Name"
+            name="last_name"
+            value={formData.last_name}
+            onChange={handleChange}
+            error={!!errors.last_name}
+            helperText={errors.last_name}
+            required
+            InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
+            InputProps={{ style: { color: '#fff' } }}
+            sx={{ 
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+              }
+            }}
+          />
+        </Grid>
+        
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            label="Date of Birth"
+            name="birth_date"
+            type="date"
+            value={formData.birth_date}
+            onChange={handleChange}
+            error={!!errors.birth_date}
+            helperText={errors.birth_date}
+            required
+            InputLabelProps={{ 
+              style: { color: 'rgba(255,255,255,0.7)' },
+              shrink: true 
+            }}
+            InputProps={{ style: { color: '#fff' } }}
+            sx={{ 
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+              }
+            }}
+          />
+        </Grid>
+        
+        {/* Address Section */}
+        <Grid item xs={12}>
+          <Typography variant="subtitle1" sx={{ mb: 2, mt: 2, fontWeight: 600 }}>
+            Residential Address
+          </Typography>
+        </Grid>
+        
+        <Grid item xs={12}>
+          <TextField
+            fullWidth
+            label="Street Address"
+            name="street_line_1"
+            value={formData.street_line_1}
+            onChange={handleChange}
+            error={!!errors.street_line_1}
+            helperText={errors.street_line_1 || 'Start typing to use address autocomplete'}
+            required
+            inputRef={addressRef}
+            InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
+            InputProps={{ 
+              style: { color: '#fff' },
+              endAdornment: googleMapsLoaded && (
+                <InputAdornment position="end">
+                  <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.5)' }}>
+                    🌍
+                  </Typography>
+                </InputAdornment>
+              )
+            }}
+            sx={{ 
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+              }
+            }}
+          />
+        </Grid>
+        
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            label="City"
+            name="city"
+            value={formData.city}
+            onChange={handleChange}
+            error={!!errors.city}
+            helperText={errors.city}
+            required
+            InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
+            InputProps={{ style: { color: '#fff' } }}
+            sx={{ 
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+              }
+            }}
+          />
+        </Grid>
+        
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            label={selectedRegion === 'US' ? 'State' : 'State/Province'}
+            name="subdivision"
+            value={formData.subdivision}
+            onChange={handleChange}
+            error={!!errors.subdivision}
+            helperText={errors.subdivision}
+            required
+            InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
+            InputProps={{ style: { color: '#fff' } }}
+            sx={{ 
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+              }
+            }}
+          />
+        </Grid>
+        
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            label={selectedRegion === 'US' ? 'ZIP Code' : 'Postal Code'}
+            name="postal_code"
+            value={formData.postal_code}
+            onChange={handleChange}
+            error={!!errors.postal_code}
+            helperText={errors.postal_code}
+            required
+            InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
+            InputProps={{ style: { color: '#fff' } }}
+            sx={{ 
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+              }
+            }}
+          />
+        </Grid>
+        
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            label="Country"
+            name="country"
+            value={formData.country}
+            onChange={handleChange}
+            error={!!errors.country}
+            helperText={errors.country}
+            required
+            InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
+            InputProps={{ style: { color: '#fff' } }}
+            sx={{ 
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+              }
+            }}
+          />
+        </Grid>
+        
+        {/* Identity Verification */}
+        <Grid item xs={12}>
+          <Typography variant="subtitle1" sx={{ mb: 2, mt: 2, fontWeight: 600 }}>
+            Identity Verification
+          </Typography>
+        </Grid>
+        
+        <Grid item xs={12} md={6}>
+          <FormControl fullWidth error={!!errors.id_type}>
+            <InputLabel sx={{ color: 'rgba(255,255,255,0.7)' }}>ID Type</InputLabel>
+            <Select
+              name="id_type"
+              value={formData.id_type}
+              onChange={handleChange}
+              required
+              label="ID Type"
+              sx={{ 
+                color: 'white',
+                '& .MuiOutlinedInput-notchedOutline': {
+                  borderColor: 'rgba(255,255,255,0.1)',
+                },
+              }}
+            >
+              {ID_TYPES.map((type) => (
+                <MenuItem key={type.value} value={type.value}>
+                  {type.label}
+                </MenuItem>
+              ))}
+            </Select>
+            {errors.id_type && <FormHelperText>{errors.id_type}</FormHelperText>}
+          </FormControl>
+        </Grid>
+
+        {selectedRegion === 'US' && (
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label="Social Security Number"
+              name="ssn"
+              value={formData.ssn}
+              onChange={handleChange}
+              error={!!errors.ssn}
+              helperText={errors.ssn || 'Format: XXX-XX-XXXX'}
+              required
+              placeholder="XXX-XX-XXXX"
+              InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
+              InputProps={{ style: { color: '#fff' } }}
+              sx={{ 
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                }
+              }}
+            />
+          </Grid>
+        )}
+        
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            label="ID Number"
+            name="id_number"
+            value={formData.id_number}
+            onChange={handleChange}
+            error={!!errors.id_number}
+            helperText={errors.id_number}
+            required
+            InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
+            InputProps={{ style: { color: '#fff' } }}
+            sx={{ 
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+              }
+            }}
+          />
+        </Grid>
+        
+        {/* File Uploads */}
+        <Grid item xs={12}>
+          <Typography variant="subtitle1" sx={{ mb: 2, mt: 2, fontWeight: 600 }}>
+            Document Images
+          </Typography>
+          <Typography variant="body2" sx={{ mb: 2, color: 'rgba(255,255,255,0.7)' }}>
+            {formData.id_type === 'drivers_license' 
+              ? 'Please upload clear photos of both the front and back of your driver\'s license'
+              : 'Please upload a clear photo of your ID document'
+            }
+          </Typography>
+        </Grid>
+        
+        <Grid item xs={12} md={formData.id_type === 'drivers_license' ? 6 : 12}>
+          <Box>
+            <Typography sx={{ mb: 1, color: 'rgba(255,255,255,0.9)' }}>
+              ID Front Image *
+            </Typography>
+            <Button
+              variant="outlined"
+              component="label"
+              fullWidth
+              sx={{ 
+                height: '56px',
+                borderColor: errors.id_image_front ? 'error.main' : 'rgba(255,255,255,0.1)',
+                color: 'white',
+                justifyContent: 'flex-start'
+              }}
+            >
+              {formData.id_image_front ? `📷 ${formData.id_image_front.name}` : '📷 Upload Front Image'}
+              <input
+                type="file"
+                name="id_image_front"
+                onChange={handleFileChange}
+                hidden
+                accept="image/*"
+                required
+              />
+            </Button>
+            {errors.id_image_front && (
+              <FormHelperText error>{errors.id_image_front}</FormHelperText>
+            )}
+          </Box>
+        </Grid>
+        
+        {formData.id_type === 'drivers_license' && (
+          <Grid item xs={12} md={6}>
+            <Box>
+              <Typography sx={{ mb: 1, color: 'rgba(255,255,255,0.9)' }}>
+                ID Back Image *
+              </Typography>
+              <Button
+                variant="outlined"
+                component="label"
+                fullWidth
+                sx={{ 
+                  height: '56px',
+                  borderColor: errors.id_image_back ? 'error.main' : 'rgba(255,255,255,0.1)',
+                  color: 'white',
+                  justifyContent: 'flex-start'
+                }}
+              >
+                {formData.id_image_back ? `📷 ${formData.id_image_back.name}` : '📷 Upload Back Image'}
+                <input
+                  type="file"
+                  name="id_image_back"
+                  onChange={handleFileChange}
+                  hidden
+                  accept="image/*"
+                  required
+                />
+              </Button>
+              {errors.id_image_back && (
+                <FormHelperText error>{errors.id_image_back}</FormHelperText>
+              )}
+            </Box>
+          </Grid>
+        )}
+      </Grid>
+    </>
+  );
+  
+  // Render success step
+  const renderSuccess = () => (
+    <Box sx={{ textAlign: 'center' }}>
+      <Typography variant="h6" sx={{ mb: 2 }}>
+        ✅ Verification Submitted Successfully!
+      </Typography>
+      <Typography variant="body1" sx={{ mb: 3, color: 'rgba(255,255,255,0.7)' }}>
+        Your identity verification has been submitted. You'll be redirected to your dashboard shortly.
+      </Typography>
+      <CircularProgress sx={{ mt: 2 }} />
+    </Box>
+  );
   
   return (
     <>
@@ -699,23 +1065,22 @@ const KYCVerification = () => {
       <Box sx={{ backgroundColor: 'transparent', color: '#fff', minHeight: '100vh', py: 8 }}>
         <Container maxWidth="md">
           <Typography variant="h3" sx={{ mb: 3, textAlign: 'center', fontWeight: 700 }}>
-            Verify Your Identity
+            Identity Verification
           </Typography>
           
           <Typography variant="body1" sx={{ mb: 4, textAlign: 'center', color: 'rgba(255,255,255,0.7)' }}>
-            To comply with financial regulations and ensure the security of our platform, 
-            we require identity verification. Your information is encrypted and securely stored.
+            Secure verification powered by Bridge. Your information is encrypted and protected.
           </Typography>
           
           <Stepper activeStep={activeStep} sx={{ mb: 4 }}>
             <Step>
-              <StepLabel>Select Country</StepLabel>
+              <StepLabel>Select Region</StepLabel>
             </Step>
             <Step>
               <StepLabel>Provide Information</StepLabel>
             </Step>
             <Step>
-              <StepLabel>Submission</StepLabel>
+              <StepLabel>Complete</StepLabel>
             </Step>
           </Stepper>
           
@@ -725,84 +1090,87 @@ const KYCVerification = () => {
             </Alert>
           )}
           
-          {submitSuccess && (
-            <Alert severity="success" sx={{ mb: 4 }}>
-              Your information has been submitted successfully!
-            </Alert>
-          )}
-          
           <Paper
-            component="form"
-            onSubmit={handleSubmit}
-                  sx={{ 
+            component={activeStep === 1 ? "form" : "div"}
+            onSubmit={activeStep === 1 ? handleSubmit : undefined}
+            sx={{ 
               backgroundColor: 'rgba(30, 30, 30, 0.4)',
               p: { xs: 3, md: 5 },
               borderRadius: 2,
               border: '1px solid rgba(255, 255, 255, 0.1)'
             }}
           >
-            {activeStep === 0 && renderCountrySelection()}
-            {activeStep === 1 && renderFormFields()}
+            {activeStep === 0 && renderRegionSelection()}
+            {activeStep === 1 && renderKYCForm()}
             {activeStep === 2 && (
               <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h6">
-                  Verification Submitted
+                <Typography variant="h6">Verification Submitted</Typography>
+                <Typography variant="body2" sx={{ mt: 1, color: 'rgba(255,255,255,0.7)' }}>
+                  We’re finalizing your account. This can take up to a minute. You’ll be redirected automatically.
                 </Typography>
-                <Typography variant="body1" sx={{ mt: 2 }}>
-                  Your information has been submitted for verification. We'll review it shortly.
-                </Typography>
-                <CircularProgress sx={{ mt: 4 }} />
+                <CircularProgress sx={{ mt: 3 }} />
               </Box>
             )}
             
             {activeStep === 1 && (
-              <>
-                <Box sx={{ mt: 4, backgroundColor: 'rgba(25, 118, 210, 0.1)', p: 2, borderRadius: 1 }}>
-                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)' }}>
-                    <strong>Verification Process:</strong> Your information will be verified through secure third-party services 
-                    such as Socure, Persona, or Trulioo for ID verification and Plaid for bank account verification when applicable. 
-                    We do not store sensitive document images or complete ID numbers in our database. All verification is done 
-                    securely and in compliance with financial regulations.
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 1 }}>
+                  By proceeding you acknowledge our Terms of Service.
+                </Typography>
+                <Button variant="text" onClick={handleGenerateTos} sx={{ color: '#90caf9' }}>
+                  View and Accept Terms of Service
+                </Button>
+                {signedAgreementId ? (
+                  <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'rgba(255,255,255,0.7)' }}>
+                    Terms accepted. Agreement ID: {signedAgreementId}
                   </Typography>
-                </Box>
-                
-                <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
-                  <Button 
-                    variant="outlined"
-                    onClick={handleBackToCountry}
-                    sx={{ 
-                      color: 'white',
-                      borderColor: 'rgba(255,255,255,0.3)'
-                    }}
-                  >
-                    Back
-                  </Button>
+                ) : (
+                  <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'error.main' }}>
+                    You must view and accept the Terms of Service to continue.
+                  </Typography>
+                )}
+              </Box>
+            )}
+
+            {activeStep === 1 && (
+              <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
+                <Button 
+                  variant="outlined"
+                  onClick={handleBackToRegion}
+                  sx={{ 
+                    color: 'white',
+                    borderColor: 'rgba(255,255,255,0.3)'
+                  }}
+                >
+                  Back
+                </Button>
                 <Button 
                   type="submit"
                   variant="contained"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !isFormComplete}
                   sx={{ 
-                      bgcolor: 'primary.main',
-                      '&:hover': {
-                        bgcolor: 'primary.dark',
-                      }
-                    }}
-                  >
-                    {isSubmitting ? 'Submitting...' : 'Submit Verification'}
+                    bgcolor: isSubmitting || !isFormComplete ? 'action.disabledBackground' : 'primary.main',
+                    color: isSubmitting || !isFormComplete ? 'action.disabled' : undefined,
+                    '&:hover': {
+                      bgcolor: isSubmitting || !isFormComplete ? 'action.disabledBackground' : 'primary.dark',
+                    }
+                  }}
+                >
+                  {isSubmitting ? 'Submitting...' : 'Submit Verification'}
                 </Button>
-          </Box>
-              </>
+              </Box>
             )}
           </Paper>
         </Container>
       </Box>
+      
       <Snackbar 
         open={submitSuccess} 
         autoHideDuration={6000} 
         onClose={() => setSubmitSuccess(false)}
       >
         <Alert severity="success">
-          Your identity verification has been submitted successfully!
+          Identity verification submitted successfully!
         </Alert>
       </Snackbar>
     </>
