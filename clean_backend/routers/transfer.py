@@ -1,6 +1,8 @@
 from decimal import Decimal
 import os
 from typing import Any, Dict, Optional
+import uuid
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, condecimal
@@ -12,6 +14,7 @@ from ..database import get_db
 from ..models import User, BridgeCustomer, BridgeWallet
 from ..bridge import BridgeClient
 from ..services.encumbrance_service import EncumbranceService, CORPORATE_WALLET_ID, CORPORATE_CUSTOMER_ID
+from ..services.rate_service import rate_service
 from ..models import PlaidItem
 
 router = APIRouter(prefix="/transfers", tags=["transfers"])
@@ -25,12 +28,26 @@ class DepositIn(BaseModel):
     amount: condecimal(gt=Decimal("0"), max_digits=18, decimal_places=2)
     external_account_id: str
 
+class SendIn(BaseModel):
+    recipient_user_id: int
+    amount: condecimal(gt=Decimal("0"), max_digits=18, decimal_places=2)
+    memo: Optional[str] = None
+    speed_option: Optional[str] = "standard"
 
 class DepositOut(BaseModel):
     fiat_transfer_id: str
-    advance_transfer_id: str
+    usdb_transfer_id: str
     encumbrance_id: str
-    state: str
+    status: str
+
+class SendOut(BaseModel):
+    transfer_id: str
+    status: str
+    sender_currency: str
+    recipient_currency: str
+    amount_sent: float
+    amount_received: float
+    exchange_rate: Optional[float] = None
 
 
 class WithdrawalIn(BaseModel):
@@ -41,10 +58,203 @@ class WithdrawalIn(BaseModel):
 # ---------------------------- Helpers ----------------------------
 
 def _get_user_by_sub(db: Session, sub: str) -> Optional[User]:
-    return db.query(User).filter((User.auth0_id == sub) | (User.email == sub)).first()
+    """Look up user by Auth0 subject ID only - NEVER by email to prevent auth bugs"""
+    return db.query(User).filter(User.auth0_id == sub).first()
+
+def _get_user_by_id(db: Session, user_id: int) -> Optional[User]:
+    return db.query(User).filter(User.id == user_id).first()
+
+def _deduct_from_buckets(fiat_balance_by_rate: Dict, amount: Decimal) -> Dict:
+    """
+    Deduct amount from fiat_balance_by_rate buckets using lowest-rate-first strategy (max profit)
+    Returns updated buckets dict
+    """
+    if not fiat_balance_by_rate:
+        raise ValueError("Insufficient balance: no buckets available")
+    
+    # Sort buckets by rate (ascending) to use lowest rates first
+    sorted_buckets = sorted(fiat_balance_by_rate.items(), key=lambda x: float(x[0].split('_')[-1]) if '_' in x[0] else 0)
+    
+    remaining_amount = amount
+    updated_buckets = fiat_balance_by_rate.copy()
+    
+    for rate_key, bucket_amount in sorted_buckets:
+        if remaining_amount <= 0:
+            break
+            
+        bucket_balance = Decimal(str(bucket_amount))
+        deduct_amount = min(remaining_amount, bucket_balance)
+        
+        updated_buckets[rate_key] = float(bucket_balance - deduct_amount)
+        remaining_amount -= deduct_amount
+        
+        # Remove empty buckets
+        if updated_buckets[rate_key] <= 0:
+            del updated_buckets[rate_key]
+    
+    if remaining_amount > 0:
+        raise ValueError(f"Insufficient balance: need {amount}, only {amount - remaining_amount} available")
+    
+    return updated_buckets
+
+def _add_to_bucket(fiat_balance_by_rate: Dict, rate_key: str, amount: Decimal) -> Dict:
+    """Add amount to specific rate bucket"""
+    updated_buckets = fiat_balance_by_rate.copy()
+    current_amount = Decimal(str(updated_buckets.get(rate_key, 0)))
+    updated_buckets[rate_key] = float(current_amount + amount)
+    return updated_buckets
 
 
 # ---------------------------- Routes ----------------------------
+
+@router.post("/send", response_model=SendOut)
+async def send_transfer(
+    body: SendIn,
+    db: Session = Depends(get_db),
+    auth_user: Auth0User = Depends(get_current_user),
+):
+    """
+    Send money between users with proper currency conversion and rate locking.
+    
+    Handles two cases:
+    1. Same currency send (H → H): Direct transfer with current rate locking
+    2. Cross-currency send (C₁ → C₂): Convert via USDC with proper rate tracking
+    """
+    
+    # Get sender
+    sender = _get_user_by_sub(db, auth_user.id)
+    if not sender:
+        raise HTTPException(status_code=404, detail="Sender not found")
+    
+    # Get recipient
+    recipient = _get_user_by_id(db, body.recipient_user_id)
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    
+    # Get sender's bridge wallet
+    sender_wallet = db.query(BridgeWallet).filter(BridgeWallet.user_id == sender.id).first()
+    if not sender_wallet:
+        raise HTTPException(status_code=400, detail="Sender wallet not found")
+    
+    # Get recipient's bridge wallet
+    recipient_wallet = db.query(BridgeWallet).filter(BridgeWallet.user_id == recipient.id).first()
+    if not recipient_wallet:
+        raise HTTPException(status_code=400, detail="Recipient wallet not found")
+    
+    sender_currency = sender_wallet.fiat_currency or 'USD'
+    recipient_currency = recipient_wallet.fiat_currency or 'USD'
+    send_amount = body.amount
+    
+    # Get current rates for locking
+    sender_rate = rate_service.get_usdc_rate(sender_currency)
+    recipient_rate = rate_service.get_usdc_rate(recipient_currency)
+    
+    if sender_rate is None or recipient_rate is None:
+        raise HTTPException(status_code=502, detail="Unable to fetch current exchange rates")
+    
+    # Create rate keys for bucket tracking
+    timestamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    sender_rate_key = f"R_{timestamp}_{sender_rate}"
+    recipient_rate_key = f"R_{timestamp}_{recipient_rate}"
+    
+    try:
+        if sender_currency.upper() == recipient_currency.upper():
+            # Case 5: Same-currency send (H → H)
+            
+            # Deduct from sender's buckets
+            sender_wallet.fiat_balance_by_rate = _deduct_from_buckets(
+                sender_wallet.fiat_balance_by_rate or {}, send_amount
+            )
+            
+            # Add to recipient's bucket at current rate
+            recipient_wallet.fiat_balance_by_rate = _add_to_bucket(
+                recipient_wallet.fiat_balance_by_rate or {}, recipient_rate_key, send_amount
+            )
+            
+            # Trigger Bridge wallet-to-wallet transfer
+            client = BridgeClient()
+            usdc_amount = send_amount * sender_rate
+            bridge_transfer = client.create_transfer_sync({
+                "amount": str(usdc_amount),  # Convert to USDC amount
+                "on_behalf_of": sender_wallet.customer_id,
+                "source": {
+                    "payment_rail": "bridge_wallet",
+                    "bridge_wallet_id": sender_wallet.wallet_id,
+                    "currency": "usdc"
+                },
+                "destination": {
+                    "payment_rail": "solana",
+                    "to_address": recipient_wallet.address,
+                    "currency": "usdc"
+                }
+            })
+            
+            db.commit()
+            
+            return SendOut(
+                transfer_id=bridge_transfer.get("id", str(uuid.uuid4())),
+                status="completed",
+                sender_currency=sender_currency,
+                recipient_currency=recipient_currency,
+                amount_sent=float(send_amount),
+                amount_received=float(send_amount),
+                exchange_rate=1.0
+            )
+            
+        else:
+            # Case 6: Cross-currency send (C₁ → C₂)
+            
+            # Convert sender amount to USDC
+            usdc_amount = send_amount * sender_rate
+            
+            # Convert USDC to recipient currency
+            recipient_amount = usdc_amount / recipient_rate
+            
+            # Deduct from sender's buckets
+            sender_wallet.fiat_balance_by_rate = _deduct_from_buckets(
+                sender_wallet.fiat_balance_by_rate or {}, send_amount
+            )
+            
+            # Add to recipient's bucket at current rate
+            recipient_wallet.fiat_balance_by_rate = _add_to_bucket(
+                recipient_wallet.fiat_balance_by_rate or {}, recipient_rate_key, recipient_amount
+            )
+            
+            # Trigger Bridge wallet-to-wallet transfer
+            client = BridgeClient()
+            bridge_transfer = client.create_transfer_sync({
+                "amount": str(usdc_amount),
+                "on_behalf_of": sender_wallet.customer_id,
+                "source": {
+                    "payment_rail": "bridge_wallet",
+                    "bridge_wallet_id": sender_wallet.wallet_id,
+                    "currency": "usdc"
+                },
+                "destination": {
+                    "payment_rail": "solana",
+                    "to_address": recipient_wallet.address,
+                    "currency": "usdc"
+                }
+            })
+            
+            db.commit()
+            
+            return SendOut(
+                transfer_id=bridge_transfer.get("id", str(uuid.uuid4())),
+                status="completed",
+                sender_currency=sender_currency,
+                recipient_currency=recipient_currency,
+                amount_sent=float(send_amount),
+                amount_received=float(recipient_amount),
+                exchange_rate=float(recipient_amount / send_amount)
+            )
+            
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Transfer failed: {str(e)}")
 
 @router.post("/deposit", response_model=DepositOut)
 async def deposit_fiat_to_wallet(

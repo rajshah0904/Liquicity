@@ -4,10 +4,9 @@ A separate file keeps the LATAM-specific integration isolated from the core Brid
 models defined in `clean_backend/models.py`.
 """
 import enum
-from datetime import datetime
 
+# Note: no direct datetime usage required here; timestamps come from SQL defaults
 from sqlalchemy import (
-    BigInteger,
     Column,
     DateTime,
     ForeignKey,
@@ -40,13 +39,17 @@ class VelafiStatus(enum.Enum):
 class VelafiOrder(Base):
     __tablename__ = "velafi_orders"
 
-    id = Column(BigInteger, primary_key=True, autoincrement=True)
-    order_id = Column(String(64), unique=True, nullable=False, index=True)
+    # Align with root Alembic schema: UUID primary key
+    id = Column(UUID(as_uuid=True), primary_key=True)
+    # Keep Python attribute name `order_id`, map to DB column `velafi_order_id`
+    order_id = Column("velafi_order_id", String(64), unique=True, nullable=False, index=True)
 
     user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False, index=True)
     user = relationship("User", back_populates="velafi_orders")
 
-    direction = Column(SQLEnum(VelafiDirection), nullable=False)
+    # Note: Root schema may not include `direction`. Retained here for app logic;
+    # migration alignment to be finalized in a follow-up if needed.
+    direction = Column(SQLEnum(VelafiDirection, name="velafi_direction"), nullable=False)
 
     fiat_amount = Column(Numeric(18, 2), nullable=False)
     fiat_currency = Column(String(3), nullable=False)
@@ -56,7 +59,12 @@ class VelafiOrder(Base):
     fee_usd = Column(Numeric(18, 2))
 
     rail = Column(String(16))  # pix, spei, cbu, etc.
-    status = Column(SQLEnum(VelafiStatus), nullable=False, default=VelafiStatus.PENDING)
+    # Use existing DB enum name from root Alembic: velafi_order_status
+    status = Column(
+        SQLEnum(VelafiStatus, name="velafi_order_status"),
+        nullable=False,
+        server_default=VelafiStatus.PENDING.value,
+    )
 
     tx_hash = Column(String(66))  # 0x-prefixed Ethereum tx hash (or similar)
 

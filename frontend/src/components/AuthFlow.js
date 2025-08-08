@@ -14,8 +14,12 @@ const AuthFlow = () => {
 
       try {
         setStatus('checking');
-        // Get token from Auth0
-        const token = await getAccessTokenSilently();
+        // Get token from Auth0 with email scope
+        const token = await getAccessTokenSilently({
+          authorizationParams: {
+            scope: 'openid profile email'
+          }
+        });
         
         // Check if user exists in our database via proxy (prefixed /api)
         const checkResponse = await api.get(`/user/check`, {

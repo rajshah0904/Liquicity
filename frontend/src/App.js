@@ -15,7 +15,7 @@ import HowItWorks from './pages/HowItWorks';
 import Security from './pages/Security';
 import KYCVerification from './pages/KYCVerification';
 import AuthCallback from './pages/AuthCallback';
-import TosCallback from './pages/TosCallback';
+
 import WalletPage from './pages/Wallet';
 import DepositPage from './pages/wallet/Deposit';
 import WithdrawPage from './pages/wallet/Withdraw';
@@ -30,7 +30,7 @@ import VirtualAccountPage from './pages/VirtualAccount';
 import BankAccountsPage from './pages/wallet/BankAccounts';
 import SettingsPage from './pages/Settings';
 import ProfilePage from './pages/Profile';
-import CountrySelect from './pages/CountrySelect';
+
 
 // Components
 import Navbar from './components/Navbar';
@@ -70,7 +70,7 @@ function App() {
         <Route path="/how-it-works" element={<HowItWorks />} />
         <Route path="/security" element={<Security />} />
         <Route path="/callback" element={<AuthCallback />} />
-        <Route path="/tos-callback" element={<TosCallback />} />
+        
         
         {/* Auth0 Flow Routes - Protected */}
         <Route path="/kyc-verification" element={<ProtectedRoute><KycGuard><KYCVerification/></KycGuard></ProtectedRoute>} />
@@ -114,8 +114,8 @@ function App() {
         {/* Transactions Routes - Protected with Authenticated Layout */}
         <Route path="/transactions" element={<ProtectedRoute><RequireKyc><AuthenticatedLayout><TransactionsPage/></AuthenticatedLayout></RequireKyc></ProtectedRoute>} />
 
-        {/* Country Select Route */}
-        <Route path="/select-country" element={<CountrySelect/>} />
+        {/* Region Select Route */}
+        
       </Routes>
       </MockDataProvider>
     </ThemeProvider>

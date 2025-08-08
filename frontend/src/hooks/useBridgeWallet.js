@@ -13,6 +13,8 @@ export default function useBridgeWallet(pollMs = 10000) {
 
   const fetchWallet = useCallback(async () => {
     try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) return; // wait until token is set by auth flow
       setLoading(true);
       const { data } = await walletAPI.getBridgeWallet();
       setWallet(data);

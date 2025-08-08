@@ -2,71 +2,48 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { CircularProgress, Box, Typography, Alert } from '@mui/material';
+import api from '../utils/api';
 
 const AuthCallback = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const { isAuthenticated, isLoading, user, getAccessTokenSilently, logout } = useAuth0();
-  const [error, setError] = useState(null);
-  
+  const [error, setError] = useState('');
+
   useEffect(() => {
-    // This parses Auth0's appState from URL if available
-    const parseAppState = async () => {
+    const handleAuthCallback = async () => {
       try {
         if (!isLoading && isAuthenticated) {
-          // Log for debugging
           console.log('AuthCallback: Auth0 authenticated user', user);
-          console.log('AuthCallback: Location', location);
-  
-          // Get the token and set it for API calls
-          const token = await getAccessTokenSilently();
-          localStorage.setItem('auth_token', token);
           
-          // Import API and set headers
-          const { default: api } = await import('../utils/api');
+          // Get the token and set it for API calls with email scope
+          const token = await getAccessTokenSilently({
+            authorizationParams: {
+              scope: 'openid profile email'
+            }
+          });
+          localStorage.setItem('auth_token', token);
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
           
-          // Check for signup flag (used for new registrations)
-          const isNewSignup = localStorage.getItem('isNewSignup') === 'true';
+          // Import API and set headers
+          // already imported and configured above
           
-          // Verify the user exists in our backend unless we are processing a fresh signup
-          let userRowExists = true;
+          // Check user's current onboarding state
+          let userData;
           try {
             const checkResp = await api.get('/user/check');
-            userRowExists = checkResp.data?.exists;
-          } catch (checkErr) {
-            console.error('AuthCallback: /user/check failed', checkErr);
-            userRowExists = false;
-          }
-
-          if (!userRowExists) {
-            if (isNewSignup) {
-              // Legitimate first-time signup – allow the flow to continue to KYC
-              console.log('AuthCallback: user not yet registered but isNewSignup=true – continue');
-            } else {
-              // Something is wrong (row deleted?) – force remote logout and send to signup page
-              localStorage.removeItem('auth_token');
-              await logout({ logoutParams: { returnTo: `${window.location.origin}/signup?noaccount=true` } });
-              return; // stop further navigation
-            }
-          }
-          
-          // Check URL for Auth0 state parameter to detect appState
-          const params = new URLSearchParams(location.search);
-          const hasCode = params.has('code');
-          const hasState = params.has('state');
-          
-          console.log('AuthCallback: isNewSignup=', isNewSignup, 'hasCode=', hasCode, 'hasState=', hasState);
-          
-          if (isNewSignup) {
-            // Clear the flag
-            localStorage.removeItem('isNewSignup');
-            console.log('AuthCallback: Redirecting to KYC');
+            userData = checkResp.data;
+          } catch (e) {
+            console.error('AuthCallback: /user/check failed, falling back to KYC', e);
             navigate('/kyc-verification');
-          } else {
-            console.log('AuthCallback: Redirecting to dashboard');
-            navigate('/dashboard');
+            return;
           }
+          
+          console.log('AuthCallback: User state', userData);
+          
+          // Route user based on their current state
+          await routeUserBasedOnState(userData, api, token);
+          
         } else if (!isLoading && !isAuthenticated) {
           console.log('AuthCallback: Not authenticated, going to login');
           navigate('/login');
@@ -77,36 +54,150 @@ const AuthCallback = () => {
       }
     };
     
-    parseAppState();
+    handleAuthCallback();
   }, [isLoading, isAuthenticated, navigate, location, user, getAccessTokenSilently, logout]);
+
+  const routeUserBasedOnState = async (userData, api, token) => {
+    const { exists, next_step, force_fresh_start } = userData;
+    
+    if (!exists) {
+      // New user - start registration
+      await handleRegistration(api, token);
+      return;
+    }
+    
+    // PRODUCTION SECURITY: Handle forced fresh start
+    if (force_fresh_start) {
+      console.log('AuthCallback: Force fresh start detected - clearing cache and going to region');
+      localStorage.clear();
+      sessionStorage.clear();
+      navigate('/kyc-verification');
+      return;
+    }
+    
+    // Existing user - resume where they left off
+    switch (next_step) {
+      case 'kyc':
+        console.log('AuthCallback: Redirecting to KYC');
+        navigate('/kyc-verification');
+        break;
+        
+      case 'create_wallet':
+        console.log('AuthCallback: KYC approved, creating wallet');
+        try {
+          const walletResp = await api.post('/user/create-wallet', {}, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          console.log('Wallet created:', walletResp.data);
+          navigate('/dashboard');
+        } catch (e) {
+          console.error('Wallet creation error:', e);
+          navigate('/kyc-verification'); // Fallback
+        }
+        break;
+        
+      case 'done':
+        console.log('AuthCallback: Onboarding complete, going to dashboard');
+        navigate('/dashboard');
+        break;
+        
+      default:
+        console.log('AuthCallback: Unknown state or incomplete, going to KYC');
+        navigate('/kyc-verification');
+    }
+  };
+
+  const handleRegistration = async (api, token) => {
+    try {
+      console.log('AuthCallback: Registering new user');
+      console.log('AuthCallback: User object:', user);
+      console.log('AuthCallback: User email specifically:', user?.email);
+      
+      // Prepare registration payload - include email from user object if JWT token doesn't have it
+      const registrationPayload = {};
+      if (user?.email) {
+        registrationPayload.email = user.email;
+        console.log('AuthCallback: Using email from user object:', user.email);
+      } else {
+        console.error('AuthCallback: No email in user object!', user);
+      }
+      
+      console.log('AuthCallback: Final registration payload:', registrationPayload);
+      
+      const regResp = await api.post('/onboard/register', registrationPayload, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      console.log('Registration successful:', regResp.data);
+      navigate('/kyc-verification');
+    } catch (regErr) {
+      console.error('Registration error:', regErr);
+      if (regErr.response?.status === 409) {
+        // User already exists, check their state
+        const checkResp = await api.get('/user/check');
+        await routeUserBasedOnState(checkResp.data, api, token);
+      } else if (regErr.response?.status === 400 && regErr.response?.data?.detail?.includes('email claim missing')) {
+        // Email claim missing - try with email from user object if available
+        if (user?.email && !regErr.config?.data?.includes(user.email)) {
+          console.log('AuthCallback: Retrying registration with email from user object');
+          try {
+            const retryResp = await api.post('/onboard/register', { email: user.email }, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            console.log('Registration successful on retry:', retryResp.data);
+            navigate('/kyc-verification');
+            return;
+          } catch (retryErr) {
+            console.error('AuthCallback: Retry also failed:', retryErr);
+          }
+        }
+        
+        // Still failing - force fresh signup
+        console.error('AuthCallback: Email claim missing and no user email - forcing fresh signup');
+        localStorage.clear();
+        sessionStorage.clear();
+        navigate('/signup?error=email_missing');
+      } else {
+        console.error('AuthCallback: Registration failed with error:', regErr.response?.data);
+        setError('Registration failed. Please try signing up again.');
+      }
+    }
+  };
+  
+  if (error) {
+    return (
+      <Box sx={{ 
+        display: 'flex',
+        flexDirection: 'column',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        p: 3
+      }}>
+        <Alert severity="error" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+        <Typography variant="body2">
+          Please try logging in again.
+        </Typography>
+      </Box>
+    );
+  }
   
   return (
     <Box sx={{ 
-      display: 'flex', 
+      display: 'flex',
       flexDirection: 'column',
-      alignItems: 'center', 
-      justifyContent: 'center', 
+      justifyContent: 'center',
+      alignItems: 'center',
       minHeight: '100vh'
     }}>
-      {isLoading ? (
-        <>
-          <CircularProgress size={60} />
-          <Typography variant="h6" sx={{ mt: 3 }}>
-            Processing your sign-in...
-          </Typography>
-        </>
-      ) : error ? (
-        <Alert severity="error" sx={{ maxWidth: 500 }}>
-          {error}
-        </Alert>
-      ) : (
-        <>
-          <CircularProgress size={60} />
-          <Typography variant="h6" sx={{ mt: 3 }}>
-            Redirecting you...
-          </Typography>
-        </>
-      )}
+      <CircularProgress size={60} sx={{ mb: 2 }} />
+      <Typography variant="h6" sx={{ mb: 1 }}>
+        Setting up your account...
+      </Typography>
+      <Typography variant="body2" color="text.secondary">
+        Please wait while we get everything ready for you.
+      </Typography>
     </Box>
   );
 };

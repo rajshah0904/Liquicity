@@ -4,34 +4,30 @@ import {
   Typography,
   CircularProgress,
   Alert,
-  Table,
-  TableBody,
-  TableCell,
-  TableContainer,
-  TableHead,
-  TableRow,
-  Paper,
+  Card,
+  CardContent,
   Button,
-  Collapse,
-  IconButton,
   Stack,
+  Avatar,
+  IconButton,
+  Menu,
+  MenuItem,
 } from '@mui/material';
-import { KeyboardArrowDown, KeyboardArrowUp } from '@mui/icons-material';
+import { 
+  AccountBalance as BankIcon,
+  MoreVert as MoreVertIcon,
+  Add as AddIcon 
+} from '@mui/icons-material';
 import { externalAccountsAPI } from '../../utils/api';
 
 /**
- * BankAccounts page – lets a user:
- *  1. View their Bridge-linked external bank accounts
- *  2. Fetch Plaid Auth / Identity / Balance data on-demand
- *  3. Add a new bank account via Plaid Link (US-only) by reusing Deposit page logic
+ * BankAccounts page – displays linked bank accounts as payment methods
+ * for deposits and withdrawals
  */
 export default function BankAccounts() {
   const [accounts, setAccounts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-
-  // Store fetched details keyed by account id
-  const [details, setDetails] = useState({});
 
   // Fetch list on mount
   useEffect(() => {
@@ -49,159 +45,151 @@ export default function BankAccounts() {
     load();
   }, []);
 
-  const fetchDetail = async (id, type) => {
-    try {
-      setDetails((prev) => ({
-        ...prev,
-        [id]: { ...(prev[id] || {}), loading: { ...(prev[id]?.loading || {}), [type]: true } },
-      }));
-      let data;
-      if (type === 'balance') data = await externalAccountsAPI.getAccountBalance(id);
-      else if (type === 'auth') data = await externalAccountsAPI.getAccountAuth(id);
-      else if (type === 'identity') data = await externalAccountsAPI.getAccountIdentity(id);
-
-      setDetails((prev) => ({
-        ...prev,
-        [id]: {
-          ...(prev[id] || {}),
-          [type]: data.data,
-          loading: { ...(prev[id]?.loading || {}), [type]: false },
-        },
-      }));
-    } catch (e) {
-      console.error(e);
-      setDetails((prev) => ({
-        ...prev,
-        [id]: {
-          ...(prev[id] || {}),
-          error: e.response?.data?.detail || e.message,
-          loading: { ...(prev[id]?.loading || {}), [type]: false },
-        },
-      }));
-    }
-  };
-
   if (loading) return <Box sx={{ pt: 10, display: 'flex', justifyContent: 'center' }}><CircularProgress /></Box>;
   if (error) return <Alert severity="error" sx={{ mt: 4 }}>{error}</Alert>;
 
   return (
-    <Box sx={{ maxWidth: 960, mx: 'auto', mt: 4 }}>
-      <Typography variant="h4" fontWeight={600} gutterBottom>
-        Linked Bank Accounts
-      </Typography>
-      <Box sx={{ mb: 2 }}>
-        <Button variant="contained" onClick={() => (window.location.href = '/wallet/link-bank')}>
-          Add Bank Account
+    <Box sx={{ maxWidth: 800, mx: 'auto', mt: 4 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4" fontWeight={600}>
+          Linked Payment Methods
+        </Typography>
+        <Button 
+          variant="contained" 
+          startIcon={<AddIcon />}
+          onClick={() => (window.location.href = '/wallet/link-bank')}
+          sx={{ borderRadius: 2 }}
+        >
+          Add
         </Button>
       </Box>
+      
       {accounts.length === 0 ? (
-        <Alert severity="info">No bank accounts linked yet.</Alert>
+        <Card sx={{ p: 4, textAlign: 'center', bgcolor: 'grey.50' }}>
+          <BankIcon sx={{ fontSize: 48, color: 'grey.400', mb: 2 }} />
+          <Typography variant="h6" color="text.secondary" gutterBottom>
+            No payment methods linked
+          </Typography>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+            Link a bank account to deposit and withdraw funds
+          </Typography>
+          <Button 
+            variant="contained" 
+            onClick={() => (window.location.href = '/wallet/link-bank')}
+          >
+            Link Bank Account
+          </Button>
+        </Card>
       ) : (
-        <TableContainer component={Paper}>
-          <Table>
-            <TableHead>
-              <TableRow>
-                <TableCell />
-                <TableCell>Bank</TableCell>
-                <TableCell>Last 4</TableCell>
-                <TableCell>Currency</TableCell>
-                <TableCell>Status</TableCell>
-                <TableCell align="right">Actions</TableCell>
-              </TableRow>
-            </TableHead>
-            <TableBody>
-              {accounts.map((acc) => (
-                <Row
-                  key={acc.id}
-                  account={acc}
-                  detail={details[acc.id]}
-                  onFetch={fetchDetail}
-                />
-              ))}
-            </TableBody>
-          </Table>
-        </TableContainer>
+        <Stack spacing={2}>
+          {accounts.map((account) => (
+            <PaymentMethodCard key={account.id} account={account} />
+          ))}
+        </Stack>
       )}
     </Box>
   );
 }
 
-function Row({ account, detail = {}, onFetch }) {
-  const [open, setOpen] = useState(false);
+function PaymentMethodCard({ account }) {
+  const [anchorEl, setAnchorEl] = useState(null);
+  
+  const handleMenuOpen = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+  
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
 
-  const loadingState = detail.loading || {};
+  const handleDelete = async () => {
+    try {
+      await externalAccountsAPI.deleteAccount(account.id);
+      // Refresh page to update list
+      window.location.reload();
+    } catch (error) {
+      console.error('Failed to delete account:', error);
+      alert('Failed to delete account. Please try again.');
+    }
+    handleMenuClose();
+  };
 
   return (
-    <>
-      <TableRow>
-        <TableCell>
-          <IconButton size="small" onClick={() => setOpen(!open)}>
-            {open ? <KeyboardArrowUp /> : <KeyboardArrowDown />}
-          </IconButton>
-        </TableCell>
-        <TableCell>{account.bank_name || '—'}</TableCell>
-        <TableCell>{account.last4 || '—'}</TableCell>
-        <TableCell>{account.currency?.toUpperCase() || '—'}</TableCell>
-        <TableCell>{account.status || '—'}</TableCell>
-        <TableCell align="right">
-          <Stack direction="row" spacing={1}>
-            <Button
-              variant="outlined"
-              size="small"
-              disabled={loadingState.balance}
-              onClick={() => onFetch(account.id, 'balance')}
-            >
-              {loadingState.balance ? 'Loading…' : 'Balance'}
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              disabled={loadingState.auth}
-              onClick={() => onFetch(account.id, 'auth')}
-            >
-              {loadingState.auth ? 'Loading…' : 'Auth'}
-            </Button>
-            <Button
-              variant="outlined"
-              size="small"
-              disabled={loadingState.identity}
-              onClick={() => onFetch(account.id, 'identity')}
-            >
-              {loadingState.identity ? 'Loading…' : 'Identity'}
-            </Button>
-          </Stack>
-        </TableCell>
-      </TableRow>
-      <TableRow>
-        <TableCell style={{ paddingBottom: 0, paddingTop: 0 }} colSpan={6}>
-          <Collapse in={open} timeout="auto" unmountOnExit>
-            <Box sx={{ margin: 1 }}>
-              {detail.error && <Alert severity="error" sx={{ mb: 2 }}>{detail.error}</Alert>}
-              {(!detail.balance && !detail.auth && !detail.identity) && (
-                <Typography variant="body2" color="text.secondary">No details fetched yet.</Typography>
-              )}
-              {detail.balance && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle1" fontWeight={600}>Balance</Typography>
-                  <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(detail.balance, null, 2)}</pre>
+    <Card sx={{ 
+      p: 0, 
+      border: 1, 
+      borderColor: 'grey.200',
+      '&:hover': { 
+        borderColor: 'primary.main',
+        boxShadow: 2
+      }
+    }}>
+      <CardContent sx={{ p: 3 }}>
+        <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <Avatar sx={{ bgcolor: '#1976d2', width: 48, height: 48 }}>
+              <BankIcon />
+            </Avatar>
+            <Box>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+                <Typography variant="h6" fontWeight={600}>
+                  {account.bank_name}
+                </Typography>
+                <Box sx={{ 
+                  px: 1, 
+                  py: 0.25, 
+                  borderRadius: 1, 
+                  bgcolor: account.active ? 'success.main' : 'warning.main',
+                  color: 'white'
+                }}>
+                  <Typography variant="caption" fontWeight={500}>
+                    {account.active ? 'Active' : 'Inactive'}
+                  </Typography>
                 </Box>
-              )}
-              {detail.auth && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle1" fontWeight={600}>Auth</Typography>
-                  <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(detail.auth, null, 2)}</pre>
-                </Box>
-              )}
-              {detail.identity && (
-                <Box sx={{ mb: 2 }}>
-                  <Typography variant="subtitle1" fontWeight={600}>Identity</Typography>
-                  <pre style={{ whiteSpace: 'pre-wrap' }}>{JSON.stringify(detail.identity, null, 2)}</pre>
-                </Box>
-              )}
+              </Box>
+              <Typography variant="body2" color="text.secondary">
+                ****{account.last4}
+              </Typography>
             </Box>
-          </Collapse>
-        </TableCell>
-      </TableRow>
-    </>
+          </Box>
+          
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+            <Stack direction="row" spacing={1}>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => window.location.href = '/wallet/deposit'}
+                disabled={!account.active}
+                sx={{ minWidth: 80 }}
+              >
+                Deposit
+              </Button>
+              <Button
+                variant="outlined"
+                size="small"
+                onClick={() => window.location.href = '/wallet/withdraw'}
+                disabled={!account.active}
+                sx={{ minWidth: 80 }}
+              >
+                Withdraw
+              </Button>
+            </Stack>
+            <IconButton onClick={handleMenuOpen}>
+              <MoreVertIcon />
+            </IconButton>
+          </Box>
+        </Box>
+        
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleMenuClose}
+        >
+          <MenuItem onClick={handleDelete} sx={{ color: 'error.main' }}>
+            Remove Account
+          </MenuItem>
+        </Menu>
+      </CardContent>
+    </Card>
   );
 } 

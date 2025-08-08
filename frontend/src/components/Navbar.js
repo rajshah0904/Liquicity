@@ -176,6 +176,11 @@ const Navbar = ({ onDrawerToggle, drawerOpen, showMenuIcon = false }) => {
   };
 
   const handleLogout = () => {
+    // Clear all Auth0 cache to prevent session interference with new signups
+    localStorage.clear();
+    sessionStorage.clear();
+    
+    // Simple logout and navigate
     logout();
     navigate('/login');
   };
