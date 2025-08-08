@@ -7,6 +7,8 @@ export default function useBridgeTransactions(pollMs = 15000) {
 
   const fetchTxns = useCallback(async () => {
     try {
+      const token = localStorage.getItem('auth_token');
+      if (!token) return; // wait for token before hitting API
       setLoading(true);
       const { data } = await walletAPI.getAllTransactions();
       setTxns(data.data || []);

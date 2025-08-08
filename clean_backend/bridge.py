@@ -64,6 +64,12 @@ class BridgeClient:
         """Create Bridge customer (POST /customers). Payload must include signed_agreement_id"""
         return self._post("/customers", payload) 
 
+    def get_customer(self, customer_id: str) -> Dict[str, Any]:
+        """Fetch a Bridge customer by id (GET /customers/{id})."""
+        resp = self.session.get(f"{BASE_URL}/customers/{customer_id}", headers=_headers(), timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+
     def create_kyc_link(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Generate a hosted KYC link (POST /kyc_links) and return its JSON response."""
         return self._post("/kyc_links", payload)
@@ -79,6 +85,12 @@ class BridgeClient:
 
     def get_wallet(self, customer_id: str, wallet_id: str):
         resp = self.session.get(f"{BASE_URL}/customers/{customer_id}/wallets/{wallet_id}", headers=_headers(), timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+
+    def list_customer_wallets(self, customer_id: str):
+        """List wallets for a given Bridge customer (GET /customers/{customer_id}/wallets)."""
+        resp = self.session.get(f"{BASE_URL}/customers/{customer_id}/wallets", headers=_headers(), timeout=30)
         resp.raise_for_status()
         return resp.json()
 

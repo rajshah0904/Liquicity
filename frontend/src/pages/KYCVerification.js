@@ -73,6 +73,34 @@ const KYCVerification = () => {
   const [submitError, setSubmitError] = useState('');
   const [activeStep, setActiveStep] = useState(0);
   const [googleMapsLoaded, setGoogleMapsLoaded] = useState(false);
+  const [signedAgreementId, setSignedAgreementId] = useState('');
+  const restoredFromSnapshotRef = useRef(false);
+  const SNAPSHOT_KEY = 'kycFormSnapshot_v1';
+
+  // Restore snapshot if returning from redirect (e.g., ToS)
+  useEffect(() => {
+    try {
+      const raw = sessionStorage.getItem(SNAPSHOT_KEY);
+      if (raw) {
+        const snapshot = JSON.parse(raw);
+        if (snapshot.selectedRegion) setSelectedRegion(snapshot.selectedRegion);
+        if (snapshot.formData) setFormData(snapshot.formData);
+        if (typeof snapshot.activeStep === 'number') setActiveStep(snapshot.activeStep);
+        restoredFromSnapshotRef.current = true;
+      }
+    } catch (e) {
+      console.error('Failed to restore KYC snapshot', e);
+    }
+  }, []);
+
+  // Capture signed_agreement_id from query params
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const sid = params.get('signed_agreement_id');
+    if (sid) {
+      setSignedAgreementId(sid);
+    }
+  }, []);
   
   // Initialize Google Maps API
   useEffect(() => {
@@ -163,6 +191,55 @@ const KYCVerification = () => {
       }));
     }
   }, [user]);
+
+  // Clear validation errors when region changes (preserve form data)
+  useEffect(() => {
+    setErrors({});
+  }, [selectedRegion]);
+
+  // Persist snapshot whenever region/form/step changes
+  useEffect(() => {
+    try {
+      const snapshot = { selectedRegion, formData, activeStep };
+      sessionStorage.setItem(SNAPSHOT_KEY, JSON.stringify(snapshot));
+    } catch (e) {
+      // ignore
+    }
+  }, [selectedRegion, formData, activeStep]);
+  
+  // Ensure user record exists (register if missing)
+  useEffect(() => {
+    const ensureRegistration = async () => {
+      try {
+        const token = await getAccessTokenSilently({ authorizationParams: { scope: 'openid profile email' } });
+        const check = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
+        if (!check.data.exists && user?.email) {
+          await api.post('/onboard/register', { email: user.email }, { headers: { Authorization: `Bearer ${token}` } });
+        }
+      } catch (e) {
+        console.error('KYC: ensureRegistration failed', e);
+      }
+    };
+    if (isAuthenticated) {
+      ensureRegistration();
+    }
+  }, [isAuthenticated, getAccessTokenSilently, user]);
+  
+  // Ensure token is persisted and axios default header is set on mount so subsequent hooks use it.
+  useEffect(() => {
+    const ensureToken = async () => {
+      try {
+        const token = await getAccessTokenSilently({ authorizationParams: { scope: 'openid profile email' } });
+        if (token) {
+          localStorage.setItem('auth_token', token);
+          api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+        }
+      } catch (e) {
+        // ignore here; guards will handle auth redirects
+      }
+    };
+    if (isAuthenticated) ensureToken();
+  }, [isAuthenticated, getAccessTokenSilently]);
   
   // Handle region selection
   const handleRegionChange = async (e) => {
@@ -275,6 +352,26 @@ const KYCVerification = () => {
     });
     setErrors({});
     setActiveStep(0);
+  };
+  
+  // Handle ToS generation (snapshot before navigating)
+  const handleGenerateTos = async () => {
+    try {
+      // snapshot explicitly
+      sessionStorage.setItem(SNAPSHOT_KEY, JSON.stringify({ selectedRegion, formData, activeStep }));
+      const token = await getAccessTokenSilently({ authorizationParams: { scope: 'openid profile email' } });
+      const resp = await api.post('/kyc/tos_link', {}, { headers: { Authorization: `Bearer ${token}` } });
+      const baseUrl = resp.data.url || resp.data.kyc_link || resp.data.tos_link || resp.data;
+      if (baseUrl) {
+        const redirect = encodeURIComponent(`${window.location.origin}/kyc-verification`);
+        const sep = baseUrl.includes('?') ? '&' : '?';
+        const url = `${baseUrl}${sep}redirect_uri=${redirect}`;
+        window.location.href = url;
+      }
+    } catch (e) {
+      console.error('Failed to generate ToS link', e);
+      setSubmitError('Failed to generate Terms of Service link. Please try again.');
+    }
   };
   
   // Form validation
@@ -413,6 +510,10 @@ const KYCVerification = () => {
       
       // Also include the selected region for our backend
       customerData.region = selectedRegion.toLowerCase();
+
+      if (signedAgreementId) {
+        customerData.signed_agreement_id = signedAgreementId;
+      }
       
       console.log('Submitting KYC data to backend...');
       
@@ -431,6 +532,7 @@ const KYCVerification = () => {
       console.log('KYC submission response:', response.data);
       setSubmitSuccess(true);
       setActiveStep(2);
+      sessionStorage.removeItem(SNAPSHOT_KEY);
       
       // Redirect to dashboard after success
       setTimeout(() => navigate('/dashboard'), 3000);
@@ -459,6 +561,70 @@ const KYCVerification = () => {
     }
   };
   
+  // After submission (activeStep === 2), poll for completion
+  useEffect(() => {
+    let intervalId;
+    let attemptedWallet = false;
+
+    const pollStatus = async () => {
+      try {
+        const token = await getAccessTokenSilently({ authorizationParams: { scope: 'openid profile email' } });
+        const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
+        const { next_step } = res.data || {};
+        if (next_step === 'done') {
+          navigate('/dashboard');
+        } else if (next_step === 'create_wallet') {
+          if (!attemptedWallet) {
+            attemptedWallet = true;
+            try { await api.post('/user/create-wallet', {}, { headers: { Authorization: `Bearer ${token}` } }); } catch(e) {}
+          }
+        }
+      } catch (e) {
+        // ignore and keep polling
+      }
+    };
+
+    if (activeStep === 2) {
+      pollStatus();
+      intervalId = setInterval(pollStatus, 3000);
+    }
+
+    return () => { if (intervalId) clearInterval(intervalId); };
+  }, [activeStep, getAccessTokenSilently, navigate]);
+
+  // Utility to determine if submit should be enabled (all fields complete + ToS accepted)
+  const isTosAccepted = Boolean(signedAgreementId);
+  const isFormComplete = (() => {
+    const requiredFields = [
+      'first_name',
+      'last_name',
+      'birth_date',
+      'street_line_1',
+      'city',
+      'subdivision',
+      'postal_code',
+      'country',
+      'id_type',
+      'id_number'
+    ];
+    if (selectedRegion === 'US') requiredFields.push('ssn');
+
+    const allTextPresent = requiredFields.every((field) => {
+      const value = formData[field];
+      return typeof value === 'string' ? value.trim().length > 0 : Boolean(value);
+    });
+
+    const imagesPresent = Boolean(formData.id_image_front) && (
+      formData.id_type !== 'drivers_license' || Boolean(formData.id_image_back)
+    );
+
+    const ssnValid = selectedRegion !== 'US'
+      ? true
+      : (formData.ssn ? formData.ssn.replace(/\D/g, '').length === 9 : false);
+
+    return allTextPresent && imagesPresent && ssnValid && isTosAccepted;
+  })();
+
   // Show loading state while Auth0 loads
   if (isLoading) {
     return (
@@ -720,31 +886,6 @@ const KYCVerification = () => {
           />
         </Grid>
         
-        {/* SSN for US users */}
-        {selectedRegion === 'US' && (
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Social Security Number"
-              name="ssn"
-              value={formData.ssn}
-              onChange={handleChange}
-              error={!!errors.ssn}
-              helperText={errors.ssn || 'Format: XXX-XX-XXXX'}
-              required
-              placeholder="XXX-XX-XXXX"
-              InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
-              InputProps={{ style: { color: '#fff' } }}
-              sx={{ 
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                }
-              }}
-            />
-          </Grid>
-        )}
-        
         {/* Identity Verification */}
         <Grid item xs={12}>
           <Typography variant="subtitle1" sx={{ mb: 2, mt: 2, fontWeight: 600 }}>
@@ -777,6 +918,30 @@ const KYCVerification = () => {
             {errors.id_type && <FormHelperText>{errors.id_type}</FormHelperText>}
           </FormControl>
         </Grid>
+
+        {selectedRegion === 'US' && (
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label="Social Security Number"
+              name="ssn"
+              value={formData.ssn}
+              onChange={handleChange}
+              error={!!errors.ssn}
+              helperText={errors.ssn || 'Format: XXX-XX-XXXX'}
+              required
+              placeholder="XXX-XX-XXXX"
+              InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
+              InputProps={{ style: { color: '#fff' } }}
+              sx={{ 
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                }
+              }}
+            />
+          </Grid>
+        )}
         
         <Grid item xs={12} md={6}>
           <TextField
@@ -937,8 +1102,36 @@ const KYCVerification = () => {
           >
             {activeStep === 0 && renderRegionSelection()}
             {activeStep === 1 && renderKYCForm()}
-            {activeStep === 2 && renderSuccess()}
+            {activeStep === 2 && (
+              <Box sx={{ textAlign: 'center' }}>
+                <Typography variant="h6">Verification Submitted</Typography>
+                <Typography variant="body2" sx={{ mt: 1, color: 'rgba(255,255,255,0.7)' }}>
+                  We’re finalizing your account. This can take up to a minute. You’ll be redirected automatically.
+                </Typography>
+                <CircularProgress sx={{ mt: 3 }} />
+              </Box>
+            )}
             
+            {activeStep === 1 && (
+              <Box sx={{ mt: 3 }}>
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 1 }}>
+                  By proceeding you acknowledge our Terms of Service.
+                </Typography>
+                <Button variant="text" onClick={handleGenerateTos} sx={{ color: '#90caf9' }}>
+                  View and Accept Terms of Service
+                </Button>
+                {signedAgreementId ? (
+                  <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'rgba(255,255,255,0.7)' }}>
+                    Terms accepted. Agreement ID: {signedAgreementId}
+                  </Typography>
+                ) : (
+                  <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'error.main' }}>
+                    You must view and accept the Terms of Service to continue.
+                  </Typography>
+                )}
+              </Box>
+            )}
+
             {activeStep === 1 && (
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mt: 4 }}>
                 <Button 
@@ -954,11 +1147,12 @@ const KYCVerification = () => {
                 <Button 
                   type="submit"
                   variant="contained"
-                  disabled={isSubmitting}
+                  disabled={isSubmitting || !isFormComplete}
                   sx={{ 
-                    bgcolor: 'primary.main',
+                    bgcolor: isSubmitting || !isFormComplete ? 'action.disabledBackground' : 'primary.main',
+                    color: isSubmitting || !isFormComplete ? 'action.disabled' : undefined,
                     '&:hover': {
-                      bgcolor: 'primary.dark',
+                      bgcolor: isSubmitting || !isFormComplete ? 'action.disabledBackground' : 'primary.dark',
                     }
                   }}
                 >

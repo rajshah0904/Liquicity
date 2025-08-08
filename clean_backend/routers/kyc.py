@@ -9,6 +9,7 @@ from ..utils.currency_utils import get_fiat_currency_from_region
 import logging
 import json
 import datetime
+import os
 
 router = APIRouter(prefix="/kyc", tags=["kyc"])
 _log = logging.getLogger(__name__)
@@ -19,9 +20,25 @@ def _lookup_user(db: Session, sub: str) -> Optional[User]:
     return db.query(User).filter(User.auth0_id == sub).first()
 
 
+@router.post("/tos_link")
+async def generate_tos_link(request: Request, db: Session = Depends(get_db), jwt=Depends(get_current_user)):
+    """Generate a Bridge Terms of Service link that redirects back to the KYC page with signed_agreement_id."""
+    user = _lookup_user(db, getattr(jwt, 'id', None))
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    app_url = os.getenv("APP_URL", f"{request.url.scheme}://{request.url.hostname}:3000")
+    try:
+        tos = BridgeClient().request_tos_links(redirect_uri=f"{app_url}/kyc-verification")
+        # Expected response: { "url": "https://dashboard.bridge.xyz/accept-terms-of-service?session_token=..." }
+        return tos
+    except Exception as e:
+        _log.error("request_tos_links failed: %s", e)
+        raise HTTPException(status_code=502, detail="Bridge request_tos_links failed")
+
+
 @router.post("/link")
-async def generate_kyc_link(db: Session = Depends(get_db), jwt: dict = Depends(get_current_user)):
-    user = _lookup_user(db, jwt.get("sub"))
+async def generate_kyc_link(db: Session = Depends(get_db), jwt=Depends(get_current_user)):
+    user = _lookup_user(db, getattr(jwt, 'id', None))
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     if not user.email:

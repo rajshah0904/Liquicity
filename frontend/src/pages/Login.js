@@ -156,7 +156,7 @@ const Login = () => {
             routeUserBasedOnState(userData, api, token);
           }).catch(error => {
             console.error('Login: Failed to check user state', error);
-            navigate('/dashboard'); // Fallback
+            navigate('/kyc-verification'); // Fallback to KYC
           });
         });
       });
@@ -214,14 +214,14 @@ const Login = () => {
     
     try {
       // Switch from popup to redirect for consistent behavior
-      await loginWithRedirect({ 
-        authorizationParams: { 
-          screen_hint: 'login', 
-          login_hint: email,
-          redirect_uri: `${window.location.origin}/callback`
-        },
-        appState: { returnTo: '/dashboard' }
-      });
+              await loginWithRedirect({ 
+          authorizationParams: { 
+            screen_hint: 'login', 
+            login_hint: email,
+            redirect_uri: `${window.location.origin}/callback`
+          },
+          appState: { returnTo: '/callback' }
+        });
     } catch (err) {
       setError(err.message || 'Login failed.');
       setLoading(false);
@@ -241,7 +241,7 @@ const Login = () => {
           connection: 'google-oauth2',
           redirect_uri: `${window.location.origin}/callback`
         },
-        appState: { returnTo: '/dashboard' }
+        appState: { returnTo: '/callback' }
       });
     } catch (err) {
       setError(err.message || 'Google login failed. Please try again.');

@@ -1,8 +1,13 @@
 import axios from 'axios';
 
+// Determine API base URL, ensure it targets backend (not the frontend dev server)
+const rawBase = process.env.REACT_APP_API_URL || 'http://localhost:8000';
+const baseURL = /:3000(\/|$)/.test(rawBase) ? 'http://localhost:8000' : rawBase;
+
 // Create axios instance with a base URL for the proxy
 const api = axios.create({
-  baseURL: process.env.REACT_APP_API_URL || 'http://localhost:8000',
+  baseURL,
+  timeout: 10000,
   headers: {
     'Content-Type': 'application/json'
   }

@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { useAuth0 } from '@auth0/auth0-react';
 import { CircularProgress, Box, Typography, Alert } from '@mui/material';
+import api from '../utils/api';
 
 const AuthCallback = () => {
   const navigate = useNavigate();
@@ -22,14 +23,21 @@ const AuthCallback = () => {
             }
           });
           localStorage.setItem('auth_token', token);
-          
-          // Import API and set headers
-          const { default: api } = await import('../utils/api');
           api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
           
+          // Import API and set headers
+          // already imported and configured above
+          
           // Check user's current onboarding state
-          const checkResp = await api.get('/user/check');
-          const userData = checkResp.data;
+          let userData;
+          try {
+            const checkResp = await api.get('/user/check');
+            userData = checkResp.data;
+          } catch (e) {
+            console.error('AuthCallback: /user/check failed, falling back to KYC', e);
+            navigate('/kyc-verification');
+            return;
+          }
           
           console.log('AuthCallback: User state', userData);
           
@@ -94,7 +102,7 @@ const AuthCallback = () => {
         break;
         
       default:
-        console.log('AuthCallback: Unknown state, going to KYC');
+        console.log('AuthCallback: Unknown state or incomplete, going to KYC');
         navigate('/kyc-verification');
     }
   };

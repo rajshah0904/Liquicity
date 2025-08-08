@@ -115,29 +115,42 @@ const SignUp = () => {
 
   // Production-level security: Strategic cache management
   useEffect(() => {
-    const initializeFreshSignup = () => {
+    const initializeFreshSignup = async () => {
       console.log('SignUp: Initializing fresh signup state');
       
       // Only clear app-specific cache, preserve Auth0 if needed
       const appKeys = ['isNewSignup', 'signupEmail', 'auth_token', 'current_user'];
       appKeys.forEach(key => localStorage.removeItem(key));
       
-      // If user is already authenticated with wrong account, force logout
       if (isAuthenticated && user) {
-        console.log('SignUp: User already authenticated - checking if fresh signup needed');
-        // Let the user choose - don't force logout immediately
-        setError('You are already signed in. Please log out first to create a new account.');
+        console.log('SignUp: User already authenticated - routing based on current state');
+        try {
+          const token = await getAccessTokenSilently({ authorizationParams: { scope: 'openid profile email' } });
+          const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
+          const { next_step } = res.data;
+          if (next_step === 'done') {
+            navigate('/dashboard');
+          } else {
+            navigate('/kyc-verification');
+          }
+          return;
+        } catch (e) {
+          console.error('SignUp: state check failed, sending to login', e);
+          navigate('/login');
+          return;
+        }
       }
     };
     
     initializeFreshSignup();
     
     // Clear sensitive data when user leaves the page
-    const handleBeforeUnload = () => {
-      console.log('SignUp: Page unload - clearing sensitive data');
-      const sensitiveKeys = ['isNewSignup', 'signupEmail', 'auth_token'];
-      sensitiveKeys.forEach(key => localStorage.removeItem(key));
-    };
+          const handleBeforeUnload = () => {
+        console.log('SignUp: Page unload - clearing sensitive data');
+        // Keep isNewSignup across redirects so KYC guard allows flow to continue
+        const sensitiveKeys = ['signupEmail', 'auth_token'];
+        sensitiveKeys.forEach(key => localStorage.removeItem(key));
+      };
     
     window.addEventListener('beforeunload', handleBeforeUnload);
     
@@ -298,7 +311,8 @@ const SignUp = () => {
           login_hint: email,
           prompt: 'login', // Force fresh login screen
           scope: 'openid profile email offline_access',
-          audience: process.env.REACT_APP_AUTH0_AUDIENCE
+          audience: process.env.REACT_APP_AUTH0_AUDIENCE,
+          redirect_uri: `${window.location.origin}/callback`
         },
         appState: {
           returnTo: '/callback',
