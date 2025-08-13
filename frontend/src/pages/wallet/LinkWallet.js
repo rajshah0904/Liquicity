@@ -36,6 +36,8 @@ export default function LinkWallet() {
         });
         const data = resp.data.data;
         setSession(data);
+        // persist session id for later transfer creation
+        try { localStorage.setItem('wc_session_id', data.session_id); } catch {}
         setQr(data.qr_code_url);
         setStatus(data.status);
 
@@ -46,6 +48,8 @@ export default function LinkWallet() {
             setStatus(s.data.status);
             if (s.data.status === 'approved') {
               clearInterval(poll);
+              // also persist wallet address if available
+              try { if (s.data.wallet_address) localStorage.setItem('wc_wallet_address', s.data.wallet_address); } catch {}
               navigate('/wallet');
             }
           } catch (e) {
@@ -91,7 +95,7 @@ export default function LinkWallet() {
           <Typography variant="body2" sx={{ mt:2 }} color="text.secondary">Scan the QR code with your wallet or click URI below:</Typography>
           <TextField
             fullWidth
-            value={session.uri}
+            value={session?.uri || ''}
             sx={{ my:2 }}
             InputProps={{ readOnly:true }}
             onFocus={(e)=>e.target.select()}
