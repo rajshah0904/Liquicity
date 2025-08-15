@@ -4,7 +4,7 @@ import { useAuth0 } from '@auth0/auth0-react';
 import api from '../../utils/api';
 
 const RequireKyc = ({ children }) => {
-  const { isAuthenticated, getAccessTokenSilently } = useAuth0();
+  const { isAuthenticated, getAccessTokenSilently, user } = useAuth0();
   const [allowed, setAllowed] = useState(false);
   const navigate = useNavigate();
 
@@ -23,10 +23,25 @@ const RequireKyc = ({ children }) => {
         const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
         const { exists, next_step } = res.data;
         if (!exists) {
+          // Auto-register if we can, then send to KYC
+          try {
+            if (user?.email) {
+              await api.post('/onboard/register', { email: user.email }, { headers: { Authorization: `Bearer ${token}` } });
+              localStorage.setItem('isNewSignup', 'true');
+              navigate('/kyc-verification');
+              return;
+            }
+          } catch (regErr) {
+            if (regErr?.response?.status === 409) {
+              navigate('/kyc-verification');
+              return;
+            }
+          }
           navigate('/signup?noaccount=true');
           return;
         }
         if (next_step !== 'done') {
+          // Allow KYC page to load
           navigate('/kyc-verification');
           return;
         }
@@ -37,7 +52,7 @@ const RequireKyc = ({ children }) => {
       }
     };
     check();
-  }, [isAuthenticated, getAccessTokenSilently, navigate]);
+  }, [isAuthenticated, getAccessTokenSilently, navigate, user]);
 
   return allowed ? children : null;
 };

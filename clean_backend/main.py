@@ -1,7 +1,7 @@
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from .database import get_db, test_connection
+from .database import get_db, test_connection, create_tables
 from .routers.onboarding import router as onboard_router
 from .routers.user_check import router as user_router
 from .routers.kyc import router as kyc_router
@@ -15,6 +15,11 @@ from .routers.transfer import router as transfer_router, public_router as transf
 from .routers.crypto import router as crypto_router
 
 app = FastAPI(title="Liquicity Clean API")
+
+# Auto-create tables on startup in dev
+@app.on_event("startup")
+async def _startup():
+	create_tables()
 
 # Health check endpoint
 @app.get("/health")

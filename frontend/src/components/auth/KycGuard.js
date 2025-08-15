@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
 
 const KycGuard = ({ children }) => {
-  const { getAccessTokenSilently, isAuthenticated } = useAuth0();
+  const { getAccessTokenSilently, isAuthenticated, user } = useAuth0();
   const [allowed, setAllowed] = useState(false);
   const navigate = useNavigate();
 
@@ -23,10 +23,23 @@ const KycGuard = ({ children }) => {
         const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
         const { exists, next_step } = res.data;
         if (!exists) {
-          if (localStorage.getItem('isNewSignup') !== 'true') {
-            navigate('/signup?noaccount=true');
-            return;
+          // Try auto-registration if we have an email; then allow KYC page without redirecting to signup
+          try {
+            if (user?.email) {
+              await api.post('/onboard/register', { email: user.email }, { headers: { Authorization: `Bearer ${token}` } });
+              localStorage.setItem('isNewSignup', 'true');
+              setAllowed(true);
+              return;
+            }
+          } catch (regErr) {
+            // If account already exists, proceed to KYC; otherwise fall back to signup
+            if (regErr?.response?.status === 409) {
+              setAllowed(true);
+              return;
+            }
           }
+          navigate('/signup?noaccount=true');
+          return;
         }
         if (next_step === 'done') {
           navigate('/dashboard');
@@ -39,7 +52,7 @@ const KycGuard = ({ children }) => {
       }
     };
     check();
-  }, [isAuthenticated, getAccessTokenSilently, navigate]);
+  }, [isAuthenticated, getAccessTokenSilently, navigate, user]);
 
   return allowed ? children : null;
 };

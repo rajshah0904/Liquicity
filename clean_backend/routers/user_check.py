@@ -342,3 +342,21 @@ async def email_exists(email: str, db: Session = Depends(get_db)):
     """Public endpoint to check whether an account already exists for the given email address."""
     exists = bool(db.query(User).filter(func.lower(User.email) == email.lower()).first())
     return {"exists": exists} 
+
+
+@router.get("/user/search")
+async def user_search(q: str, db: Session = Depends(get_db), auth_user: Auth0User = Depends(get_current_user)):
+	"""Search users by email or (optional) name. Returns id, email, and region."""
+	if not q or len(q) < 2:
+		return {"users": []}
+	pattern = f"%{q.lower()}%"
+	rows = db.query(User).filter(func.lower(User.email).like(pattern)).limit(20).all()
+	results = []
+	for u in rows:
+		results.append({
+			"id": str(u.id),
+			"email": u.email,
+			"name": None,
+			"region": (u.region or 'us')
+		})
+	return {"users": results} 

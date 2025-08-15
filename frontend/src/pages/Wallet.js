@@ -46,6 +46,7 @@ import VerifiedIcon from '@mui/icons-material/Verified';
 import useBridgeWallet from '../hooks/useBridgeWallet';
 import { externalAccountsAPI } from '../utils/api';
 import { calculateLiquicityBalance } from '../utils/balanceUtils';
+import { getCurrencySymbol } from '../utils/currency';
 
 import {
   FloatingCard,
@@ -110,8 +111,8 @@ export default function Wallet() {
   }, []);
 
   const currency = useMemo(() => {
-    return 'USD';
-  }, []);
+    return (bridgeWallet?.fiat_currency || 'USD').toUpperCase();
+  }, [bridgeWallet]);
   
   // Animation variants
   const pageVariants = {
@@ -219,7 +220,7 @@ export default function Wallet() {
                     separator=","
                     decimals={2}
                     decimal="."
-                    prefix={currency === 'USD' ? '$' : (currency === 'EUR' ? '€' : '')}
+                    prefix={`${getCurrencySymbol(currency)}`}
                   />
                 </Typography>
               </Box>

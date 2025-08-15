@@ -24,6 +24,7 @@ import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
 import { AnimatedBackground } from '../../components/ui/ModernUIComponents';
 import { format } from 'date-fns';
 import AccountCircleIcon from '@mui/icons-material/AccountCircle';
+import { getCurrencySymbol } from '../../utils/currency';
 
 // Mock data for recipients and requests
 const mockRecipients = [
@@ -142,16 +143,6 @@ export default function RequestPage() {
   const handleCurrencyChange = (newCurrency) => {
     // Currency cannot be changed - locked to user's local currency
     console.log("Currency is locked to user's local currency:", userData.currency);
-  };
-  
-  const getCurrencySymbol = (currencyCode) => {
-    switch(currencyCode) {
-      case 'EUR': return '€';
-      case 'GBP': return '£';
-      case 'MXN': return '₱';
-      case 'CAD': return 'C$';
-      default: return '$';
-    }
   };
   
   const getConvertedAmount = () => {

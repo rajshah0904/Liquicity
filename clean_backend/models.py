@@ -200,6 +200,39 @@ class Transfer(Base):
     user       = relationship("User", back_populates="transfers")
     encumbrances = relationship("Encumbrance", back_populates="transfer")
 
+# --- PACKAGED SEND TRANSACTIONS ---
+
+class SendTransaction(Base):
+    __tablename__ = "send_transactions"
+    send_id                    = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    sender_user_id             = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    recipient_user_id          = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    sender_wallet_id           = Column(String(50), nullable=False)
+    recipient_wallet_id        = Column(String(50), nullable=False)
+
+    sender_currency            = Column(String(8), nullable=False)
+    recipient_currency         = Column(String(8), nullable=False)
+
+    sender_fiat_amount         = Column(Numeric(18, 2), nullable=False)
+
+    consumed_buckets           = Column(JSON, nullable=False)   # [{"amount": float, "locked_rate": float}]
+
+    live_sender_rate_used      = Column(Numeric(18, 8), nullable=False)
+    usdc_amount_sent           = Column(Numeric(18, 8), nullable=False)
+    delta_usdc                 = Column(Numeric(18, 8), nullable=False)
+    final_usdc_to_recipient    = Column(Numeric(18, 8), nullable=False)
+
+    live_recipient_rate_used   = Column(Numeric(18, 8), nullable=False)
+    recipient_fiat_amount      = Column(Numeric(18, 8), nullable=False)
+
+    exchange_rate              = Column(Numeric(18, 8), nullable=False)  # recipient/sender
+
+    memo                       = Column(String(512))
+    status                     = Column(String(32), nullable=False, default="completed")
+
+    created_at                 = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at                 = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
 class Encumbrance(Base):
     __tablename__ = "encumbrances"
     encumbrance_id  = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)

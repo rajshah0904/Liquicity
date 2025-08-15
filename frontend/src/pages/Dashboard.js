@@ -50,6 +50,7 @@ import RefreshIcon from '@mui/icons-material/Refresh';
 import useBridgeWallet from '../hooks/useBridgeWallet';
 import useBridgeTransactions from '../hooks/useBridgeTransactions';
 import { calculateLiquicityBalance } from '../utils/balanceUtils';
+import { getCurrencySymbol } from '../utils/currency';
 
 // Import our custom UI components
 import {
@@ -324,7 +325,7 @@ const Dashboard = () => {
                     separator=","
                     decimals={2}
                     decimal="."
-                    prefix={mainCurrency === 'USD' ? '$' : (mainCurrency === 'EUR' ? '€' : '')}
+                    prefix={`${getCurrencySymbol(mainCurrency)}`}
                   />
                 </Typography>
               </Box>

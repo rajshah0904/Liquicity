@@ -335,6 +335,12 @@ class BridgeClient:
         """
         return self._post("/transfers", payload) 
 
+    def get_transfer(self, transfer_id: str) -> Dict[str, Any]:
+        """Fetch a transfer by id (GET /transfers/{id})."""
+        resp = self.session.get(f"{BASE_URL}/transfers/{transfer_id}", headers=_headers(), timeout=30)
+        resp.raise_for_status()
+        return resp.json()
+
     def delete_transfer(self, transfer_id: str):
         """Delete (cancel) a transfer that is still in awaiting_funds state.
 
@@ -357,7 +363,7 @@ class BridgeClient:
     def get_exchange_rate(self, from_currency: str, to_currency: str) -> dict:
         """Fetch the latest exchange rate from `from_currency` to `to_currency`.
 
-        Wrapper around GET /exchange_rates?from=<>&to=<>
+        Wrapper around GET /exchange_rates?from=<>&to<>
         Returns the parsed JSON body (expected to include a `rate` key).
         """
         params = {"from": from_currency.lower(), "to": to_currency.lower()}

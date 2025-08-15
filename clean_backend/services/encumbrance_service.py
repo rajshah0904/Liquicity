@@ -24,10 +24,10 @@ from ..models import Encumbrance, Transfer
 logger = logging.getLogger(__name__)
 
 # These vars should ideally live in settings.py / env.
-CORPORATE_WALLET_ID = os.getenv("TREASURY_WALLET_ID", "")
-CORPORATE_CUSTOMER_ID = os.getenv("TREASURY_CUSTOMER_ID", "")
+TREASURY_WALLET_ID = os.getenv("TREASURY_WALLET_ID", "")
+TREASURY_CUSTOMER_ID = os.getenv("TREASURY_CUSTOMER_ID", "")
 
-if not CORPORATE_WALLET_ID or not CORPORATE_CUSTOMER_ID:
+if not TREASURY_WALLET_ID or not TREASURY_CUSTOMER_ID:
     logging.getLogger(__name__).warning("TREASURY_WALLET_ID / TREASURY_CUSTOMER_ID not set; encumbrance operations may fail")
 
 

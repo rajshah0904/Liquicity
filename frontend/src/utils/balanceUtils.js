@@ -3,6 +3,7 @@
  * @param {Object} bridgeWallet - The Bridge wallet object
  * @returns {number} The calculated fiat balance
  */
+import { getCurrencySymbol } from './currency';
 export const calculateLiquicityBalance = (bridgeWallet) => {
   if (!bridgeWallet) {
     return 0;
@@ -40,8 +41,8 @@ export const calculateLiquicityBalance = (bridgeWallet) => {
  * @returns {string} Formatted balance string
  */
 export const formatBalance = (balance, currency = 'USD') => {
-  const currencySymbol = currency === 'USD' ? '$' : currency;
-  return `${currencySymbol}${balance.toLocaleString(undefined, { 
+  const currencySymbol = getCurrencySymbol(currency);
+  return `${currencySymbol}${Number(balance || 0).toLocaleString(undefined, { 
     minimumFractionDigits: 2, 
     maximumFractionDigits: 2 
   })}`;

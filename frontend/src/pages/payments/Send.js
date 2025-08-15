@@ -22,6 +22,7 @@ import { Search as SearchIcon, ArrowBack as ArrowBackIcon, Send as SendIcon, Edi
 import api, { transferAPI } from '../../utils/api';
 import useBridgeWallet from '../../hooks/useBridgeWallet';
 import { calculateLiquicityBalance } from '../../utils/balanceUtils';
+import { getCurrencySymbol } from '../../utils/currency';
 
 export default function Send() {
   const navigate = useNavigate();
@@ -73,11 +74,22 @@ export default function Send() {
     if (parseFloat(amount) > balanceData.total) { setError('Insufficient balance'); return; }
     setSending(true); setError(null);
     try {
-      await transferAPI.send({ recipient_user_id: recipient.id, amount: parseFloat(amount), memo: note || undefined });
+      await transferAPI.send({ recipient_user_id: recipient.id, amount: Number(parseFloat(amount).toFixed(2)), memo: note || undefined });
       await refetchWallet();
       navigate('/dashboard');
     } catch (e) {
-      setError(e?.response?.data?.detail || e.message);
+      const data = e?.response?.data;
+      let msg = e?.message || 'Request failed';
+      if (data?.detail) {
+        if (Array.isArray(data.detail)) {
+          msg = data.detail.map(d => (d.msg || (typeof d === 'string' ? d : JSON.stringify(d)))).join(', ');
+        } else if (typeof data.detail === 'string') {
+          msg = data.detail;
+        } else {
+          try { msg = JSON.stringify(data.detail); } catch { msg = 'Request failed'; }
+        }
+      }
+      setError(msg);
     } finally { setSending(false); }
   };
 
@@ -85,7 +97,7 @@ export default function Send() {
     <Container maxWidth="sm" sx={{ py: 4 }}>
       <Typography variant="h4" gutterBottom>Send Money</Typography>
 
-      <Typography variant="body2" color="text.secondary">Balance: {balanceData.currency==='USD'? '$':''}{balanceData.total.toFixed(2)} {balanceData.currency}</Typography>
+      <Typography variant="body2" color="text.secondary">Balance: {getCurrencySymbol(balanceData.currency)}{balanceData.total.toFixed(2)} {balanceData.currency}</Typography>
 
       {error && <Alert severity="error" sx={{ my:2 }}>{error}</Alert>}
 
@@ -123,7 +135,7 @@ export default function Send() {
       {/* Amount */}
       <Box sx={{ my:3 }}>
         <Typography variant="subtitle2" gutterBottom>Amount</Typography>
-        <TextField fullWidth placeholder="0.00" value={amount} onChange={e=>{/^\d*\.?\d{0,2}$/.test(e.target.value)&&setAmount(e.target.value)}} InputProps={{ startAdornment:(<InputAdornment position="start">{balanceData.currency==='USD'? '$':balanceData.currency}</InputAdornment>)}} />
+        <TextField fullWidth placeholder="0.00" value={amount} onChange={e=>{/^\d*\.?\d{0,2}$/.test(e.target.value)&&setAmount(e.target.value)}} onBlur={()=>{ if (amount !== '') { const num = parseFloat(amount); if (!isNaN(num)) setAmount(num.toFixed(2)); } }} InputProps={{ startAdornment:(<InputAdornment position="start">{getCurrencySymbol(balanceData.currency)}</InputAdornment>)}} />
       </Box>
       
       {/* Note */}

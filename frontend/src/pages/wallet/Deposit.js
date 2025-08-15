@@ -66,6 +66,7 @@ import {
 
 import LinkPaymentDialog from '../../components/LinkPaymentDialog';
 import { calculateLiquicityBalance } from '../../utils/balanceUtils';
+import { getCurrencySymbol } from '../../utils/currency';
 
 // Replace the region detection with a function that gets the user's region directly from profile
 const getUserRegion = (userData) => {
@@ -87,18 +88,6 @@ const getUserRegion = (userData) => {
   
   // Default to US if unknown
   return { region: 'us', currency: 'usd' };
-};
-
-// Add a helper function to get the correct currency symbol
-const getCurrencySymbol = (currencyCode) => {
-  const code = currencyCode?.toUpperCase() || 'USD';
-  switch(code) {
-    case 'EUR': return '€';
-    case 'GBP': return '£';
-    case 'MXN': return '₱';
-    case 'CAD': return 'C$';
-    default: return '$';
-  }
 };
 
 export default function Deposit() {
@@ -808,6 +797,7 @@ export default function Deposit() {
                           onChange={handleChange}
                           required
                           variant="outlined"
+                          InputProps={{ startAdornment: (<InputAdornment position="start">{getCurrencySymbol(balanceData.currency)}</InputAdornment>) }}
                           sx={{
                             '& .MuiOutlinedInput-root': {
                               borderRadius: '12px',

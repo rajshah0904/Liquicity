@@ -119,7 +119,7 @@ const SignUp = () => {
       console.log('SignUp: Initializing fresh signup state');
       
       // Only clear app-specific cache, preserve Auth0 if needed
-      const appKeys = ['isNewSignup', 'signupEmail', 'auth_token', 'current_user'];
+      const appKeys = ['signupEmail', 'auth_token', 'current_user'];
       appKeys.forEach(key => localStorage.removeItem(key));
       
       if (isAuthenticated && user) {
@@ -127,11 +127,18 @@ const SignUp = () => {
         try {
           const token = await getAccessTokenSilently({ authorizationParams: { scope: 'openid profile email' } });
           const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
-          const { next_step } = res.data;
+          const { exists, next_step } = res.data;
+          const cameFromSignup = localStorage.getItem('isNewSignup') === 'true';
+          const fromNoAccount = new URLSearchParams(window.location.search).get('noaccount') === 'true';
           if (next_step === 'done') {
             navigate('/dashboard');
-          } else {
+          } else if (exists || cameFromSignup) {
             navigate('/kyc-verification');
+          } else if (fromNoAccount) {
+            // Stay on signup with error message
+            // no navigation
+          } else {
+            // Default: stay on signup
           }
           return;
         } catch (e) {
@@ -282,12 +289,9 @@ const SignUp = () => {
       // PRODUCTION SECURITY: Strategic cache clearing and fresh authentication
       console.log('SignUp: Starting fresh signup flow');
       
-      // Force logout if any session exists
+             // If already authenticated, do not force logout; proceed with current session
       if (isAuthenticated) {
-        console.log('SignUp: Forcing logout of existing session');
-        await logout({ logoutParams: { returnTo: window.location.origin } });
-        // Wait for logout to complete
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        console.log('SignUp: Already authenticated, proceeding with current session');
       }
       
       // Strategic cache clearing - preserve Auth0 session handling
