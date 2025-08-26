@@ -46,6 +46,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     region     = Column(String(32), nullable=True)  # User's selected region: us, eu, mexico, brazil, colombia, peru, argentina
+    country    = Column(String(2), nullable=True)   # ISO 3166-1 alpha-2 country code
 
     bridge_customer       = relationship("BridgeCustomer", uselist=False, back_populates="user")
     bridge_wallets        = relationship("BridgeWallet", back_populates="user")
@@ -54,6 +55,7 @@ class User(Base):
     virtual_accounts      = relationship("VirtualAccount", back_populates="user")
     transfers             = relationship("Transfer", back_populates="user")
     liquidation_addresses = relationship("LiquidationAddress", back_populates="user")
+    kyc_state             = relationship("KycState", uselist=False, back_populates="user")
 
 
 # --- BRIDGE CUSTOMER ---
@@ -76,8 +78,6 @@ class BridgeCustomer(Base):
     postal_code                     = Column(String(32))                    # Bridge spec: required for countries with postal codes
     country                         = Column(String(3))                     # Bridge spec: ISO 3166-1 alpha-3, length = 3
     capabilities                    = Column(JSON)                          # Bridge API JSON object
-    future_requirements_due         = Column(JSON, default=[])              # Bridge API array
-    requirements_due                = Column(JSON, default=[])              # Bridge API array
     created_at                      = Column(DateTime, nullable=False)      # Bridge API timestamp
     updated_at                      = Column(DateTime, nullable=False)      # Bridge API timestamp
     rejection_reasons               = Column(JSON, default=[])              # Bridge API array of objects
@@ -275,5 +275,42 @@ class LiquidationAddress(Base):
     updated_at               = Column(DateTime, nullable=False)      # Bridge API timestamp
 
     user     = relationship("User", back_populates="liquidation_addresses")
+
+
+# --- KYC STATE MANAGEMENT (NO PII STORED) ---
+
+class KycStatus(enum.Enum):
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
+    NEEDS_MORE_INFO = "needs_more_info"
+
+class LastStep(enum.Enum):
+    REGION_SELECT = "region_select"
+    PROVIDE_INFO = "provide_info"
+    COMPLETE = "complete"
+    VERIFIED = "verified"
+
+class KycState(Base):
+    __tablename__ = "kyc_state"
+    user_id = Column(UUID(as_uuid=True), ForeignKey("users.id"), primary_key=True)
+    
+    # Configuration (non-PII metadata only)
+    country = Column(String(2), nullable=True)  # ISO 3166-1 alpha-2
+    region = Column(String(32), nullable=True)  # eu, mexico, brazil, etc.
+    # Bridge KYC (vendor tokens/IDs only, no PII)
+    bridge_kyc_link_id = Column(String(128), nullable=True, index=True)
+    bridge_status = Column(SQLEnum(KycStatus), default=KycStatus.PENDING)
+    bridge_redirect_url = Column(String(512), nullable=True)
+    bridge_raw_metadata = Column(JSON, default={})  # Non-PII metadata only
+    
+    # State machine
+    last_step = Column(SQLEnum(LastStep), default=LastStep.REGION_SELECT)
+    
+    # Timestamps
+    created_at = Column(DateTime, default=datetime.utcnow)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    
+    user = relationship("User", back_populates="kyc_state")
 
 

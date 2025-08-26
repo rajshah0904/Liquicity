@@ -29,12 +29,12 @@ import api from '../utils/api';
 // Regions for dropdown selection
 const regions = [
   { code: 'US', name: 'United States', region: 'us', available: true },
-  { code: 'EU', name: 'European Union', region: 'eu', available: false },
-  { code: 'MX', name: 'Mexico', region: 'mexico', available: false },
-  { code: 'BR', name: 'Brazil', region: 'brazil', available: false },
-  { code: 'CO', name: 'Colombia', region: 'colombia', available: false },
-  { code: 'PE', name: 'Peru', region: 'peru', available: false },
-  { code: 'AR', name: 'Argentina', region: 'argentina', available: false },
+  { code: 'EU', name: 'European Union', region: 'eu', available: true },
+  { code: 'MX', name: 'Mexico', region: 'mexico', available: true },
+  { code: 'BR', name: 'Brazil', region: 'brazil', available: true },
+  { code: 'CO', name: 'Colombia', region: 'colombia', available: true },
+  { code: 'PE', name: 'Peru', region: 'peru', available: true },
+  { code: 'AR', name: 'Argentina', region: 'argentina', available: true },
 ];
 
 // ID Types for Bridge API
@@ -42,6 +42,80 @@ const ID_TYPES = [
   { value: 'drivers_license', label: 'Driver\'s License' },
   { value: 'passport', label: 'Passport' }
 ];
+
+// International regions (no longer requiring separate verification)
+const INTERNATIONAL_REGIONS = ['mexico', 'brazil', 'colombia', 'peru', 'argentina'];
+
+// Regional form configurations - Updated with exact verification requirements
+const getFormConfig = (region) => {
+  const configs = {
+    us: {
+      nationalIdLabel: 'Social Security Number',
+      nationalIdHint: 'Format: XXX-XX-XXXX',
+      nationalIdField: 'ssn',
+      bankFieldHint: 'Routing/Account',
+
+      documents: ['Government ID', 'Proof of Address'],
+      details: 'Bridge KYC: Identity verification with government-issued ID and address confirmation'
+    },
+    eu: {
+      nationalIdLabel: 'National ID',
+      nationalIdHint: 'Government-issued ID (passport, national ID, or driver\'s license)',
+      nationalIdField: 'national_id',
+      bankFieldHint: 'IBAN',
+
+      documents: ['EU Government ID', 'Proof of Address', 'SEPA Bank Details'],
+      details: 'Bridge KYC: EU-compliant identity verification with SEPA endorsements'
+    },
+    mexico: {
+      nationalIdLabel: 'National ID',
+      nationalIdHint: 'CURP, RFC, or Mexican government ID',
+      nationalIdField: 'national_id',
+      bankFieldHint: 'CLABE',
+
+      documents: ['Mexican Government ID', 'Proof of Address', 'SPEI Bank Details'],
+      details: 'Bridge KYC: Mexican identity verification with SPEI payment rail support'
+    },
+    brazil: {
+      nationalIdLabel: 'CPF',
+      nationalIdHint: 'Brazilian CPF number',
+      nationalIdField: 'national_id',
+      bankFieldHint: 'PIX key',
+
+      documents: ['Brazilian Government ID', 'CPF', 'Proof of Address', 'PIX Details'],
+      details: 'Bridge KYC: Brazilian identity verification with PIX payment rail support'
+    },
+    colombia: {
+      nationalIdLabel: 'Cédula',
+      nationalIdHint: 'Cédula de Ciudadanía (CC) or NIT',
+      nationalIdField: 'national_id',
+      bankFieldHint: 'Colombian bank details',
+
+      documents: ['Colombian Government ID', 'Cédula', 'Proof of Address'],
+      details: 'Bridge KYC: Colombian identity verification with local transfer support'
+    },
+    peru: {
+      nationalIdLabel: 'DNI',
+      nationalIdHint: 'DNI or Carné de Extranjería (CE)',
+      nationalIdField: 'national_id',
+      bankFieldHint: 'Peruvian bank details',
+
+      documents: ['Peruvian Government ID', 'DNI/CE', 'Proof of Address'],
+      details: 'Bridge KYC: Peruvian identity verification with local transfer support'
+    },
+    argentina: {
+      nationalIdLabel: 'DNI',
+      nationalIdHint: 'Documento Nacional de Identidad',
+      nationalIdField: 'national_id',
+      bankFieldHint: 'CBU or alias',
+
+      documents: ['Argentine Government ID', 'DNI', 'Proof of Address', 'Bank Details'],
+      details: 'Bridge KYC: Argentine identity verification with local transfer support'
+    },
+  };
+  
+  return configs[region] || configs.us;
+};
 
 const KYCVerification = () => {
   const navigate = useNavigate();
@@ -61,11 +135,31 @@ const KYCVerification = () => {
     postal_code: '',
     country: '',
     ssn: '', // for US users
+    national_id: '', // for international users
     id_type: '',
     id_number: '',
     id_image_front: null,
-    id_image_back: null
+    id_image_back: null,
+    
+    // Region-specific fields
+    bank_details: '', // IBAN, CLABE, PIX key, CBU, etc.
+    tax_id: '', // CPF, CURP, RFC, etc.
+    proof_of_address: null, // Utility bill, bank statement, etc.
+    additional_documents: null, // Any additional required documents
+    
+    // International region additional fields
+    phone: '', // Phone number for international
+    employment_status: '', // Employment status for international
+    expected_monthly_payments: '', // Expected monthly payment volume
+    acting_as_intermediary: 'no', // Acting as intermediary (default no)
+    most_recent_occupation: '', // Occupation code
+    account_purpose: '', // Account purpose
+    account_purpose_other: '', // Other account purpose if needed
+    source_of_funds: '' // Source of funds
   });
+  
+  // TOS acceptance state
+  const [bridgeTosAccepted, setBridgeTosAccepted] = useState(false);
   
   const [errors, setErrors] = useState({});
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -125,11 +219,24 @@ const KYCVerification = () => {
   // Initialize Google Places Autocomplete
   useEffect(() => {
     if (googleMapsLoaded && addressRef.current && !autocompleteRef.current) {
+      // Determine country restriction based on selected region
+      let countryRestriction = undefined;
+      if (selectedRegion === 'us') countryRestriction = { country: 'us' };
+      else if (selectedRegion === 'mexico') countryRestriction = { country: 'mx' };
+      else if (selectedRegion === 'brazil') countryRestriction = { country: 'br' };
+      else if (selectedRegion === 'colombia') countryRestriction = { country: 'co' };
+      else if (selectedRegion === 'peru') countryRestriction = { country: 'pe' };
+      else if (selectedRegion === 'argentina') countryRestriction = { country: 'ar' };
+      else if (selectedRegion === 'eu') {
+        // For EU, allow multiple European countries
+        countryRestriction = { country: ['at', 'be', 'bg', 'hr', 'cy', 'cz', 'dk', 'ee', 'fi', 'fr', 'de', 'gr', 'hu', 'ie', 'it', 'lv', 'lt', 'lu', 'mt', 'nl', 'pl', 'pt', 'ro', 'sk', 'si', 'es', 'se'] };
+      }
+      
       autocompleteRef.current = new window.google.maps.places.Autocomplete(
         addressRef.current,
         {
           types: ['address'],
-          componentRestrictions: selectedRegion === 'US' ? { country: 'us' } : undefined
+          componentRestrictions: countryRestriction
         }
       );
       
@@ -244,7 +351,6 @@ const KYCVerification = () => {
   // Handle region selection
   const handleRegionChange = async (e) => {
     const regionCode = e.target.value;
-    setSelectedRegion(regionCode);
     
     // Check if region is available for KYC
     const region = regions.find(r => r.code === regionCode);
@@ -254,12 +360,19 @@ const KYCVerification = () => {
       return;
     }
     
+    // Set the selected region to the region name (not code) for form config
+    setSelectedRegion(region.region);
+    
     // Set country based on region
     if (regionCode === 'US') {
       setFormData(prev => ({ ...prev, country: 'USA' }));
+    } else if (regionCode === 'EU') {
+      setFormData(prev => ({ ...prev, country: 'EU' }));
+    } else {
+      setFormData(prev => ({ ...prev, country: regionCode }));
     }
     
-    console.log(`KYC: Region '${regionCode}' selected locally (not saved until KYC complete)`);
+    console.log(`KYC: Region '${region.region}' selected locally (not saved until KYC complete)`);
     setActiveStep(1);
   };
   
@@ -508,18 +621,31 @@ const KYCVerification = () => {
       
       customerData.identifying_information.push(idDoc);
       
-      // Also include the selected region for our backend
+      // Add region-specific data for international KYC
       customerData.region = selectedRegion.toLowerCase();
+      customerData.bank_details = formData.bank_details;
+      customerData.tax_id = formData.tax_id;
+      
+      // Add document uploads
+      if (formData.proof_of_address) {
+        const proofBase64 = await fileToBase64(formData.proof_of_address);
+        customerData.proof_of_address = proofBase64;
+      }
+      
+      if (formData.additional_documents) {
+        const additionalBase64 = await fileToBase64(formData.additional_documents);
+        customerData.additional_documents = additionalBase64;
+      }
 
       if (signedAgreementId) {
         customerData.signed_agreement_id = signedAgreementId;
       }
       
-      console.log('Submitting KYC data to backend...');
+      console.log('Submitting international KYC data to backend...');
       
-      // Submit to our backend (which will handle Bridge API call)
+              // Submit to our backend (which will handle Bridge API calls)
       const response = await api.post(
-        '/user/kyc/submit',
+        '/kyc/v2/submit-info',  // Use new international endpoint
         customerData,
         { 
           headers: { 
@@ -530,8 +656,22 @@ const KYCVerification = () => {
       );
       
       console.log('KYC submission response:', response.data);
+      
+      // Show processing time information
+      const responseData = response.data;
+      let processingMessage = `KYC submitted successfully!`;
+      
+      processingMessage = `KYC submitted successfully for ${selectedRegion.toUpperCase()}!\n` +
+        `Expected processing time: 1-2 business days via Bridge API.`;
+      
+      // Store processing info for display
       setSubmitSuccess(true);
       setActiveStep(2);
+      sessionStorage.setItem('kycProcessingInfo', JSON.stringify({
+        message: processingMessage,
+        region: responseData.region || selectedRegion,
+        processing_time: '1-2 business days'
+      }));
       sessionStorage.removeItem(SNAPSHOT_KEY);
       
       // Redirect to dashboard after success
@@ -607,7 +747,20 @@ const KYCVerification = () => {
       'id_type',
       'id_number'
     ];
-    if (selectedRegion === 'US') requiredFields.push('ssn');
+    
+    // Add region-specific national ID field
+    const config = getFormConfig(selectedRegion);
+    if (config.nationalIdField) {
+      requiredFields.push(config.nationalIdField);
+    }
+    
+    // Add region-specific required fields
+    if (config.bankFieldHint) {
+      requiredFields.push('bank_details');
+    }
+    if (selectedRegion === 'brazil' || selectedRegion === 'mexico') {
+      requiredFields.push('tax_id');
+    }
 
     const allTextPresent = requiredFields.every((field) => {
       const value = formData[field];
@@ -617,12 +770,24 @@ const KYCVerification = () => {
     const imagesPresent = Boolean(formData.id_image_front) && (
       formData.id_type !== 'drivers_license' || Boolean(formData.id_image_back)
     );
+    
+    // Check required document uploads
+    const requiredDocsPresent = Boolean(formData.proof_of_address) && (
+      !(selectedRegion === 'eu' || selectedRegion === 'brazil') || Boolean(formData.additional_documents)
+    );
 
-    const ssnValid = selectedRegion !== 'US'
-      ? true
-      : (formData.ssn ? formData.ssn.replace(/\D/g, '').length === 9 : false);
+    // Validate national ID based on region
+    let nationalIdValid = true;
+    if (selectedRegion === 'us' && formData.ssn) {
+      nationalIdValid = formData.ssn.replace(/\D/g, '').length === 9;
+    } else if (selectedRegion !== 'us' && formData.national_id) {
+      nationalIdValid = formData.national_id.trim().length > 0;
+    }
 
-    return allTextPresent && imagesPresent && ssnValid && isTosAccepted;
+    // Check TOS acceptance - Bridge required for all
+    const allTosAccepted = bridgeTosAccepted;
+
+    return allTextPresent && imagesPresent && requiredDocsPresent && nationalIdValid && allTosAccepted;
   })();
 
   // Show loading state while Auth0 loads
@@ -685,9 +850,33 @@ const KYCVerification = () => {
       <Typography variant="h6" sx={{ mb: 1, fontWeight: 600 }}>
         Personal Information & Identity Verification
       </Typography>
-      <Typography variant="body2" sx={{ mb: 3, color: 'rgba(255,255,255,0.7)' }}>
+      <Typography variant="body2" sx={{ mb: 2, color: 'rgba(255,255,255,0.7)' }}>
         Please provide accurate information as it appears on your government-issued ID
       </Typography>
+      
+      {/* Verification Requirements Info */}
+      <Box sx={{ mb: 3, p: 2, backgroundColor: 'rgba(255,255,255,0.05)', borderRadius: 1, border: '1px solid rgba(255,255,255,0.1)' }}>
+        <Typography variant="subtitle2" sx={{ mb: 1, color: '#90caf9', fontWeight: 600 }}>
+          Required for {getFormConfig(selectedRegion).details?.split(':')[0] || 'Verification'}
+        </Typography>
+        <Typography variant="body2" sx={{ mb: 1, color: 'rgba(255,255,255,0.8)' }}>
+          {getFormConfig(selectedRegion).details?.split(':')[1] || 'Identity verification required'}
+        </Typography>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
+          {getFormConfig(selectedRegion).documents?.map((doc, index) => (
+            <Chip 
+              key={index} 
+              label={doc} 
+              size="small" 
+              sx={{ 
+                backgroundColor: 'rgba(144, 202, 249, 0.1)', 
+                color: '#90caf9',
+                border: '1px solid rgba(144, 202, 249, 0.3)'
+              }} 
+            />
+          ))}
+        </Box>
+      </Box>
       
       <Grid container spacing={3}>
         {/* Personal Information */}
@@ -919,29 +1108,28 @@ const KYCVerification = () => {
           </FormControl>
         </Grid>
 
-        {selectedRegion === 'US' && (
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Social Security Number"
-              name="ssn"
-              value={formData.ssn}
-              onChange={handleChange}
-              error={!!errors.ssn}
-              helperText={errors.ssn || 'Format: XXX-XX-XXXX'}
-              required
-              placeholder="XXX-XX-XXXX"
-              InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
-              InputProps={{ style: { color: '#fff' } }}
-              sx={{ 
-                '& .MuiOutlinedInput-root': {
-                  '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
-                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
-                }
-              }}
-            />
-          </Grid>
-        )}
+        {/* National ID field - adapts based on region */}
+        <Grid item xs={12} md={6}>
+          <TextField
+            fullWidth
+            label={getFormConfig(selectedRegion).nationalIdLabel}
+            name={getFormConfig(selectedRegion).nationalIdField}
+            value={formData[getFormConfig(selectedRegion).nationalIdField]}
+            onChange={handleChange}
+            error={!!errors[getFormConfig(selectedRegion).nationalIdField]}
+            helperText={errors[getFormConfig(selectedRegion).nationalIdField] || getFormConfig(selectedRegion).nationalIdHint}
+            required
+            placeholder={selectedRegion === 'us' ? 'XXX-XX-XXXX' : getFormConfig(selectedRegion).nationalIdHint}
+            InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
+            InputProps={{ style: { color: '#fff' } }}
+            sx={{ 
+              '& .MuiOutlinedInput-root': {
+                '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+              }
+            }}
+          />
+        </Grid>
         
         <Grid item xs={12} md={6}>
           <TextField
@@ -1042,6 +1230,150 @@ const KYCVerification = () => {
             </Box>
           </Grid>
         )}
+        
+        {/* Region-Specific Additional Fields */}
+        <Grid item xs={12}>
+          <Typography variant="subtitle1" sx={{ mb: 2, mt: 3, fontWeight: 600 }}>
+            Additional Regional Requirements
+          </Typography>
+        </Grid>
+        
+        {/* Bank Details Field - Required for most regions */}
+        {getFormConfig(selectedRegion).bankFieldHint && (
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label={`Bank Details (${getFormConfig(selectedRegion).bankFieldHint})`}
+              name="bank_details"
+              value={formData.bank_details}
+              onChange={handleChange}
+              error={!!errors.bank_details}
+              helperText={errors.bank_details || `Please provide your ${getFormConfig(selectedRegion).bankFieldHint} for payments`}
+              required
+              placeholder={
+                selectedRegion === 'eu' ? 'DE89 3704 0044 0532 0130 00' :
+                selectedRegion === 'mexico' ? '646180157000000004' :
+                selectedRegion === 'brazil' ? 'your-pix-key@email.com' :
+                selectedRegion === 'argentina' ? '0000003100010000000001' :
+                'Your bank account details'
+              }
+              InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
+              InputProps={{ style: { color: '#fff' } }}
+              sx={{ 
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                }
+              }}
+            />
+          </Grid>
+        )}
+        
+        {/* Tax ID / Additional ID Field for specific regions */}
+        {(selectedRegion === 'brazil' || selectedRegion === 'mexico') && (
+          <Grid item xs={12} md={6}>
+            <TextField
+              fullWidth
+              label={selectedRegion === 'brazil' ? 'CPF Number' : 'CURP/RFC'}
+              name="tax_id"
+              value={formData.tax_id || ''}
+              onChange={handleChange}
+              error={!!errors.tax_id}
+              helperText={
+                errors.tax_id || 
+                (selectedRegion === 'brazil' ? 'Brazilian CPF number (11 digits)' : 'Mexican CURP or RFC number')
+              }
+              required
+              placeholder={selectedRegion === 'brazil' ? '000.000.000-00' : 'CURP18DIGITS000 or RFC12DIGITS000'}
+              InputLabelProps={{ style: { color: 'rgba(255,255,255,0.7)' } }}
+              InputProps={{ style: { color: '#fff' } }}
+              sx={{ 
+                '& .MuiOutlinedInput-root': {
+                  '& fieldset': { borderColor: 'rgba(255,255,255,0.1)' },
+                  '&:hover fieldset': { borderColor: 'rgba(255,255,255,0.2)' },
+                }
+              }}
+            />
+          </Grid>
+        )}
+        
+        {/* Proof of Address Upload */}
+        <Grid item xs={12} md={6}>
+          <Box>
+            <Typography sx={{ mb: 1, color: 'rgba(255,255,255,0.9)' }}>
+              Proof of Address *
+            </Typography>
+            <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'rgba(255,255,255,0.6)' }}>
+              Utility bill, bank statement, or government document (dated within last 3 months)
+            </Typography>
+            <Button
+              variant="outlined"
+              component="label"
+              fullWidth
+              sx={{ 
+                height: '56px',
+                borderColor: errors.proof_of_address ? 'error.main' : 'rgba(255,255,255,0.1)',
+                color: 'white',
+                justifyContent: 'flex-start'
+              }}
+            >
+              {formData.proof_of_address ? `📄 ${formData.proof_of_address.name}` : '📄 Upload Proof of Address'}
+              <input
+                type="file"
+                name="proof_of_address"
+                onChange={handleFileChange}
+                hidden
+                accept="image/*,.pdf"
+                required
+              />
+            </Button>
+            {errors.proof_of_address && (
+              <FormHelperText error>{errors.proof_of_address}</FormHelperText>
+            )}
+          </Box>
+        </Grid>
+        
+        {/* Additional Documents for specific regions */}
+        {(selectedRegion === 'eu' || selectedRegion === 'brazil') && (
+          <Grid item xs={12} md={6}>
+            <Box>
+              <Typography sx={{ mb: 1, color: 'rgba(255,255,255,0.9)' }}>
+                {selectedRegion === 'eu' ? 'SEPA Authorization *' : 'Additional Brazilian Documents *'}
+              </Typography>
+              <Typography variant="caption" sx={{ display: 'block', mb: 1, color: 'rgba(255,255,255,0.6)' }}>
+                {selectedRegion === 'eu' 
+                  ? 'SEPA direct debit mandate or bank authorization letter'
+                  : 'Additional Brazilian identity or residency documents'
+                }
+              </Typography>
+              <Button
+                variant="outlined"
+                component="label"
+                fullWidth
+                sx={{ 
+                  height: '56px',
+                  borderColor: errors.additional_documents ? 'error.main' : 'rgba(255,255,255,0.1)',
+                  color: 'white',
+                  justifyContent: 'flex-start'
+                }}
+              >
+                {formData.additional_documents ? `📎 ${formData.additional_documents.name}` : '📎 Upload Additional Documents'}
+                <input
+                  type="file"
+                  name="additional_documents"
+                  onChange={handleFileChange}
+                  hidden
+                  accept="image/*,.pdf"
+                  required
+                />
+              </Button>
+              {errors.additional_documents && (
+                <FormHelperText error>{errors.additional_documents}</FormHelperText>
+              )}
+            </Box>
+          </Grid>
+        )}
+        
       </Grid>
     </>
   );
@@ -1102,31 +1434,90 @@ const KYCVerification = () => {
           >
             {activeStep === 0 && renderRegionSelection()}
             {activeStep === 1 && renderKYCForm()}
-            {activeStep === 2 && (
-              <Box sx={{ textAlign: 'center' }}>
-                <Typography variant="h6">Verification Submitted</Typography>
-                <Typography variant="body2" sx={{ mt: 1, color: 'rgba(255,255,255,0.7)' }}>
-                  We’re finalizing your account. This can take up to a minute. You’ll be redirected automatically.
-                </Typography>
-                <CircularProgress sx={{ mt: 3 }} />
-              </Box>
-            )}
+            {activeStep === 2 && (() => {
+              const processingInfo = JSON.parse(sessionStorage.getItem('kycProcessingInfo') || '{}');
+              
+              return (
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="h5" sx={{ color: '#00ff88', mb: 3 }}>
+                    ✅ Verification Submitted Successfully!
+                  </Typography>
+                  
+                  <Box sx={{ mb: 4 }}>
+                    <Typography variant="h6" sx={{ color: '#ffffff', mb: 2 }}>
+                      KYC Processing for {processingInfo.region?.toUpperCase() || selectedRegion.toUpperCase()}
+                    </Typography>
+                    <Box sx={{ 
+                      background: 'rgba(255,255,255,0.1)', 
+                      borderRadius: 2, 
+                      p: 3, 
+                      mb: 2,
+                      textAlign: 'center',
+                      maxWidth: 500,
+                      mx: 'auto'
+                    }}>
+                      <Typography variant="subtitle1" sx={{ color: '#00ff88', mb: 1 }}>
+                        🌉 Bridge API
+                      </Typography>
+                      <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.8)', mb: 1 }}>
+                        Global compliance and identity verification
+                      </Typography>
+                      <Typography variant="h6" sx={{ color: '#00ff88', mb: 2 }}>
+                        ⏱️ Expected processing time: {processingInfo.processing_time || '1-2 business days'}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  
+                  <Typography variant="body1" sx={{ color: 'rgba(255,255,255,0.8)', mb: 2 }}>
+                    📧 You'll receive email notifications when your verification is complete.
+                  </Typography>
+                  <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.6)', mb: 3 }}>
+                    Redirecting to dashboard...
+                  </Typography>
+                  <CircularProgress sx={{ color: '#00ff88' }} />
+                </Box>
+              );
+            })()}
             
             {activeStep === 1 && (
               <Box sx={{ mt: 3 }}>
-                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 1 }}>
-                  By proceeding you acknowledge our Terms of Service.
+                <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)', mb: 2 }}>
+                  Terms of Service Acceptance
                 </Typography>
-                <Button variant="text" onClick={handleGenerateTos} sx={{ color: '#90caf9' }}>
-                  View and Accept Terms of Service
-                </Button>
-                {signedAgreementId ? (
-                  <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'rgba(255,255,255,0.7)' }}>
-                    Terms accepted. Agreement ID: {signedAgreementId}
-                  </Typography>
-                ) : (
+                
+                {/* Bridge TOS - Required for all regions */}
+                <Box sx={{ mb: 2 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                    <input
+                      type="checkbox"
+                      id="bridge-tos"
+                      checked={bridgeTosAccepted}
+                      onChange={(e) => setBridgeTosAccepted(e.target.checked)}
+                      style={{ marginRight: 8 }}
+                    />
+                    <Typography variant="body2" sx={{ color: 'rgba(255,255,255,0.7)' }}>
+                      I accept the{' '}
+                      <Button 
+                        variant="text" 
+                        onClick={handleGenerateTos} 
+                        sx={{ color: '#90caf9', textTransform: 'none', p: 0, minWidth: 'auto' }}
+                      >
+                        Bridge Terms of Service
+                      </Button>
+                    </Typography>
+                  </Box>
+                  {signedAgreementId && (
+                    <Typography variant="caption" sx={{ color: 'rgba(255,255,255,0.7)', ml: 3 }}>
+                      ✓ Terms accepted. Agreement ID: {signedAgreementId}
+                    </Typography>
+                  )}
+                </Box>
+                
+
+                
+                {!bridgeTosAccepted && (
                   <Typography variant="caption" sx={{ display: 'block', mt: 1, color: 'error.main' }}>
-                    You must view and accept the Terms of Service to continue.
+                    You must accept the Bridge Terms of Service to continue.
                   </Typography>
                 )}
               </Box>
