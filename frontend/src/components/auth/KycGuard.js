@@ -4,21 +4,23 @@ import { useNavigate } from 'react-router-dom';
 import api from '../../utils/api';
 
 const KycGuard = ({ children }) => {
-  const { getAccessTokenSilently, isAuthenticated, user } = useAuth0();
+  const { getAccessTokenSilently, isAuthenticated, isLoading, user } = useAuth0();
   const [allowed, setAllowed] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
     const check = async () => {
+      // Avoid any redirects while auth is loading to prevent flicker/loops
+      if (isLoading) return;
+
       if (!isAuthenticated) {
+        // Only redirect to login when definitely unauthenticated
         navigate('/login');
         return;
       }
       try {
         const token = await getAccessTokenSilently({
-          authorizationParams: {
-            scope: 'openid profile email'
-          }
+          authorizationParams: { scope: 'openid profile email' }
         });
         const res = await api.get('/user/check', { headers: { Authorization: `Bearer ${token}` } });
         const { exists, next_step } = res.data;
@@ -32,7 +34,6 @@ const KycGuard = ({ children }) => {
               return;
             }
           } catch (regErr) {
-            // If account already exists, proceed to KYC; otherwise fall back to signup
             if (regErr?.response?.status === 409) {
               setAllowed(true);
               return;
@@ -48,11 +49,12 @@ const KycGuard = ({ children }) => {
         setAllowed(true);
       } catch (e) {
         console.error('KycGuard error', e);
-        navigate('/login');
+        // Do not bounce back to login on transient token/API errors; keep guard not allowed
+        setAllowed(false);
       }
     };
     check();
-  }, [isAuthenticated, getAccessTokenSilently, navigate, user]);
+  }, [isAuthenticated, isLoading, getAccessTokenSilently, navigate, user]);
 
   return allowed ? children : null;
 };

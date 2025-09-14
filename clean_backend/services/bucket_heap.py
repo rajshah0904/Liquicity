@@ -81,6 +81,36 @@ def deduct_lowest_rates(mapping: Dict, amount: Decimal) -> Tuple[Dict[str, float
 	return _rebuild_mapping(new_pairs), consumed, _q_amt(usdc_locked)
 
 
+def deduct_highest_rates(mapping: Dict, amount: Decimal) -> Tuple[Dict[str, float], List[Tuple[float, float]], Decimal]:
+	"""
+	Deduct `amount` fiat using highest USDC/fiat rates first (maximizes treasury profit).
+	Returns: (updated_mapping, consumed[(amount_used, rate)], usdc_locked)
+	"""
+	pairs = _parse_mapping(mapping)
+	pairs.sort(key=lambda x: x[0], reverse=True)  # rate desc
+	remaining = _q_amt(_to_dec(amount))
+	consumed: List[Tuple[float, float]] = []
+	usdc_locked = Decimal("0")
+	new_pairs: List[Tuple[Decimal, Decimal]] = []
+	for rate, amt in pairs:
+		if remaining <= 0:
+			new_pairs.append((rate, amt))
+			continue
+		use = amt if amt <= remaining else remaining
+		left = amt - use
+		if use > 0:
+			consumed.append((float(_q_amt(use)), float(rate)))
+			usdc_locked += (_q_amt(use) * rate)
+		remaining -= use
+		if left > 0:
+			new_pairs.append((rate, _q_amt(left)))
+	# After loop, if still remaining, insufficient balance
+	if remaining > 0:
+		raised = _q_amt(_to_dec(amount)) - remaining
+		raise ValueError(f"Insufficient balance: need {amount}, only {raised} available")
+	return _rebuild_mapping(new_pairs), consumed, _q_amt(usdc_locked)
+
+
 def add_to_rate_bucket(mapping: Dict, rate: Decimal, amount: Decimal) -> Dict[str, float]:
 	"""Credit `amount` at `rate`, merging with existing same-rate entry."""
 	pairs = _parse_mapping(mapping)

@@ -4,7 +4,7 @@ from ..database import get_db, SessionLocal
 from ..models import User, BridgeCustomer, BridgeWallet
 from ..auth import get_current_user
 from fastapi_auth0.auth import Auth0User
-from sqlalchemy import func
+from sqlalchemy import func, or_
 from ..bridge import BridgeClient
 from ..utils.currency_utils import get_fiat_currency_from_region
 import logging
@@ -346,17 +346,52 @@ async def email_exists(email: str, db: Session = Depends(get_db)):
 
 @router.get("/user/search")
 async def user_search(q: str, db: Session = Depends(get_db), auth_user: Auth0User = Depends(get_current_user)):
-	"""Search users by email or (optional) name. Returns id, email, and region."""
-	if not q or len(q) < 2:
-		return {"users": []}
-	pattern = f"%{q.lower()}%"
-	rows = db.query(User).filter(func.lower(User.email).like(pattern)).limit(20).all()
-	results = []
-	for u in rows:
-		results.append({
-			"id": str(u.id),
-			"email": u.email,
-			"name": None,
-			"region": (u.region or 'us')
-		})
-	return {"users": results} 
+	"""Search users by email or (optional) name. Returns id, email, name from bridge_customer, and region."""
+	try:
+		if not q or len(q) < 2:
+			return {"users": []}
+		
+		# Get current user to exclude from results
+		current_user_obj = db.query(User).filter(User.auth0_id == auth_user.id).first()
+		current_user_id = current_user_obj.id if current_user_obj else None
+		
+		pattern = f"%{q.lower()}%"
+		_log.info(f"Searching for users with pattern: {pattern}, excluding user_id: {current_user_id}")
+		
+		# Join with bridge_customers to get name
+		query = db.query(User, BridgeCustomer).outerjoin(
+			BridgeCustomer, User.id == BridgeCustomer.user_id
+		).filter(
+			func.lower(User.email).like(pattern)
+		)
+		
+		# Exclude current user from results
+		if current_user_id:
+			query = query.filter(User.id != current_user_id)
+		
+		user_results = query.limit(20).all()
+		_log.info(f"Found {len(user_results)} users matching search")
+		
+		results = []
+		for user, bridge_customer in user_results:
+			# Construct full name if available
+			full_name = None
+			if bridge_customer:
+				if bridge_customer.first_name and bridge_customer.last_name:
+					full_name = f"{bridge_customer.first_name} {bridge_customer.last_name}"
+				elif bridge_customer.first_name:
+					full_name = bridge_customer.first_name
+			
+			results.append({
+				"id": str(user.id),
+				"email": user.email,
+				"name": full_name,
+				"region": (user.region or 'us')
+			})
+			
+		_log.info(f"Returning {len(results)} search results")
+		return {"users": results}
+		
+	except Exception as e:
+		_log.error(f"Error in user search: {e}")
+		return {"users": []} 

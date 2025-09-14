@@ -122,7 +122,7 @@ const Login = () => {
   const [email, setEmail] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const { loginWithRedirect, isAuthenticated, getAccessTokenSilently } = useAuth0();
+  const { loginWithRedirect } = useAuth0();
   const navigate = useNavigate();
   const location = useLocation();
   
@@ -136,92 +136,21 @@ const Login = () => {
     }
   }, [location.search]);
   
-  // After login, get token and navigate
-  useEffect(() => {
-    if (isAuthenticated) {
-      getAccessTokenSilently({
-        authorizationParams: {
-          scope: 'openid profile email'
-        }
-      }).then(token => {
-        import('../utils/api').then(({ default: api }) => {
-          api.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-          
-          // Check user's current onboarding state
-          api.get('/user/check').then(response => {
-            const userData = response.data;
-            console.log('Login: User state', userData);
-            
-            // Route based on onboarding state
-            routeUserBasedOnState(userData, api, token);
-          }).catch(error => {
-            console.error('Login: Failed to check user state', error);
-            navigate('/kyc-verification'); // Fallback to KYC
-          });
-        });
-      });
-    }
-  }, [isAuthenticated, getAccessTokenSilently, navigate]);
-
-  const routeUserBasedOnState = async (userData, api, token) => {
-    const { exists, next_step } = userData;
-    
-    if (!exists) {
-      // User not registered - shouldn't happen on login, but handle it
-      navigate('/signup');
-      return;
-    }
-    
-    // Route based on onboarding state
-    switch (next_step) {
-      case 'kyc':
-        console.log('Login: Redirecting to KYC');
-        navigate('/kyc-verification');
-        break;
-        
-      case 'create_wallet':
-        console.log('Login: KYC approved, creating wallet');
-        try {
-          const walletResp = await api.post('/user/create-wallet', {}, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          console.log('Wallet created:', walletResp.data);
-          navigate('/dashboard');
-        } catch (e) {
-          console.error('Wallet creation error:', e);
-          navigate('/kyc-verification'); // Fallback
-        }
-        break;
-        
-      case 'done':
-        console.log('Login: Onboarding complete, going to dashboard');
-        navigate('/dashboard');
-        break;
-        
-      default:
-        console.log('Login: Unknown state, going to dashboard');
-        navigate('/dashboard');
-    }
-  };
-  
   const handleEmailLogin = async e => {
     e.preventDefault();
     if (!email || !/\S+@\S+\.\S+/.test(email)) return setError('Please enter a valid email address');
-    // Make sure the signup flag is cleared for normal logins
     localStorage.removeItem('isNewSignup');
     setError(''); 
     setLoading(true);
-    
     try {
-      // Switch from popup to redirect for consistent behavior
-              await loginWithRedirect({ 
-          authorizationParams: { 
-            screen_hint: 'login', 
-            login_hint: email,
-            redirect_uri: `${window.location.origin}/callback`
-          },
-          appState: { returnTo: '/callback' }
-        });
+      await loginWithRedirect({ 
+        authorizationParams: { 
+          screen_hint: 'login', 
+          login_hint: email,
+          redirect_uri: `${window.location.origin}/callback`
+        },
+        appState: { returnTo: '/callback' }
+      });
     } catch (err) {
       setError(err.message || 'Login failed.');
       setLoading(false);
@@ -229,13 +158,10 @@ const Login = () => {
   };
   
   const handleGoogleLogin = async () => {
-    // Clear any signup flag in localStorage
     localStorage.removeItem('isNewSignup');
     setLoading(true);
     setError('');
-    
     try {
-      // Switch from popup to redirect for Google login
       await loginWithRedirect({ 
         authorizationParams: { 
           connection: 'google-oauth2',
@@ -245,13 +171,26 @@ const Login = () => {
       });
     } catch (err) {
       setError(err.message || 'Google login failed. Please try again.');
-      console.error('Google login error:', err);
       setLoading(false);
     }
   };
   
-  const handleSignUp = () => {
-    navigate('/signup');
+  // Route signup via Auth0 (creates Auth0 user), then /callback handles registration -> KYC
+  const handleSignUp = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await loginWithRedirect({
+        authorizationParams: {
+          screen_hint: 'signup',
+          redirect_uri: `${window.location.origin}/callback`
+        },
+        appState: { returnTo: '/callback' }
+      });
+    } catch (err) {
+      setError(err.message || 'Sign up failed.');
+      setLoading(false);
+    }
   };
   
   return (
@@ -330,7 +269,6 @@ const Login = () => {
               {loading ? <CircularProgress size={24} color="inherit" /> : 'Continue with Email'}
             </EmailButton>
             
-            {/* Add Sign Up button */}
             <SignUpButton 
               fullWidth 
               onClick={handleSignUp}

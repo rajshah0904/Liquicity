@@ -4,31 +4,24 @@ from __future__ import annotations
 
 This module provides a small service class that keeps the *business rules* around
 encumbrances in one place so routers / jobs can call simple methods.
-
-It assumes:
-• SQLAlchemy session management is handled by FastAPI deps (get_db).
-• BridgeClient already exists and exposes synchronous create_transfer (simple wrapper around POST /transfers).
 """
 
 import logging
 from decimal import Decimal
 from typing import List, Tuple
-import os
-
 from sqlalchemy.orm import Session
 from sqlalchemy import select, func, delete, update
 
 from ..bridge import BridgeClient
 from ..models import Encumbrance, Transfer
+from ..config.settings import settings
 
 logger = logging.getLogger(__name__)
 
-# These vars should ideally live in settings.py / env.
-TREASURY_WALLET_ID = os.getenv("TREASURY_WALLET_ID", "")
-TREASURY_CUSTOMER_ID = os.getenv("TREASURY_CUSTOMER_ID", "")
+# Read from centralized settings (loaded once at process start)
+TREASURY_WALLET_ID = settings.treasury_wallet_id
+TREASURY_CUSTOMER_ID = settings.treasury_customer_id
 
-if not TREASURY_WALLET_ID or not TREASURY_CUSTOMER_ID:
-    logging.getLogger(__name__).warning("TREASURY_WALLET_ID / TREASURY_CUSTOMER_ID not set; encumbrance operations may fail")
 
 
 class EncumbranceService:

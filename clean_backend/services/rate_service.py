@@ -18,9 +18,9 @@ class RateService:
     
     def __init__(self):
         self.base_url = settings.bridge_base_url
-        self.api_key = settings.bridge_api_key.get_secret_value()
-        self.timeout = settings.bridge_timeout
-        
+        self.api_key = settings.bridge_api_key  # plain string
+        self.timeout = 30
+    
     def _get_headers(self) -> Dict[str, str]:
         return {
             "Api-Key": self.api_key,

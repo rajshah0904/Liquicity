@@ -20,6 +20,7 @@ from ..services.encumbrance_service import EncumbranceService, TREASURY_WALLET_I
 from ..services.rate_service import rate_service
 from ..models import PlaidItem
 from ..services.bucket_heap import deduct_lowest_rates, add_to_rate_bucket
+from ..services.bucket_heap import deduct_highest_rates
 
 router = APIRouter(prefix="/transfers", tags=["transfers"])
 
@@ -37,6 +38,14 @@ class SendIn(BaseModel):
     amount: condecimal(gt=Decimal("0"), max_digits=18, decimal_places=2)
     memo: Optional[str] = None
     speed_option: Optional[str] = "standard"
+
+class QuoteOut(BaseModel):
+    sender_currency: str
+    recipient_currency: str
+    amount_sent: float
+    usdc_amount: float
+    amount_received: float
+    exchange_rate: float
 
 class DepositOut(BaseModel):
     fiat_transfer_id: str
@@ -177,8 +186,8 @@ async def send_transfer(
         send_bundle_id = uuid.uuid4()
         if sender_currency.upper() == recipient_currency.upper():
             # Same-currency send (H → H)
-            # Deduct from sender's buckets using lowest-rate-first and compute USDC_locked
-            updated, consumed, usdc_locked = deduct_lowest_rates(sender_wallet.fiat_balance_by_rate or {}, send_amount)
+            # Deduct from sender's buckets using highest-rate-first and compute USDC_locked
+            updated, consumed, usdc_locked = deduct_highest_rates(sender_wallet.fiat_balance_by_rate or {}, send_amount)
             sender_wallet.fiat_balance_by_rate = updated
 
             # Credit recipient at current rate key
@@ -186,104 +195,13 @@ async def send_transfer(
                 recipient_wallet.fiat_balance_by_rate or {}, recipient_rate, send_amount
             )
 
-            # Ensure sender has enough on-chain USDC to fund the wallet-to-wallet leg
-            try:
-                sw_live = client.get_wallet(sender_wallet.customer_id, sender_wallet.wallet_id)
-                usdc_avail = Decimal("0")
-                for b in sw_live.get("balances", []):
-                    if (b.get("currency") or "").lower() == "usdc":
-                        usdc_avail = Decimal(str(b.get("available_balance") or b.get("balance") or 0))
-                        break
-                # We will send usdc_live to the recipient
-                usdc_live = round_usdc(send_amount * sender_rate)
-                shortfall = round_usdc(usdc_live - usdc_avail)
-                # Only prefund up to positive delta (compensation for rate diff), never beyond
-                delta_pos_cap = round_usdc(max(Decimal("0"), usdc_live - round_usdc(usdc_locked)))
-                prefund_amt = round_usdc(min(shortfall, delta_pos_cap))
-                if prefund_amt > 0:
-                    prefund = client.create_transfer_sync({
-                        "amount": str(prefund_amt),
-                        "on_behalf_of": TREASURY_CUSTOMER_ID,
-                        "client_reference_id": str(send_bundle_id),
-                        "source": {
-                            "payment_rail": "bridge_wallet",
-                            "bridge_wallet_id": TREASURY_WALLET_ID,
-                            "currency": "usdc"
-                        },
-                        "destination": {
-                            "payment_rail": "solana",
-                            "bridge_wallet_id": sender_wallet.wallet_id,
-                            "currency": "usdc"
-                        }
-                    })
-                    # Persist prefund row
-                    now_pf = datetime.utcnow()
-                    db.add(Transfer(
-                        transfer_id=prefund.get("id", str(uuid.uuid4())),
-                        customer_id=TREASURY_CUSTOMER_ID,
-                        user_id=sender.id,
-                        client_reference_id=str(send_bundle_id),
-                        amount=str(prefund_amt),
-                        currency="usdc",
-                        on_behalf_of=TREASURY_CUSTOMER_ID,
-                        developer_fee="0",
-                        source={"payment_rail": "bridge_wallet", "bridge_wallet_id": TREASURY_WALLET_ID},
-                        destination={"payment_rail": "solana", "bridge_wallet_id": sender_wallet.wallet_id},
-                        state=prefund.get("state", "completed"),
-                        receipt={
-                            "leg": "treasury_prefund",
-                            "internal": True,
-                            "currency_pair": f"{sender_currency.upper()}_{recipient_currency.upper()}",
-                            "usdc_needed": float(round_usdc(usdc_live)),
-                            "usdc_avail": float(round_usdc(usdc_avail)),
-                            "usdc_shortfall": float(round_usdc(shortfall)),
-                            "prefund_capped_to_delta": float(delta_pos_cap)
-                        },
-                        created_at=now_pf,
-                        updated_at=now_pf,
-                        return_details=None
-                    ))
-                    db.commit()
-            except Exception:
-                pass
-
-            # Wallet-to-wallet (visible) transfer: sender → recipient (USDC_live)
-            w2w = client.create_transfer_sync({
-                "amount": str(round_usdc(usdc_live)),
-                "on_behalf_of": sender_wallet.customer_id,
-                "client_reference_id": str(send_bundle_id),
-                "source": {
-                    "payment_rail": "bridge_wallet",
-                    "bridge_wallet_id": sender_wallet.wallet_id,
-                    "currency": "usdc"
-                },
-                "destination": {
-                    "payment_rail": "solana",
-                    "bridge_wallet_id": recipient_wallet.wallet_id,
-                    "currency": "usdc"
-                }
-            })
-
-            # Immediately sync on-chain balances when Bridge returns (typically state='in_review')
-            try:
-                sw_now = client.get_wallet(sender_wallet.customer_id, sender_wallet.wallet_id)
-                rw_now = client.get_wallet(recipient_wallet.customer_id, recipient_wallet.wallet_id)
-                sender_wallet.balances = sw_now.get("balances", [])
-                recipient_wallet.balances = rw_now.get("balances", [])
-                sender_wallet.updated_at = datetime.utcnow()
-                recipient_wallet.updated_at = datetime.utcnow()
-                db.add(sender_wallet)
-                db.add(recipient_wallet)
-                db.commit()
-            except Exception:
-                pass
-
-            # Treasury settlement Δ (treasury ↔ sender only)
+            # Compute live USDC to send and perform treasury adjustment BEFORE wallet-to-wallet send
+            usdc_live = round_usdc(send_amount * sender_rate)
             delta = round_usdc(usdc_live - round_usdc(usdc_locked))  # >0 treasury→sender, <0 sender→treasury
             tsx = None
             if delta != 0:
                 if delta > 0:
-                    # Compensation: treasury → recipient Δ to align with final delivery
+                    # Compensation: treasury → sender |Δ|
                     tsx = client.create_transfer_sync({
                         "amount": str(round_usdc(delta)),
                         "on_behalf_of": TREASURY_CUSTOMER_ID,
@@ -316,6 +234,38 @@ async def send_transfer(
                             "currency": "usdc"
                         }
                     })
+
+            # Wallet-to-wallet (visible) transfer: sender → recipient (USDC_live)
+            w2w = client.create_transfer_sync({
+                "amount": str(round_usdc(usdc_live)),
+                "on_behalf_of": sender_wallet.customer_id,
+                "client_reference_id": str(send_bundle_id),
+                "source": {
+                    "payment_rail": "bridge_wallet",
+                    "bridge_wallet_id": sender_wallet.wallet_id,
+                    "currency": "usdc"
+                },
+                "destination": {
+                    "payment_rail": "solana",
+                    "bridge_wallet_id": recipient_wallet.wallet_id,
+                    "currency": "usdc"
+                }
+            })
+
+            # Immediately sync on-chain balances when Bridge returns (typically state='in_review')
+            try:
+                sw_now = client.get_wallet(sender_wallet.customer_id, sender_wallet.wallet_id)
+                rw_now = client.get_wallet(recipient_wallet.customer_id, recipient_wallet.wallet_id)
+                sender_wallet.balances = sw_now.get("balances", [])
+                recipient_wallet.balances = rw_now.get("balances", [])
+                sender_wallet.updated_at = datetime.utcnow()
+                recipient_wallet.updated_at = datetime.utcnow()
+                db.add(sender_wallet)
+                db.add(recipient_wallet)
+                db.commit()
+            except Exception:
+                pass
+
 
             # Refresh balances (best-effort)
             try:
@@ -489,26 +439,17 @@ async def send_transfer(
             # Cross-currency send (C1 → C2)
             # Convert sender amount to USDC using sender_rate; compute recipient fiat using recipient_rate
             usdc_live = send_amount * sender_rate
-            # Deduct from sender (lowest-rate-first), computing USDC_locked
-            updated, consumed, usdc_locked = deduct_lowest_rates(sender_wallet.fiat_balance_by_rate or {}, send_amount)
+            # Deduct from sender (highest-rate-first), computing USDC_locked
+            updated, consumed, usdc_locked = deduct_highest_rates(sender_wallet.fiat_balance_by_rate or {}, send_amount)
             sender_wallet.fiat_balance_by_rate = updated
 
-            # Fund recipient with USDC_live (visible user→user leg)
-            # Ensure sender has enough on-chain USDC to fund the wallet-to-wallet leg
-            try:
-                sw_live = client.get_wallet(sender_wallet.customer_id, sender_wallet.wallet_id)
-                usdc_avail = Decimal("0")
-                for b in sw_live.get("balances", []):
-                    if (b.get("currency") or "").lower() == "usdc":
-                        usdc_avail = Decimal(str(b.get("available_balance") or b.get("balance") or 0))
-                        break
-                shortfall = round_usdc((usdc_live - usdc_avail))
-                # Only prefund up to positive delta (compensation for rate diff), never beyond
-                delta_pos_cap = round_usdc(max(Decimal("0"), round_usdc(usdc_live) - round_usdc(usdc_locked)))
-                prefund_amt = round_usdc(min(shortfall, delta_pos_cap))
-                if prefund_amt > 0:
-                    prefund = client.create_transfer_sync({
-                        "amount": str(prefund_amt),
+            # Treasury settlement before wallet-to-wallet: compute delta and adjust
+            delta = round_usdc(round_usdc(usdc_live) - round_usdc(usdc_locked))
+            tsx = None
+            if delta != 0:
+                if delta > 0:
+                    tsx = client.create_transfer_sync({
+                        "amount": str(round_usdc(delta)),
                         "on_behalf_of": TREASURY_CUSTOMER_ID,
                         "client_reference_id": str(send_bundle_id),
                         "source": {
@@ -522,36 +463,22 @@ async def send_transfer(
                             "currency": "usdc"
                         }
                     })
-                    # Persist prefund row
-                    now_pf = datetime.utcnow()
-                    db.add(Transfer(
-                        transfer_id=prefund.get("id", str(uuid.uuid4())),
-                        customer_id=TREASURY_CUSTOMER_ID,
-                        user_id=sender.id,
-                        client_reference_id=str(send_bundle_id),
-                        amount=str(prefund_amt),
-                        currency="usdc",
-                        on_behalf_of=TREASURY_CUSTOMER_ID,
-                        developer_fee="0",
-                        source={"payment_rail": "bridge_wallet", "bridge_wallet_id": TREASURY_WALLET_ID},
-                        destination={"payment_rail": "solana", "bridge_wallet_id": sender_wallet.wallet_id},
-                        state=prefund.get("state", "completed"),
-                        receipt={
-                            "leg": "treasury_prefund",
-                            "internal": True,
-                            "currency_pair": f"{sender_currency.upper()}_{recipient_currency.upper()}",
-                            "usdc_needed": float(round_usdc(usdc_live)),
-                            "usdc_avail": float(round_usdc(usdc_avail)),
-                            "usdc_shortfall": float(round_usdc(shortfall)),
-                            "prefund_capped_to_delta": float(delta_pos_cap)
+                else:
+                    tsx = client.create_transfer_sync({
+                        "amount": str(round_usdc(abs(delta))),
+                        "on_behalf_of": sender_wallet.customer_id,
+                        "client_reference_id": str(send_bundle_id),
+                        "source": {
+                            "payment_rail": "bridge_wallet",
+                            "bridge_wallet_id": sender_wallet.wallet_id,
+                            "currency": "usdc"
                         },
-                        created_at=now_pf,
-                        updated_at=now_pf,
-                        return_details=None
-                    ))
-                    db.commit()
-            except Exception:
-                pass
+                        "destination": {
+                            "payment_rail": "solana",
+                            "bridge_wallet_id": TREASURY_WALLET_ID,
+                            "currency": "usdc"
+                        }
+                    })
 
             w2w = client.create_transfer_sync({
                 "amount": str(round_usdc(usdc_live)),
@@ -583,47 +510,11 @@ async def send_transfer(
             except Exception:
                 pass
 
-            # Treasury settlement Δ on sender leg (treasury ↔ sender only)
-            delta = round_usdc(round_usdc(usdc_live) - round_usdc(usdc_locked))
-            tsx = None
-            if delta != 0:
-                if delta > 0:
-                    # Compensation: treasury → sender Δ
-                    tsx = client.create_transfer_sync({
-                        "amount": str(round_usdc(delta)),
-                        "on_behalf_of": TREASURY_CUSTOMER_ID,
-                        "client_reference_id": str(send_bundle_id),
-                        "source": {
-                            "payment_rail": "bridge_wallet",
-                            "bridge_wallet_id": TREASURY_WALLET_ID,
-                            "currency": "usdc"
-                        },
-                        "destination": {
-                            "payment_rail": "solana",
-                            "bridge_wallet_id": sender_wallet.wallet_id,
-                            "currency": "usdc"
-                        }
-                    })
-                else:
-                    # Profit: sender → treasury |Δ|
-                    tsx = client.create_transfer_sync({
-                        "amount": str(round_usdc(abs(delta))),
-                        "on_behalf_of": sender_wallet.customer_id,
-                        "client_reference_id": str(send_bundle_id),
-                        "source": {
-                            "payment_rail": "bridge_wallet",
-                            "bridge_wallet_id": sender_wallet.wallet_id,
-                            "currency": "usdc"
-                        },
-                        "destination": {
-                            "payment_rail": "solana",
-                            "bridge_wallet_id": TREASURY_WALLET_ID,
-                            "currency": "usdc"
-                        }
-                    })
 
             # Recipient receives exactly usdc_live
             recipient_amount = (round_usdc(usdc_live) / recipient_rate)
+            # Round recipient fiat to 2 decimals for persistence/display
+            recipient_amount = round_fiat(recipient_amount)
             recipient_wallet.fiat_balance_by_rate = add_to_rate_bucket(
                 recipient_wallet.fiat_balance_by_rate or {}, recipient_rate, recipient_amount
             )
@@ -644,6 +535,8 @@ async def send_transfer(
 
             # Persist packaged send transaction
             consumed_serialized = [{"amount": float(a), "locked_rate": float(r)} for (a, r) in consumed]
+            # Quantize exchange rate to 6 dp for display
+            _ex_rate = (recipient_amount / send_amount).quantize(Decimal("0.000001"))
             send_row = SendTransaction(
                 send_id=send_bundle_id,
                 sender_user_id=sender.id,
@@ -660,7 +553,7 @@ async def send_transfer(
                 final_usdc_to_recipient=float(round_usdc(usdc_live)),
                 live_recipient_rate_used=float(recipient_rate),
                 recipient_fiat_amount=float(recipient_amount),
-                exchange_rate=float(recipient_amount / send_amount),
+                exchange_rate=float(_ex_rate),
                 memo=body.memo or None,
                 status="completed",
             )
@@ -783,7 +676,7 @@ async def send_transfer(
                 recipient_currency=recipient_currency,
                 amount_sent=float(send_amount),
                 amount_received=float(recipient_amount),
-                exchange_rate=float((recipient_amount / send_amount))
+                exchange_rate=float(_ex_rate)
             )
             
     except ValueError as e:
@@ -857,7 +750,7 @@ async def deposit_fiat_to_wallet(
             logging.getLogger(__name__).warning("Plaid balance check failed: %s", e)
 
     currency = (ext_acct.get("currency") or "usd").lower()
-    rail_by_cur = {"usd": "ach_push", "eur": "sepa", "mxn": "spei"}
+    rail_by_cur = {"usd": "ach_push", "eur": "sepa"}
     if currency not in rail_by_cur:
         raise HTTPException(status_code=400, detail=f"Unsupported external account currency: {currency}")
 
@@ -982,7 +875,7 @@ async def deposit_fiat_to_wallet(
         "destination": {
             "payment_rail": "solana",
             "currency": "usdb",
-            "bridge_wallet_id": bridge_wallet.id,
+            "bridge_wallet_id": bridge_wallet.wallet_id,
         },
     }
 
@@ -1003,7 +896,7 @@ async def deposit_fiat_to_wallet(
     svc = EncumbranceService(db)
     enc = svc.create_encumbrance(
         fiat_transfer_id=fiat_tx["id"],
-        user_wallet_id=bridge_wallet.id,
+        user_wallet_id=bridge_wallet.wallet_id,
         amount=usdb_amount_dec,
     )
 
@@ -1082,7 +975,7 @@ async def withdraw_fiat_from_wallet(
         "source": {
             "payment_rail": "solana",
             "currency": "usdb",
-            "wallet_id": bridge_wallet.id,
+            "wallet_id": bridge_wallet.wallet_id,
         },
         "destination": {
             "payment_rail": payment_rail,
@@ -1129,3 +1022,56 @@ async def list_transfers(client_reference_id: Optional[str] = None, db: Session 
             for t in rows
         ]
     } 
+
+@router.post("/quote", response_model=QuoteOut)
+async def quote_transfer(
+    body: SendIn,
+    db: Session = Depends(get_db),
+    auth_user: Auth0User = Depends(get_current_user),
+):
+    """
+    Computes the recipient's expected amount and exchange rate for a transfer
+    without actually creating the transfer.
+    """
+    sender = _get_user_by_sub(db, auth_user.id)
+    if not sender:
+        raise HTTPException(status_code=404, detail="Sender not found")
+    
+    recipient = _get_user_by_id(db, body.recipient_user_id)
+    if not recipient:
+        raise HTTPException(status_code=404, detail="Recipient not found")
+    
+    sender_wallet = db.query(BridgeWallet).filter(BridgeWallet.user_id == sender.id).first()
+    if not sender_wallet:
+        raise HTTPException(status_code=400, detail="Sender wallet not found")
+    
+    recipient_wallet = db.query(BridgeWallet).filter(BridgeWallet.user_id == recipient.id).first()
+    if not recipient_wallet:
+        raise HTTPException(status_code=400, detail="Recipient wallet not found")
+    
+    sender_currency = sender_wallet.fiat_currency or 'USD'
+    recipient_currency = recipient_wallet.fiat_currency or 'USD'
+    send_amount = body.amount
+    
+    # Get current rates for locking
+    sender_rate = rate_service.get_usdc_rate(sender_currency)
+    recipient_rate = rate_service.get_usdc_rate(recipient_currency)
+    
+    if sender_rate is None or recipient_rate is None:
+        raise HTTPException(status_code=502, detail="Unable to fetch current exchange rates")
+    
+    # Compute recipient amount and exchange rate
+    usdc_amount = send_amount * sender_rate
+    recipient_amount = usdc_amount / recipient_rate
+    
+    # Round recipient amount to 2 decimal places for display
+    recipient_amount = round_fiat(recipient_amount)
+    
+    return QuoteOut(
+        sender_currency=sender_currency,
+        recipient_currency=recipient_currency,
+        amount_sent=float(send_amount),
+        usdc_amount=float(usdc_amount),
+        amount_received=float(recipient_amount),
+        exchange_rate=float(sender_rate / recipient_rate)
+    ) 

@@ -13,6 +13,11 @@ from .routers.virtual_accounts import router as va_router
 from .routers.webhooks import router as webhook_router
 from .routers.transfer import router as transfer_router, public_router as transfer_public_router
 from .routers.crypto import router as crypto_router
+import os, logging
+from dotenv import load_dotenv
+
+# Load .env once process-wide
+load_dotenv()
 
 app = FastAPI(title="Liquicity Clean API")
 
@@ -20,6 +25,14 @@ app = FastAPI(title="Liquicity Clean API")
 @app.on_event("startup")
 async def _startup():
 	create_tables()
+	# Validate critical treasury envs
+	missing = []
+	if not os.getenv("TREASURY_CUSTOMER_ID"):
+		missing.append("TREASURY_CUSTOMER_ID")
+	if not os.getenv("TREASURY_WALLET_ID"):
+		missing.append("TREASURY_WALLET_ID")
+	if missing:
+		logging.getLogger(__name__).warning("Missing treasury envs: %s — treasury settlements will fail until set", ", ".join(missing))
 
 # Health check endpoint
 @app.get("/health")

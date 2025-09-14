@@ -31,6 +31,10 @@ services:
       BRIDGE_API_KEY: sk-live-31c7d0ebf364ebab1a466df788314067
       BRIDGE_API_URL: https://api.bridge.xyz/v0
 
+      TREASURY_CUSTOMER_ID: 1766f9ab-ab75-43c6-a057-492f7aaece65
+      TREASURY_WALLET_ID: bdf954b8-bee0-4307-86a0-52343099b880
+
+
   frontend:
     build:
       context: .

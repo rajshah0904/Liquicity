@@ -288,6 +288,9 @@ export const transferAPI = {
   // Send money to another user
   send: (data) => api.post('/transfers/send', data),
   
+  // Quote a transfer (no execution)
+  quote: (data) => api.post('/transfers/quote', data),
+  
   // List transfers
   getTransfers: (params) => api.get('/transfers', { params }),
 };
