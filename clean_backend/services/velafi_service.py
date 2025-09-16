@@ -11,7 +11,10 @@ import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from decimal import Decimal
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Optional, List
+
+import asyncio
+import mimetypes
 
 import httpx
 from fastapi import HTTPException
@@ -44,6 +47,10 @@ class VelaFiService:
     - Exponential backoff for retries
     """
 
+    # Retry configuration
+    _MAX_RETRIES: int = 3
+    _INITIAL_BACKOFF: float = 1.0  # seconds
+
     def __init__(self):
         if not all([settings.velafi_api_key, settings.velafi_api_secret, settings.velafi_webhook_secret]):
             raise RuntimeError("Missing required VelaFi configuration")
@@ -63,47 +70,110 @@ class VelaFiService:
             timeout=30.0
         )
 
+    # ------------------------------------------------------------------
+    # Internal helpers – DB ledger of all outbound API calls
+    # ------------------------------------------------------------------
+
+    async def _log_api_call(
+        self,
+        *,
+        method: str,
+        endpoint: str,
+        request_payload: Optional[Dict[str, Any]] = None,
+        response_payload: Optional[Dict[str, Any]] = None,
+        status_code: int,
+        success: bool,
+    ) -> None:
+        """Persist an entry in *velafi_api_log* (fire-and-forget)."""
+        from clean_backend.models.velafi_api_log import VelafiApiLog  # local import
+
+        async with db_session() as session:
+            log_rec = VelafiApiLog(
+                method=method,
+                endpoint=endpoint,
+                request_payload=request_payload,
+                response_payload=response_payload,
+                status_code=status_code,
+                success=success,
+            )
+            session.add(log_rec)
+            try:
+                await session.commit()
+            except Exception as exc:  # pragma: no cover – log but don’t block main path
+                logger.warning("Failed to persist VelafiApiLog: %s", exc)
+
     async def _post(self, path: str, json: Dict[str, Any], idempotency_key: Optional[str] = None) -> Dict[str, Any]:
-        """Make a POST request to the VelaFi API with retry logic."""
-        headers = {}
+        """POST with exponential back-off retries."""
+        headers: Dict[str, str] = {}
         if idempotency_key:
             headers["Idempotency-Key"] = idempotency_key
 
-        try:
-            response = await self.session.post(path, json=json, headers=headers)
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPError as e:
-            error_data = {}
+        for attempt in range(self._MAX_RETRIES):
             try:
-                error_data = e.response.json()
-            except Exception:
-                pass
-            
-            raise VelaFiError(
-                message=str(e),
-                code=error_data.get("code"),
-                details=error_data
-            ) from e
+                resp = await self.session.post(path, json=json, headers=headers)
+                await self._log_api_call(
+                    method="POST",
+                    endpoint=path,
+                    request_payload=json,
+                    response_payload=resp.json() if resp.is_success else None,
+                    status_code=resp.status_code,
+                    success=resp.is_success,
+                )
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.HTTPError as e:
+                if attempt == self._MAX_RETRIES - 1:
+                    error_data: Dict[str, Any] = {}
+                    try:
+                        error_data = e.response.json()
+                    except Exception:
+                        pass
+                    await self._log_api_call(
+                        method="POST",
+                        endpoint=path,
+                        request_payload=json,
+                        response_payload=error_data,
+                        status_code=e.response.status_code if e.response else 0,
+                        success=False,
+                    )
+                    raise VelaFiError(str(e), error_data.get("code"), error_data) from e
+                # Back-off then retry
+                backoff = self._INITIAL_BACKOFF * (2 ** attempt)
+                await asyncio.sleep(backoff)
 
     async def _get(self, path: str, params: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Make a GET request to the VelaFi API with retry logic."""
-        try:
-            response = await self.session.get(path, params=params)
-            response.raise_for_status()
-            return response.json()
-        except httpx.HTTPError as e:
-            error_data = {}
+        """GET with exponential back-off retries."""
+        for attempt in range(self._MAX_RETRIES):
             try:
-                error_data = e.response.json()
-            except Exception:
-                pass
-            
-            raise VelaFiError(
-                message=str(e),
-                code=error_data.get("code"),
-                details=error_data
-            ) from e
+                resp = await self.session.get(path, params=params)
+                await self._log_api_call(
+                    method="GET",
+                    endpoint=path,
+                    request_payload=params or {},
+                    response_payload=resp.json() if resp.is_success else None,
+                    status_code=resp.status_code,
+                    success=resp.is_success,
+                )
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.HTTPError as e:
+                if attempt == self._MAX_RETRIES - 1:
+                    error_data: Dict[str, Any] = {}
+                    try:
+                        error_data = e.response.json()
+                    except Exception:
+                        pass
+                    await self._log_api_call(
+                        method="GET",
+                        endpoint=path,
+                        request_payload=params or {},
+                        response_payload=error_data,
+                        status_code=e.response.status_code if e.response else 0,
+                        success=False,
+                    )
+                    raise VelaFiError(str(e), error_data.get("code"), error_data) from e
+                backoff = self._INITIAL_BACKOFF * (2 ** attempt)
+                await asyncio.sleep(backoff)
 
     def verify_webhook_signature(self, signature: str, timestamp: str, body: bytes) -> bool:
         """
@@ -179,22 +249,79 @@ class VelaFiService:
         customer_id: str,
         document_type: str,
         file_data: bytes,
-        file_name: str
+        file_name: str,
+        *,
+        content_type: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """
-        Upload KYC verification documents for a customer.
+        """Upload KYC document to VelaFi (production-grade).
 
-        Args:
-            customer_id: VelaFi customer ID
-            document_type: Type of document (passport, id_card, drivers_license)
-            file_data: Raw file bytes
-            file_name: Original file name with extension
-
-        Returns:
-            Dict containing upload status and document ID
+        Parameters
+        ----------
+        customer_id : str
+            VelaFi customer identifier returned from create_customer.
+        document_type : str
+            One of ``passport``, ``id_card``, ``drivers_license`` accepted by VelaFi.
+        file_data : bytes
+            Raw bytes of the file.
+        file_name : str
+            Original filename, used for content-disposition.
+        content_type : str, optional
+            MIME type; if *None* we attempt to infer from *file_name* via ``mimetypes``.
+        Returns
+        -------
+        dict
+            VelaFi JSON payload with ``document_id`` and status.
         """
-        # TODO: Implement multipart file upload
-        raise NotImplementedError("Document upload not yet implemented")
+
+        if not file_data:
+            raise ValueError("file_data cannot be empty")
+
+        if content_type is None:
+            content_type, _ = mimetypes.guess_type(file_name)
+            if content_type is None:
+                content_type = "application/octet-stream"
+
+        path = f"/customers/{customer_id}/documents"
+
+        files = {
+            "file": (file_name, file_data, content_type),
+        }
+
+        data = {
+            "document_type": document_type,
+        }
+
+        # VelaFi expects multipart/form-data, so we use httpx file upload.
+        for attempt in range(self._MAX_RETRIES):
+            try:
+                resp = await self.session.post(path, data=data, files=files)
+                await self._log_api_call(
+                    method="POST",
+                    endpoint=path,
+                    request_payload={"document_type": document_type},
+                    response_payload=resp.json() if resp.is_success else None,
+                    status_code=resp.status_code,
+                    success=resp.is_success,
+                )
+                resp.raise_for_status()
+                return resp.json()
+            except httpx.HTTPError as e:
+                if attempt == self._MAX_RETRIES - 1:
+                    error_data: Dict[str, Any] = {}
+                    try:
+                        error_data = e.response.json()
+                    except Exception:
+                        pass
+                    await self._log_api_call(
+                        method="POST",
+                        endpoint=path,
+                        request_payload={"document_type": document_type},
+                        response_payload=error_data,
+                        status_code=e.response.status_code if e.response else 0,
+                        success=False,
+                    )
+                    raise VelaFiError(str(e), error_data.get("code"), error_data) from e
+                await asyncio.sleep(self._INITIAL_BACKOFF * (2 ** attempt))
 
     async def get_quote(
         self,

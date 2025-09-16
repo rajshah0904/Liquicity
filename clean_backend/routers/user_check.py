@@ -292,7 +292,7 @@ async def create_wallet_if_approved(db: Session = Depends(get_db), auth_user: Au
                 balances=w.get("balances", []),
                 fiat_currency=fiat_currency,
                 fiat_balance_by_rate={},
-                created_at=datetime.datetime.utcnow(),
+                created_at=datetime.datetime.utcnow(),  
                 updated_at=datetime.datetime.utcnow(),
             )
             db.add(imported)

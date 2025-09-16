@@ -24,6 +24,9 @@ from clean_backend.database import get_db
 from clean_backend.models import User, UserProfile
 from clean_backend.models.velafi_order import VelafiDirection, VelafiOrder, VelafiStatus
 from clean_backend.services.velafi_service import VelaFiError, VelaFiService
+from clean_backend.utils.idempotency import idempotent_route
+from clean_backend.utils.ratelimit import limiter
+from clean_backend.bridge import BridgeClient
 
 logger = logging.getLogger(__name__)
 
@@ -82,6 +85,7 @@ class OrderResponse(BaseModel):
     fx_rate: Optional[Decimal]
     fee_usd: Optional[Decimal]
     rail: Optional[str]
+    rail_instructions: Optional[Dict[str, Any]] = None
     tx_hash: Optional[str]
     created_at: str
 
@@ -91,6 +95,14 @@ class WebhookEvent(BaseModel):
     data: Dict[str, Any]
 
 # ---------------------------- Routes ----------------------------
+
+async def _order_key_builder(req):
+    body = await req.json()
+    return (
+        f"order_{body.get('idempotency_key') or body.get('client_intent_id') or body.get('direction')}" \
+        f"_{body.get('fiat_amount')}"
+    )
+
 
 @router.post("/customers", response_model=CustomerResponse)
 async def create_customer(
@@ -136,6 +148,7 @@ async def upload_document(
         raise HTTPException(status_code=400, detail=str(e))
 
 @router.post("/quote", response_model=Dict[str, Any])
+@limiter.limit("5/minute")
 async def get_quote(
     request: QuoteRequest,
     current_user: str = Depends(get_current_user)
@@ -152,7 +165,14 @@ async def get_quote(
         logger.error(f"VelaFi quote failed: {e}")
         raise HTTPException(status_code=400, detail=str(e))
 
+async def _order_key_builder(req):
+    body = await req.json()
+    return f"order_{body.get('idempotency_key') or body.get('client_intent_id') or body.get('direction')}_{body.get('fiat_amount')}"
+
+
 @router.post("/orders", response_model=OrderResponse)
+@limiter.limit("5/minute")
+@idempotent_route(_order_key_builder)
 async def create_order(
     request: OrderCreateRequest,
     current_user: str = Depends(get_current_user),
@@ -164,6 +184,47 @@ async def create_order(
         user = await db.query(User).filter(User.id == current_user).first()
         if not user or not user.profile.velafi_customer_id:
             raise HTTPException(status_code=400, detail="Complete KYC first")
+
+        if request.direction == VelafiDirection.SELL:
+            bridge = BridgeClient()
+
+            # 1. Fetch current USDC balance
+            try:
+                balances_resp = bridge.get_wallet_balances(
+                    user.profile.bridge_customer_id,
+                    user.profile.bridge_wallet_id,
+                )
+                usdc_available = Decimal(
+                    next(
+                        (
+                            b["amount"]
+                            for b in balances_resp["balances"]
+                            if b["currency"].upper() == "USDC"
+                        ),
+                        "0",
+                    )
+                )
+            except Exception as exc:
+                logger.error("Bridge balance lookup failed: %s", exc)
+                raise HTTPException(status_code=502, detail="Bridge balance lookup failed")
+
+            # 2. Ensure user has enough balance
+            if usdc_available < request.fiat_amount:
+                raise HTTPException(status_code=400, detail="Insufficient USDC balance")
+
+            # 3. Debit immediately (places a hold)
+            try:
+                debit_payload = {
+                    "wallet_id": user.profile.bridge_wallet_id,
+                    "amount": str(request.fiat_amount),
+                    "currency": "usdc",
+                    "kind": "debit",
+                    "memo": f"VelaFi withdraw {request.fiat_currency}",
+                }
+                bridge.create_transfer_sync(debit_payload)
+            except Exception as exc:
+                logger.error("Bridge debit failed: %s", exc)
+                raise HTTPException(status_code=502, detail="Bridge debit failed")
 
         order = await _service.create_order(
             user_id=current_user,
@@ -185,6 +246,7 @@ async def create_order(
             "fx_rate": order.fx_rate,
             "fee_usd": order.fee_usd,
             "rail": order.rail,
+            "rail_instructions": getattr(order, "rail_instructions", None),
             "tx_hash": order.tx_hash,
             "created_at": order.created_at.isoformat()
         }
@@ -236,7 +298,13 @@ async def get_order(
 
 # ---------------------------- Webhooks ----------------------------
 
+async def _webhook_key_builder(req):
+    body = await req.body()
+    return f"webhook_{hash(body)}"
+
+
 @webhook_router.post("/webhooks/velafi")
+@idempotent_route(_webhook_key_builder)
 async def velafi_webhook(
     request: Request,
     response: Response,

@@ -3,6 +3,7 @@ import asyncio
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from clean_backend.utils.ratelimit import init_app as init_rate_limit
 from clean_backend.routers.velafi import (
     router as velafi_router,
 )
@@ -26,6 +27,9 @@ from .routers.wallet import router as wallet_router
 from .routers.webhooks import router as webhook_router
 
 app = FastAPI(title="Liquicity Clean API")
+
+# Rate-limit middleware (default 200/min, per-endpoint specific overrides)
+init_rate_limit(app)
 app.include_router(onboard_router) 
 app.include_router(user_router)
 app.include_router(kyc_router)

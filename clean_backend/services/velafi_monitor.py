@@ -81,6 +81,13 @@ class VelaFiMonitor:
                 
                 await self.db.commit()
                 
+                # -------------------- Credit on COMPLETED --------------------
+                if new_status == VelafiStatus.COMPLETED:
+                    await self._handle_order_completed(order, status)
+                elif new_status == VelafiStatus.FAILED and status.get("failure_code"):
+                    order.failure_code = status["failure_code"]  # type: ignore[attr-defined]
+                    await self.db.commit()
+                
                 logger.info(
                     f"Updated order {order.order_id} status to {order.status.value}"
                 )
@@ -106,6 +113,45 @@ class VelaFiMonitor:
         except Exception as e:
             logger.error(f"Unexpected error polling order {order.order_id}: {e}")
             return None
+
+    async def _handle_order_completed(self, order: VelafiOrder, remote_payload: dict) -> None:
+        """Credit the user's custodial wallet and emit event once order is completed."""
+        try:
+            from VelaFi.event_bus import publish  # local import to avoid circular
+            from clean_backend.bridge import BridgeClient  # sync client; wrap in thread executor
+            from concurrent.futures import ThreadPoolExecutor
+            loop = asyncio.get_running_loop()
+            client = BridgeClient()
+            usdc_amount = remote_payload.get("usdc_amount") or order.usdc_amount
+            if usdc_amount is None:
+                logger.warning("No usdc_amount in remote payload – skipping credit")
+                return
+
+            # Fetch user's bridge wallet id
+            user = await self.db.get(order.user_id)
+            wallet_id = getattr(user, "bridge_wallet_id", None)
+            if not wallet_id:
+                logger.error("User %s has no bridge_wallet_id – cannot credit", order.user_id)
+                return
+
+            # BridgeClient is blocking; off-load to thread
+            async def _credit():
+                client.create_transfer = getattr(client, "credit_wallet", None) or getattr(client, "create_wallet", None)
+                return client.create_transfer(wallet_id, usdc_amount, tx_hash=order.tx_hash)  # type: ignore[arg-type]
+
+            with ThreadPoolExecutor() as pool:
+                await loop.run_in_executor(pool, _credit)
+
+            # Persist usdc_amount in order
+            order.usdc_amount = usdc_amount
+            await self.db.commit()
+
+            # Emit event on bus
+            publish("velafi.order.completed", {"order_id": order.order_id, "user_id": order.user_id})
+
+            logger.info("Credited %s USDC to user %s for order %s", usdc_amount, order.user_id, order.order_id)
+        except Exception as exc:
+            logger.error("Failed to credit wallet for order %s: %s", order.order_id, exc)
 
     async def poll_pending_orders(self) -> None:
         """
