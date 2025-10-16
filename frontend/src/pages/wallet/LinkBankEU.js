@@ -164,18 +164,85 @@ export default function LinkBankEU() {
     };
   }, [linkingMethod]);
 
-  // Initialize Plaid Link for EU
+  // Initialize Plaid Link for EU (Payment Initiation)
   const initializePlaidEU = async () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // For now, show error that Plaid EU is not implemented
-      setError('Plaid EU integration is coming soon. Please use manual entry.');
-      setLinkingMethod('manual');
+
+      // Ensure Plaid script is present
+      if (!window.Plaid) {
+        // Dynamically load Plaid script if missing
+        await new Promise((resolve, reject) => {
+          const existing = document.getElementById('plaid-script');
+          if (existing) {
+            existing.addEventListener('load', resolve);
+            existing.addEventListener('error', () => reject(new Error('Plaid script failed to load')));
+          } else {
+            const script = document.createElement('script');
+            script.id = 'plaid-script';
+            script.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
+            script.async = true;
+            script.onload = resolve;
+            script.onerror = () => reject(new Error('Plaid script failed to load'));
+            document.body.appendChild(script);
+          }
+        });
+        if (!window.Plaid) throw new Error('Plaid script not available after load');
+      }
+
+      // Build redirect URI for OAuth institutions (e.g., Wise)
+      const configuredRedirect = process.env.REACT_APP_PLAID_REDIRECT_URI;
+      const hasHttpsRedirect = configuredRedirect && configuredRedirect.startsWith('https://');
+      const redirectUri = hasHttpsRedirect ? configuredRedirect : undefined;
+
+      // For linking-only: request an EU Auth link token (with Identity) for supported markets (excluding GB)
+      const resp = await externalAccountsAPI.getPlaidLinkTokenEU({
+        params: {
+          mode: 'auth',
+          countries: 'AT,BE,DK,EE,FI,FR,DE,IE,IT,LV,LT,NO,PL,PT,ES,SE,NL',
+          ...(redirectUri ? { redirect_uri: redirectUri } : {})
+        }
+      });
+      const linkTokenUsed = resp?.data?.link_token;
+      if (!linkTokenUsed) throw new Error('Failed to get Plaid EU link token');
+
+      // Detect OAuth redirect return
+      const isOAuthRedirect = window.location.href.includes('oauth_state_id=');
+
+      const handler = window.Plaid.create({
+        token: linkTokenUsed,
+        receivedRedirectUri: isOAuthRedirect ? window.location.href : undefined,
+        onSuccess: async (publicToken, metadata) => {
+          try {
+            const institutionName = metadata?.institution?.name || 'Unknown Bank';
+            const institutionId = metadata?.institution?.institution_id || null;
+            await externalAccountsAPI.exchangePlaidTokenEUAuth(publicToken, {
+              institution_name: institutionName,
+              institution_id: institutionId,
+            });
+            // On success, navigate back and refresh
+            navigate('/wallet');
+          } catch (err) {
+            console.error('Error exchanging Plaid EU token:', err);
+            setError('Failed to link bank via Plaid EU. Please try manual entry.');
+          }
+        },
+        onExit: (err) => {
+          if (err) {
+            console.error('Plaid EU Link exit with error:', err);
+            setError('Plaid EU linking canceled or failed. You can try manual entry.');
+          }
+        },
+        onEvent: (eventName, metadata) => {
+          console.log('Plaid EU Link Event:', eventName, metadata);
+        }
+      });
+
+      handler.open();
     } catch (err) {
       console.error('Error initializing Plaid EU:', err);
-      setError('Failed to initialize Plaid EU. Please try manual entry.');
+      setError(err.message || 'Failed to initialize Plaid EU. Please try manual entry.');
     } finally {
       setLoading(false);
     }
@@ -277,9 +344,9 @@ export default function LinkBankEU() {
                   variant="outlined" 
                   fullWidth
                   onClick={initializePlaidEU}
-                  disabled={true}
+                  disabled={loading}
                 >
-                  Connect with Plaid EU (Coming Soon)
+                  {loading ? 'Connecting…' : 'Connect with Plaid EU'}
                 </Button>
               </Stack>
             </CardContent>

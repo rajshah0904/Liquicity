@@ -30,8 +30,8 @@ class BridgeClient:
         self.session.headers.update({"accept": "application/json"})
 
     # ------------------------- Helper -------------------------
-    def _post(self, path: str, json: Dict[str, Any]):
-        idem = str(uuid.uuid4())
+    def _post(self, path: str, json: Dict[str, Any], *, idempotency_key: Optional[str] = None):
+        idem = idempotency_key or str(uuid.uuid4())
         resp = self.session.post(
             f"{BASE_URL}{path}",
             json=json,
@@ -62,7 +62,7 @@ class BridgeClient:
 
     def create_customer(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         """Create Bridge customer (POST /customers). Payload must include signed_agreement_id"""
-        return self._post("/customers", payload) 
+        return self._post("/customers", payload)
 
     def get_customer(self, customer_id: str) -> Dict[str, Any]:
         """Fetch a Bridge customer by id (GET /customers/{id})."""
@@ -324,16 +324,42 @@ class BridgeClient:
         }
         if wallet_address:
             payload["destination"]["address"] = wallet_address
+        return self.create_virtual_account(customer_id, payload)
+
+    def get_or_create_eur_virtual_account(self, customer_id: str, wallet_address: Optional[str] = None):
+        """Idempotent helper: return existing EUR VA id or create a EUR→USDC(Solana) account once."""
+        # 1. Check existing EUR virtual accounts
+        try:
+            existing = self.list_virtual_accounts(customer_id)
+            data = existing.get("data", []) if isinstance(existing, dict) else existing.get("data", [])
+            # Look for EUR virtual accounts
+            for va in data:
+                source_currency = va.get("source", {}).get("currency", "").lower()
+                if source_currency == "eur":
+                    return va
+        except Exception:
+            pass  # listing failed shouldn't block creation
+
+        # 2. Create EUR virtual account
+        payload = {
+            "source": {"currency": "eur"},
+            "destination": {
+                "payment_rail": "solana",
+                "currency": "usdc",
+            },
+        }
+        if wallet_address:
+            payload["destination"]["address"] = wallet_address
         return self.create_virtual_account(customer_id, payload) 
 
     # ------------------- Transfers -----------------
-    def create_transfer_sync(self, payload: Dict[str, Any]) -> Dict[str, Any]:
+    def create_transfer_sync(self, payload: Dict[str, Any], *, idempotency_key: Optional[str] = None) -> Dict[str, Any]:
         """Create a Bridge transfer and return the resulting JSON.
 
         This is a thin wrapper around POST /transfers so we can reuse
         the same client throughout the backend.
         """
-        return self._post("/transfers", payload) 
+        return self._post("/transfers", payload, idempotency_key=idempotency_key)
 
     def get_transfer(self, transfer_id: str) -> Dict[str, Any]:
         """Fetch a transfer by id (GET /transfers/{id})."""

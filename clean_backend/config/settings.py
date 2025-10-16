@@ -52,6 +52,14 @@ class Settings(BaseSettings):
     # CORS
     cors_origins: List[str] = Field(default=["http://localhost:3000"], env="CORS_ORIGINS")
 
+    # Plaid EU configuration (non-secret; secrets come from env via PlaidClient)
+    plaid_country_codes_eu: List[str] = Field(default=["GB","IE","FR","DE","ES","NL","IT"], env="PLAID_COUNTRY_CODES_EU")
+
+    # Corporate EU VA details (placeholder; required to enable EU payments)
+    corporate_eu_va_iban: str = Field(default=os.getenv("CORPORATE_EU_VA_IBAN", ""), env="CORPORATE_EU_VA_IBAN")
+    corporate_eu_va_bic: str = Field(default=os.getenv("CORPORATE_EU_VA_BIC", ""), env="CORPORATE_EU_VA_BIC")
+    corporate_eu_va_name: str = Field(default=os.getenv("CORPORATE_EU_VA_NAME", "Liquicity Treasury EU"), env="CORPORATE_EU_VA_NAME")
+
 
 # Singleton settings object
 settings = Settings() 

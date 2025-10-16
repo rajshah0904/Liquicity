@@ -127,6 +127,7 @@ class ExternalAccount(Base):
     external_account_id  = Column(String(50), primary_key=True)  # Bridge external account ID from API
     customer_id          = Column(String(50), ForeignKey("bridge_customers.id"), nullable=False)
     user_id              = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
+    plaid_item_id        = Column(UUID(as_uuid=True), ForeignKey("plaid_items.plaid_item_id"), unique=True, nullable=True)
 
     currency             = Column(String(8), nullable=False)     # "usd", "eur", "mxn"
     bank_name            = Column(String(256))                   # e.g. "Chase"
@@ -138,7 +139,12 @@ class ExternalAccount(Base):
     updated_at           = Column(DateTime, nullable=False)      # Bridge API timestamp
     active               = Column(Boolean, nullable=False)       # Bridge API active status                         # Google Maps or Plaid provided address
 
-    plaid_item           = relationship("PlaidItem", uselist=False, back_populates="external_account")
+    plaid_item           = relationship(
+        "PlaidItem",
+        uselist=False,
+        primaryjoin="ExternalAccount.plaid_item_id==PlaidItem.plaid_item_id",
+        foreign_keys=[plaid_item_id],
+    )
     customer             = relationship("BridgeCustomer", back_populates="external_accounts")
     user                 = relationship("User", back_populates="external_accounts")
 
@@ -147,7 +153,7 @@ class ExternalAccount(Base):
 class PlaidItem(Base):
     __tablename__ = "plaid_items"
     plaid_item_id       = Column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
-    external_account_id = Column(String(50), ForeignKey("external_accounts.external_account_id"), nullable=False, unique=True)
+    external_account_id = Column(String(50), ForeignKey("external_accounts.external_account_id"), nullable=True, unique=True)
     customer_id         = Column(String(50), ForeignKey("bridge_customers.id"), nullable=False)
     user_id             = Column(UUID(as_uuid=True), ForeignKey("users.id"), nullable=False)
     access_token        = Column(String(128), nullable=False)
@@ -157,7 +163,12 @@ class PlaidItem(Base):
     created_at          = Column(DateTime, nullable=False)      # From Bridge external account created_at
     updated_at          = Column(DateTime, nullable=False)      # From Bridge external account updated_at
 
-    external_account    = relationship("ExternalAccount", back_populates="plaid_item")
+    external_account    = relationship(
+        "ExternalAccount",
+        uselist=False,
+        primaryjoin="PlaidItem.external_account_id==ExternalAccount.external_account_id",
+        foreign_keys=[external_account_id],
+    )
 
 # --- VIRTUAL ACCOUNTS (Bridge) ---
 

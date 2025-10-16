@@ -109,6 +109,9 @@ export default function Withdraw() {
   const { wallet: bridgeWallet, loading: walletLoading } = useBridgeWallet();
   const [balanceData, setBalanceData] = useState({ total: 0, available: 0, currency: 'USD' });
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [previewError, setPreviewError] = useState(null);
+  const [previewData, setPreviewData] = useState(null);
   
   const navigate = useNavigate();
   const theme = useTheme();
@@ -175,6 +178,33 @@ export default function Withdraw() {
     }
   }, [bridgeWallet]);
 
+  const selectedAccount = linkedAccounts.find(a => a.id === form.external_account_id);
+
+  // Debounced withdraw preview
+  useEffect(() => {
+    setPreviewError(null);
+    setPreviewData(null);
+    if (!form.amount || Number(form.amount) <= 0 || !form.external_account_id) {
+      return;
+    }
+    const handle = setTimeout(async () => {
+      try {
+        setPreviewLoading(true);
+        // Request preview with unit amount to fetch FX and fee policy; we compute values client-side from home amount
+        const resp = await transferAPI.withdrawPreview({
+          amount: 1,
+          external_account_id: form.external_account_id
+        });
+        setPreviewData(resp.data);
+      } catch (err) {
+        setPreviewError(err?.response?.data?.detail || err.message || 'Preview failed');
+      } finally {
+        setPreviewLoading(false);
+      }
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [form.amount, form.external_account_id]);
+
   const handleChange = (e) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -205,6 +235,33 @@ export default function Withdraw() {
       external_account_id: accountId 
     }));
     setStep('withdraw-form');
+  };
+
+  // Trigger withdrawal instantly when a saved payment method is clicked
+  const handleInstantWithdraw = async (account) => {
+    if (loading) return;
+    const amountNum = parseFloat(form.amount);
+    if (!amountNum || amountNum <= 0) {
+      // If amount not entered yet, move to form with this account selected
+      setForm(prev => ({ ...prev, external_account_id: account.id }));
+      setStep('withdraw-form');
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    setSuccess(null);
+    try {
+      const resp = await transferAPI.withdraw({
+        amount: Number(amountNum.toFixed(2)),
+        external_account_id: account.id,
+      });
+      const stateMsg = resp?.data?.state ? `Transfer started: ${resp.data.state}` : 'Transfer started';
+      setSuccess({ ...resp.data, message: stateMsg });
+    } catch (err) {
+      setError(err?.response?.data?.detail || err.message || 'Withdrawal failed');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleLinkNewAccount = async (e) => {
@@ -263,7 +320,6 @@ export default function Withdraw() {
     try {
       const resp = await transferAPI.withdraw({
         amount: form.amount,
-        currency: userRegion.currency.toLowerCase(),
         external_account_id: form.external_account_id
       });
       
@@ -481,14 +537,15 @@ export default function Withdraw() {
                             borderRadius: 2,
                             background: 'rgba(17, 24, 39, 0.5)',
                             border: '1px solid rgba(55, 65, 81, 0.5)',
-                            cursor: 'pointer',
+                            cursor: loading ? 'not-allowed' : 'pointer',
+                            opacity: loading ? 0.6 : 1,
                             transition: 'all 0.2s',
                             '&:hover': {
                               background: 'rgba(59, 130, 246, 0.1)',
                               borderColor: 'rgba(59, 130, 246, 0.3)',
                             }
                           }}
-                          onClick={() => handleSelectAccount(account.id)}
+                          onClick={() => handleInstantWithdraw(account)}
                         >
                           <ListItemIcon sx={{ minWidth: 40 }}>
                             <Box sx={{ 
@@ -509,6 +566,11 @@ export default function Withdraw() {
                                 <Typography variant="subtitle1" fontWeight={500}>
                                   {account.bank_name}
                                 </Typography>
+                                {account?.currency && (
+                                  <Typography variant="caption" color="text.secondary" sx={{ ml: 1 }}>
+                                    ({String(account.currency).toUpperCase()})
+                                  </Typography>
+                                )}
                                 {account.active && (
                                   <Box sx={{ 
                                     display: 'flex', 
@@ -592,7 +654,7 @@ export default function Withdraw() {
                           onChange={handleChange}
                           required
                           variant="outlined"
-                          InputProps={{ startAdornment: (<InputAdornment position="start">{getCurrencySymbol(balanceData.currency)}</InputAdornment>) }}
+                          InputProps={{ startAdornment: (<InputAdornment position="start">{getCurrencySymbol((balanceData.currency || 'USD'))}</InputAdornment>) }}
                           sx={{
                             '& .MuiOutlinedInput-root': {
                               borderRadius: '12px',
@@ -654,6 +716,69 @@ export default function Withdraw() {
                           </Button>
                         </Box>
                       </Grid>
+                      {/* Preview breakdown */}
+                      {(previewLoading || previewData || previewError) && (
+                        <Grid item xs={12}>
+                          <Box sx={{ p: 2.5, border: '1px solid rgba(55, 65, 81, 0.5)', borderRadius: 2, bgcolor: 'rgba(17, 24, 39, 0.35)' }}>
+                            <Typography variant="subtitle1" fontWeight={600} sx={{ mb: 1.5 }}>
+                              Withdrawal summary
+                            </Typography>
+                            {previewLoading && (
+                              <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                <CircularProgress size={18} />
+                                <Typography variant="body2" color="text.secondary">Fetching live rates…</Typography>
+                              </Box>
+                            )}
+                            {previewError && (
+                              <Typography variant="body2" color="error.main">{previewError}</Typography>
+                            )}
+                            {previewData && (
+                              <>
+                                {(() => {
+                                  const fromCur = (balanceData.currency || previewData.from_currency || 'USD').toUpperCase();
+                                  const toCur = (selectedAccount?.currency || previewData.to_currency || 'USD').toUpperCase();
+                                  const fromSym = getCurrencySymbol(fromCur);
+                                  const toSym = getCurrencySymbol(toCur);
+                                  const grossHome = Number(form.amount || 0);
+                                  const feePct = Number(previewData.developer_fee_percent || 1.5);
+                                  const fx = Number(previewData.buy_rate_used || (fromCur === toCur ? 1 : 0));
+                                  const destGross = grossHome * (fromCur === toCur ? 1 : fx);
+                                  const feeDest = Math.max(0, (destGross * feePct) / 100);
+                                  const feeHome = fromCur === toCur ? feeDest : (fx ? (feeDest / fx) : 0);
+                                  const bankNet = Math.max(0, destGross - feeDest);
+                                  const liquicityDeduction = grossHome;
+                                  return (
+                                    <Box>
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
+                                        <Typography variant="body2" color="text.secondary">Amount leaving wallet</Typography>
+                                        <Typography variant="body2" fontWeight={600}>{fromSym}{liquicityDeduction.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {fromCur}</Typography>
+                                      </Box>
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
+                                        <Typography variant="body2" color="text.secondary">Fee ({feePct.toFixed(2)}%)</Typography>
+                                        <Typography variant="body2" fontWeight={600}>{fromSym}{feeHome.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {fromCur}</Typography>
+                                      </Box>
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 0.75 }}>
+                                        <Typography variant="body2" color="text.secondary">After fees</Typography>
+                                        <Typography variant="body2" fontWeight={600}>{fromSym}{Math.max(0, (grossHome - feeHome)).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {fromCur}</Typography>
+                                      </Box>
+                                      <Divider sx={{ my: 1 }} />
+                                      <Box sx={{ display: 'flex', justifyContent: 'space-between' }}>
+                                        <Typography variant="body2">Amount your bank receives</Typography>
+                                        <Typography variant="body1" fontWeight={700}>{toSym}{bankNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })} {toCur}</Typography>
+                                      </Box>
+                                      {fromCur !== toCur && previewData.buy_rate_used && (
+                                        <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
+                                          FX: 1 {fromCur} = {Number(previewData.buy_rate_used).toFixed(6)} {toCur}
+                                        </Typography>
+                                      )}
+                                    </Box>
+                                  );
+                                })()}
+                              </>
+                            )}
+                          </Box>
+                        </Grid>
+                      )}
                       
                       <Grid item xs={12}>
                         <Button

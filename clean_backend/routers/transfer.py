@@ -6,6 +6,7 @@ from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException
+from fastapi import Request
 from fastapi import BackgroundTasks
 from pydantic import BaseModel, condecimal
 from sqlalchemy.orm import Session
@@ -66,6 +67,15 @@ class SendOut(BaseModel):
 class WithdrawalIn(BaseModel):
     amount: condecimal(gt=Decimal("0"), max_digits=18, decimal_places=2)
     external_account_id: str
+    apply_profit_to_user: Optional[bool] = False
+
+class WithdrawalPreviewOut(BaseModel):
+    from_currency: str
+    to_currency: str
+    withdraw_amount: float
+    developer_fee_percent: float
+    expected_receive_amount: float
+    buy_rate_used: Optional[float] = None
 
 
 # ---------------------------- Helpers ----------------------------
@@ -135,6 +145,7 @@ async def send_transfer(
     db: Session = Depends(get_db),
     auth_user: Auth0User = Depends(get_current_user),
     background_tasks: BackgroundTasks = None,
+    request: Request = None,
 ):
     """
     Send money between users with proper currency conversion and rate locking.
@@ -154,13 +165,23 @@ async def send_transfer(
     if not recipient:
         raise HTTPException(status_code=404, detail="Recipient not found")
     
-    # Get sender's bridge wallet
-    sender_wallet = db.query(BridgeWallet).filter(BridgeWallet.user_id == sender.id).first()
+    # Get sender's bridge wallet (row lock to serialize concurrent sends)
+    sender_wallet = (
+        db.query(BridgeWallet)
+        .with_for_update()
+        .filter(BridgeWallet.user_id == sender.id)
+        .first()
+    )
     if not sender_wallet:
         raise HTTPException(status_code=400, detail="Sender wallet not found")
     
-    # Get recipient's bridge wallet
-    recipient_wallet = db.query(BridgeWallet).filter(BridgeWallet.user_id == recipient.id).first()
+    # Get recipient's bridge wallet (row lock as well)
+    recipient_wallet = (
+        db.query(BridgeWallet)
+        .with_for_update()
+        .filter(BridgeWallet.user_id == recipient.id)
+        .first()
+    )
     if not recipient_wallet:
         raise HTTPException(status_code=400, detail="Recipient wallet not found")
     
@@ -182,12 +203,36 @@ async def send_transfer(
     
     try:
         client = BridgeClient()
-        # Bundle id for this logical send
-        send_bundle_id = uuid.uuid4()
+        # Idempotency: allow caller to supply an idempotency key, reuse for bundle id
+        idem_key = None
+        try:
+            idem_key = request.headers.get("X-Idempotency-Key") if request else None
+        except Exception:
+            idem_key = None
+        send_bundle_id = (
+            uuid.uuid5(uuid.NAMESPACE_URL, idem_key) if idem_key else uuid.uuid4()
+        )
+
+        # If idempotent send already exists, short-circuit
+        existing = None
+        if idem_key:
+            existing = db.query(SendTransaction).filter(SendTransaction.send_id == send_bundle_id).first()
+        if existing:
+            return SendOut(
+                transfer_id=str(existing.send_id),
+                status=existing.status,
+                sender_currency=existing.sender_currency.upper(),
+                recipient_currency=existing.recipient_currency.upper(),
+                amount_sent=float(existing.sender_fiat_amount),
+                amount_received=float(existing.recipient_fiat_amount),
+                exchange_rate=float(existing.exchange_rate) if existing.exchange_rate else None,
+            )
         if sender_currency.upper() == recipient_currency.upper():
             # Same-currency send (H → H)
             # Deduct from sender's buckets using highest-rate-first and compute USDC_locked
-            updated, consumed, usdc_locked = deduct_highest_rates(sender_wallet.fiat_balance_by_rate or {}, send_amount)
+            updated, consumed, usdc_locked = deduct_highest_rates(
+                sender_wallet.fiat_balance_by_rate or {}, send_amount
+            )
             sender_wallet.fiat_balance_by_rate = updated
 
             # Credit recipient at current rate key
@@ -197,7 +242,8 @@ async def send_transfer(
 
             # Compute live USDC to send and perform treasury adjustment BEFORE wallet-to-wallet send
             usdc_live = round_usdc(send_amount * sender_rate)
-            delta = round_usdc(usdc_live - round_usdc(usdc_locked))  # >0 treasury→sender, <0 sender→treasury
+            usdc_locked_q = round_usdc(usdc_locked)
+            delta = round_usdc(usdc_live - usdc_locked_q)  # >0 treasury→sender, <0 sender→treasury
             tsx = None
             if delta != 0:
                 if delta > 0:
@@ -236,21 +282,47 @@ async def send_transfer(
                     })
 
             # Wallet-to-wallet (visible) transfer: sender → recipient (USDC_live)
-            w2w = client.create_transfer_sync({
-                "amount": str(round_usdc(usdc_live)),
-                "on_behalf_of": sender_wallet.customer_id,
-                "client_reference_id": str(send_bundle_id),
-                "source": {
-                    "payment_rail": "bridge_wallet",
-                    "bridge_wallet_id": sender_wallet.wallet_id,
-                    "currency": "usdc"
-                },
-                "destination": {
-                    "payment_rail": "solana",
-                    "bridge_wallet_id": recipient_wallet.wallet_id,
-                    "currency": "usdc"
-                }
-            })
+            try:
+                w2w = client.create_transfer_sync({
+                    "amount": str(round_usdc(usdc_live)),
+                    "on_behalf_of": sender_wallet.customer_id,
+                    "client_reference_id": str(send_bundle_id),
+                    "source": {
+                        "payment_rail": "bridge_wallet",
+                        "bridge_wallet_id": sender_wallet.wallet_id,
+                        "currency": "usdc"
+                    },
+                    "destination": {
+                        "payment_rail": "solana",
+                        "bridge_wallet_id": recipient_wallet.wallet_id,
+                        "currency": "usdc"
+                    }
+                })
+            except Exception as w2w_err:
+                # Compensate treasury delta if applied earlier
+                try:
+                    if delta != 0:
+                        if delta > 0:
+                            # reverse: sender → treasury
+                            client.create_transfer_sync({
+                                "amount": str(round_usdc(delta)),
+                                "on_behalf_of": sender_wallet.customer_id,
+                                "client_reference_id": f"{send_bundle_id}-comp",
+                                "source": {"payment_rail": "bridge_wallet", "bridge_wallet_id": sender_wallet.wallet_id, "currency": "usdc"},
+                                "destination": {"payment_rail": "solana", "bridge_wallet_id": TREASURY_WALLET_ID, "currency": "usdc"},
+                            })
+                        else:
+                            # reverse: treasury → sender
+                            client.create_transfer_sync({
+                                "amount": str(round_usdc(abs(delta))),
+                                "on_behalf_of": TREASURY_CUSTOMER_ID,
+                                "client_reference_id": f"{send_bundle_id}-comp",
+                                "source": {"payment_rail": "bridge_wallet", "bridge_wallet_id": TREASURY_WALLET_ID, "currency": "usdc"},
+                                "destination": {"payment_rail": "solana", "bridge_wallet_id": sender_wallet.wallet_id, "currency": "usdc"},
+                            })
+                except Exception:
+                    pass
+                raise w2w_err
 
             # Immediately sync on-chain balances when Bridge returns (typically state='in_review')
             try:
@@ -281,9 +353,11 @@ async def send_transfer(
                 # If recipient on-chain USDC is zero and we credited fiat, keep fiat (we credit at rate regardless of on-chain)
                 # Ensure no negative or leftover artifacts
                 try:
-                    # Set recipient fiat to the precise credited amount
+                    # Set recipient fiat to the precise credited amount (merge with existing)
                     credited = (round_usdc(usdc_live) / recipient_rate)
-                    recipient_wallet.fiat_balance_by_rate = add_to_rate_bucket({}, recipient_rate, credited)
+                    recipient_wallet.fiat_balance_by_rate = add_to_rate_bucket(
+                        recipient_wallet.fiat_balance_by_rate or {}, recipient_rate, credited
+                    )
                     # Sender fiat buckets already updated; nothing to add
                 except Exception:
                     pass
@@ -438,13 +512,15 @@ async def send_transfer(
         else:
             # Cross-currency send (C1 → C2)
             # Convert sender amount to USDC using sender_rate; compute recipient fiat using recipient_rate
-            usdc_live = send_amount * sender_rate
+            usdc_live = round_usdc(send_amount * sender_rate)
             # Deduct from sender (highest-rate-first), computing USDC_locked
-            updated, consumed, usdc_locked = deduct_highest_rates(sender_wallet.fiat_balance_by_rate or {}, send_amount)
+            updated, consumed, usdc_locked = deduct_highest_rates(
+                sender_wallet.fiat_balance_by_rate or {}, send_amount
+            )
             sender_wallet.fiat_balance_by_rate = updated
 
             # Treasury settlement before wallet-to-wallet: compute delta and adjust
-            delta = round_usdc(round_usdc(usdc_live) - round_usdc(usdc_locked))
+            delta = round_usdc(usdc_live - round_usdc(usdc_locked))
             tsx = None
             if delta != 0:
                 if delta > 0:
@@ -480,21 +556,47 @@ async def send_transfer(
                         }
                     })
 
-            w2w = client.create_transfer_sync({
-                "amount": str(round_usdc(usdc_live)),
-                "on_behalf_of": sender_wallet.customer_id,
-                "client_reference_id": str(send_bundle_id),
-                "source": {
-                    "payment_rail": "bridge_wallet",
-                    "bridge_wallet_id": sender_wallet.wallet_id,
-                    "currency": "usdc"
-                },
-                "destination": {
-                    "payment_rail": "solana",
-                    "bridge_wallet_id": recipient_wallet.wallet_id,
-                    "currency": "usdc"
-                }
-            })
+            try:
+                w2w = client.create_transfer_sync({
+                    "amount": str(round_usdc(usdc_live)),
+                    "on_behalf_of": sender_wallet.customer_id,
+                    "client_reference_id": str(send_bundle_id),
+                    "source": {
+                        "payment_rail": "bridge_wallet",
+                        "bridge_wallet_id": sender_wallet.wallet_id,
+                        "currency": "usdc"
+                    },
+                    "destination": {
+                        "payment_rail": "solana",
+                        "bridge_wallet_id": recipient_wallet.wallet_id,
+                        "currency": "usdc"
+                    }
+                })
+            except Exception as w2w_err:
+                # Compensate treasury delta if applied earlier
+                try:
+                    if delta != 0:
+                        if delta > 0:
+                            # reverse: sender → treasury
+                            client.create_transfer_sync({
+                                "amount": str(round_usdc(delta)),
+                                "on_behalf_of": sender_wallet.customer_id,
+                                "client_reference_id": f"{send_bundle_id}-comp",
+                                "source": {"payment_rail": "bridge_wallet", "bridge_wallet_id": sender_wallet.wallet_id, "currency": "usdc"},
+                                "destination": {"payment_rail": "solana", "bridge_wallet_id": TREASURY_WALLET_ID, "currency": "usdc"},
+                            })
+                        else:
+                            # reverse: treasury → sender
+                            client.create_transfer_sync({
+                                "amount": str(round_usdc(abs(delta))),
+                                "on_behalf_of": TREASURY_CUSTOMER_ID,
+                                "client_reference_id": f"{send_bundle_id}-comp",
+                                "source": {"payment_rail": "bridge_wallet", "bridge_wallet_id": TREASURY_WALLET_ID, "currency": "usdc"},
+                                "destination": {"payment_rail": "solana", "bridge_wallet_id": sender_wallet.wallet_id, "currency": "usdc"},
+                            })
+                except Exception:
+                    pass
+                raise w2w_err
 
             # Immediately sync on-chain balances when Bridge returns (typically state='in_review')
             try:
@@ -930,27 +1032,95 @@ async def deposit_alias_root(
     return await deposit_fiat_to_wallet(body, db, auth_user)
 
 
+@router.post("/withdraw_preview", response_model=WithdrawalPreviewOut)
+async def withdraw_preview(
+    body: WithdrawalIn,
+    db: Session = Depends(get_db),
+    auth_user: Auth0User = Depends(get_current_user),
+):
+    """Preview expected receive amount for a withdrawal (estimate, not a quote)."""
+    user = _get_user_by_sub(db, auth_user.id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
+    if not bridge_customer:
+        raise HTTPException(status_code=400, detail="Bridge customer not found")
+
+    bridge_wallet = db.query(BridgeWallet).filter(BridgeWallet.user_id == user.id).first()
+    if not bridge_wallet:
+        raise HTTPException(status_code=400, detail="Bridge wallet not found")
+
+    client = BridgeClient()
+    try:
+        ext_acct = client.get_external_account(body.external_account_id, bridge_customer.id)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid external account: {e}")
+
+    dest_cur = (ext_acct.get("currency") or "usd").lower()
+    main_cur = (bridge_wallet.fiat_currency or "USD").lower()
+
+    dev_fee_pct = Decimal("0.015")
+    withdraw_amt_dest = Decimal(str(body.amount))  # User enters amount in DESTINATION currency
+
+    if main_cur == dest_cur:
+        # Same currency: user enters $100, receives $98.50 after fee
+        expected = withdraw_amt_dest * (Decimal("1") - dev_fee_pct)
+        return WithdrawalPreviewOut(
+            from_currency=main_cur.upper(),
+            to_currency=dest_cur.upper(),
+            withdraw_amount=float(withdraw_amt_dest),
+            developer_fee_percent=float(dev_fee_pct * 100),
+            expected_receive_amount=float(round_fiat(expected)),
+            buy_rate_used=None,
+        )
+    
+    # Cross currency: user enters €100, we show how much USD deducted and €100 received
+    # Get main → dest FX rate to compute deduction from main currency buckets
+    try:
+        fx_rate = rate_service.get_exchange_rate(main_cur.upper(), dest_cur.upper())
+        if fx_rate is None or fx_rate == 0:
+            raise ValueError("Invalid FX rate")
+        # withdraw_amt_main = withdraw_amt_dest / fx_rate (e.g., €100 / 0.92 = $108.70)
+        withdraw_amt_main = round_fiat(withdraw_amt_dest / fx_rate)
+    except Exception:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch {main_cur.upper()}/{dest_cur.upper()} FX rate for preview")
+
+    # User receives withdraw_amt_dest after Bridge's fee (already included in our calculation)
+    # Show: "Withdraw €100 from your USD balance (~$108.70 will be deducted after fees)"
+    return WithdrawalPreviewOut(
+        from_currency=main_cur.upper(),
+        to_currency=dest_cur.upper(),
+        withdraw_amount=float(withdraw_amt_main),  # Amount deducted from main currency
+        developer_fee_percent=float(dev_fee_pct * 100),
+        expected_receive_amount=float(withdraw_amt_dest),  # Amount user will receive in dest currency
+        buy_rate_used=float(fx_rate),  # FX rate used
+    )
+
+
 @router.post("/withdraw", response_model=Dict[str, Any])
 async def withdraw_fiat_from_wallet(
     body: WithdrawalIn,
     db: Session = Depends(get_db),
     auth_user: Auth0User = Depends(get_current_user),
+    request: Request = None,
 ):
-    """Initiate a fiat withdrawal: Bridge wallet ➜ external bank account.
-
-    We pick the appropriate fiat rail (ACH, SEPA, etc.) based on the external
-    account's currency.
-    """
+    """Initiate a fiat withdrawal: Bridge wallet ➜ external bank account, with dev fee and variance handling."""
     user = _get_user_by_sub(db, auth_user.id)
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Get bridge customer and wallet from related tables
+    # Get bridge customer and wallet from related tables (lock wallet)
     bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
     if not bridge_customer:
         raise HTTPException(status_code=400, detail="Bridge customer not found")
     
-    bridge_wallet = db.query(BridgeWallet).filter(BridgeWallet.user_id == user.id).first()
+    bridge_wallet = (
+        db.query(BridgeWallet)
+        .with_for_update()
+        .filter(BridgeWallet.user_id == user.id)
+        .first()
+    )
     if not bridge_wallet:
         raise HTTPException(status_code=400, detail="Bridge wallet not found")
 
@@ -963,34 +1133,272 @@ async def withdraw_fiat_from_wallet(
         raise HTTPException(status_code=400, detail=f"Invalid external account: {e}")
 
     currency = (ext_acct.get("currency") or "usd").lower()
-    rail_by_cur = {"usd": "ach_push", "eur": "sepa"}
+    # Bridge rails per docs: USD→ACH push, EUR→SEPA credit transfer
+    rail_by_cur = {"usd": "ach_push", "eur": "sepa_credit_transfer"}
     if currency not in rail_by_cur:
         raise HTTPException(status_code=400, detail=f"Unsupported withdrawal currency: {currency}")
 
     payment_rail = rail_by_cur[currency]
+    # Compute treasury variance using locked buckets vs live rate in main currency
+    main_cur = (bridge_wallet.fiat_currency or "USD").lower()
+    dest_cur = currency.lower()
+    
+    # Amount is in DESTINATION currency; convert to main currency if needed
+    withdraw_amt_dest = Decimal(str(body.amount))  # Amount in destination currency (e.g., €100)
+    
+    # Convert destination amount to main currency amount
+    if main_cur == dest_cur:
+        # Same currency: no conversion needed
+        withdraw_amt_main = withdraw_amt_dest
+        fx_rate_main_to_dest = Decimal("1.0")
+    else:
+        # Cross-currency: convert dest → main using Bridge FX
+        fx_rate_main_to_dest = rate_service.get_exchange_rate(main_cur.upper(), dest_cur.upper())
+        if fx_rate_main_to_dest is None or fx_rate_main_to_dest == 0:
+            raise HTTPException(status_code=502, detail=f"Failed to fetch {main_cur.upper()}/{dest_cur.upper()} exchange rate")
+        # withdraw_amt_main = withdraw_amt_dest / fx_rate (e.g., €100 / 0.92 = $108.70)
+        withdraw_amt_main = round_fiat(withdraw_amt_dest / fx_rate_main_to_dest)
+    
+    # Deduct from main currency buckets
+    try:
+        updated_buckets, consumed, usdc_locked = deduct_highest_rates(bridge_wallet.fiat_balance_by_rate or {}, withdraw_amt_main)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    # Live rate: USDC per 1 unit of main currency
+    live_rate = rate_service.get_usdc_rate(main_cur.upper())
+    if live_rate is None:
+        raise HTTPException(status_code=502, detail="Failed to fetch current exchange rates")
+
+    # Treasury variance in M: withdraw_M × (1 − live_r / stored_r). Here usdc_locked = withdraw_M × stored_r ⇒ stored_r = usdc_locked/withdraw_M
+    stored_r = (round_usdc(usdc_locked) / withdraw_amt_main) if withdraw_amt_main != 0 else Decimal("0")
+    variance_M = Decimal("0")
+    try:
+        variance_M = withdraw_amt_main * (Decimal("1") - (live_rate / stored_r)) if stored_r != 0 else Decimal("0")
+    except Exception:
+        variance_M = Decimal("0")
+
+    # Apply policy
+    apply_profit = bool(body.apply_profit_to_user)
+    effective_debit = withdraw_amt_main + (variance_M if apply_profit else max(Decimal("0"), variance_M))
+
+    # Stage wallet bucket deduction in the current transaction (no commit yet).
+    # We will commit only after Bridge accepts the transfer; otherwise we'll roll back.
+    bridge_wallet.fiat_balance_by_rate = updated_buckets
+    db.add(bridge_wallet)
+
+    # Execute treasury variance settlement BEFORE withdrawal
+    # usdc_live = withdraw_amt_main × live_rate (what we actually withdraw in USDC)
+    # usdc_locked = what was locked in buckets at stored rates
+    # delta = usdc_live - usdc_locked
+    #   > 0: treasury owes user (treasury → user)
+    #   < 0: user owes treasury (user → treasury, profit)
+    usdc_live = round_usdc(withdraw_amt_main * live_rate)
+    delta_usdc = round_usdc(usdc_live - round_usdc(usdc_locked))
+    
+    tsx = None
+    if delta_usdc != 0:
+        try:
+            if delta_usdc > 0:
+                # Compensation: treasury → user
+                tsx = client.create_transfer_sync({
+                    "amount": str(round_usdc(delta_usdc)),
+                    "on_behalf_of": TREASURY_CUSTOMER_ID,
+                    "client_reference_id": f"wdl-var-{uuid.uuid4()}",
+                    "source": {
+                        "payment_rail": "bridge_wallet",
+                        "bridge_wallet_id": TREASURY_WALLET_ID,
+                        "currency": "usdc"
+                    },
+                    "destination": {
+                        "payment_rail": "solana",
+                        "bridge_wallet_id": bridge_wallet.wallet_id,
+                        "currency": "usdc"
+                    }
+                })
+            else:
+                # Profit: user → treasury
+                tsx = client.create_transfer_sync({
+                    "amount": str(round_usdc(abs(delta_usdc))),
+                    "on_behalf_of": bridge_customer.id,
+                    "client_reference_id": f"wdl-var-{uuid.uuid4()}",
+                    "source": {
+                        "payment_rail": "bridge_wallet",
+                        "bridge_wallet_id": bridge_wallet.wallet_id,
+                        "currency": "usdc"
+                    },
+                    "destination": {
+                        "payment_rail": "solana",
+                        "bridge_wallet_id": TREASURY_WALLET_ID,
+                        "currency": "usdc"
+                    }
+                })
+        except Exception as var_err:
+            # Log variance settlement failure but don't block withdrawal
+            import logging
+            logging.getLogger(__name__).error(f"Treasury variance settlement failed: {var_err}")
+
+    # Build Bridge payload; developer fee 1.5%
+    idem_key = None
+    try:
+        idem_key = request.headers.get("X-Idempotency-Key") if request else None
+    except Exception:
+        idem_key = None
+
+    # Compute developer fee as 1.5% of destination amount and cap to be < amount
+    dev_fee_dec = round_fiat(withdraw_amt_dest * Decimal("0.015"))
+    if dev_fee_dec >= withdraw_amt_dest:
+        # Ensure at least 0.01 less than amount if rounding pushes it over
+        try:
+            from decimal import ROUND_DOWN
+            dev_fee_dec = (withdraw_amt_dest - Decimal("0.01")).quantize(Decimal("0.01"), rounding=ROUND_DOWN)
+            if dev_fee_dec < Decimal("0.00"):
+                dev_fee_dec = Decimal("0.00")
+        except Exception:
+            dev_fee_dec = Decimal("0.00")
+
+    # Enforce Bridge minimum: net payout after developer fee must be >= 1.00 in destination currency
+    net_dest = withdraw_amt_dest - dev_fee_dec
+    if net_dest < Decimal("1.00"):
+        raise HTTPException(status_code=400, detail=f"Minimum payout after fee is 1.00 {dest_cur.upper()}. Increase amount.")
 
     payload = {
-        "amount": str(body.amount),
+        "amount": str(withdraw_amt_dest),  # Amount in destination currency (what user wants to receive)
         "on_behalf_of": bridge_customer.id,
+        # Per Bridge docs: send developer_fee as absolute amount in destination currency
+        "developer_fee": str(dev_fee_dec),
         "source": {
-            "payment_rail": "solana",
-            "currency": "usdb",
-            "wallet_id": bridge_wallet.wallet_id,
+            "payment_rail": "bridge_wallet",
+            "currency": "usdc",
+            "bridge_wallet_id": bridge_wallet.wallet_id,
         },
         "destination": {
             "payment_rail": payment_rail,
             "currency": currency,
             "external_account_id": body.external_account_id,
         },
+        "client_reference_id": str(uuid.uuid4()),
     }
 
     try:
-        transfer = client.create_transfer_sync(payload)
+        transfer = client.create_transfer_sync(payload, idempotency_key=idem_key)
     except Exception as e:
+        # Reverse variance settlement if it was executed
+        try:
+            if delta_usdc != 0 and tsx is not None:
+                if delta_usdc > 0:
+                    # previously treasury → user; reverse user → treasury
+                    client.create_transfer_sync({
+                        "amount": str(round_usdc(delta_usdc)),
+                        "on_behalf_of": bridge_customer.id,
+                        "client_reference_id": f"wdl-var-rev-{uuid.uuid4()}",
+                        "source": {"payment_rail": "bridge_wallet", "bridge_wallet_id": bridge_wallet.wallet_id, "currency": "usdc"},
+                        "destination": {"payment_rail": "solana", "bridge_wallet_id": TREASURY_WALLET_ID, "currency": "usdc"},
+                    })
+                else:
+                    # previously user → treasury; reverse treasury → user
+                    client.create_transfer_sync({
+                        "amount": str(round_usdc(abs(delta_usdc))),
+                        "on_behalf_of": TREASURY_CUSTOMER_ID,
+                        "client_reference_id": f"wdl-var-rev-{uuid.uuid4()}",
+                        "source": {"payment_rail": "bridge_wallet", "bridge_wallet_id": TREASURY_WALLET_ID, "currency": "usdc"},
+                        "destination": {"payment_rail": "solana", "bridge_wallet_id": bridge_wallet.wallet_id, "currency": "usdc"},
+                    })
+        except Exception:
+            pass
+        # Roll back staged bucket deduction so balance isn't reduced on error
+        try:
+            db.rollback()
+        except Exception:
+            pass
         raise HTTPException(status_code=502, detail=f"Bridge withdrawal failed: {e}")
 
-    # TODO: optionally persist withdrawal record / encumbrance if needed
-    return transfer 
+    # Persist withdrawal transfer record for status tracking
+    now = datetime.utcnow()
+    db.add(Transfer(
+        transfer_id=transfer.get("id", str(uuid.uuid4())),
+        customer_id=bridge_customer.id,
+        user_id=user.id,
+        client_reference_id=payload.get("client_reference_id"),
+        amount=str(withdraw_amt_dest),  # Amount in destination currency
+        currency="usdc",
+        on_behalf_of=bridge_customer.id,
+        developer_fee=str(dev_fee_dec),
+        source=payload["source"],
+        destination=payload["destination"],
+        state=transfer.get("state", "pending"),
+        receipt={
+            "type": "withdrawal",
+            "main_currency": main_cur.upper(),
+            "dest_currency": dest_cur.upper(),
+            "withdraw_amt_dest": float(withdraw_amt_dest),  # What user receives
+            "withdraw_amt_main": float(withdraw_amt_main),  # What was deducted from buckets
+            "fx_rate_main_to_dest": float(fx_rate_main_to_dest),  # Conversion rate used
+            "usdc_live": float(usdc_live),
+            "usdc_locked": float(usdc_locked),
+            "delta_usdc": float(delta_usdc),
+            "variance_settlement_id": tsx.get("id") if tsx else None,
+            "consumed_buckets": [{"amount": float(a), "locked_rate": float(r)} for (a, r) in consumed],
+        },
+        created_at=now,
+        updated_at=now,
+        return_details=None,
+    ))
+    db.commit()
+
+    return transfer
+
+
+@router.get("/withdraw/{transfer_id}/status")
+async def get_withdrawal_status(
+    transfer_id: str,
+    db: Session = Depends(get_db),
+    auth_user: Auth0User = Depends(get_current_user),
+):
+    """Poll withdrawal status from Bridge and return current state.
+    
+    States:
+    - awaiting_funds: waiting for funds
+    - pending: processing started
+    - payment_submitted: sent to bank
+    - payment_processed: SUCCESS ✅
+    - failed: FAILED ❌
+    """
+    user = _get_user_by_sub(db, auth_user.id)
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Check if transfer belongs to user (via Transfer table or direct Bridge call)
+    transfer_record = db.query(Transfer).filter(
+        Transfer.transfer_id == transfer_id,
+        Transfer.user_id == user.id
+    ).first()
+    
+    if not transfer_record:
+        raise HTTPException(status_code=404, detail="Transfer not found or unauthorized")
+    
+    # Fetch live status from Bridge
+    client = BridgeClient()
+    try:
+        live_data = client.get_transfer(transfer_id)
+        
+        # Update our DB record
+        transfer_record.state = live_data.get("state", transfer_record.state)
+        transfer_record.updated_at = datetime.utcnow()
+        db.commit()
+        
+        return {
+            "transfer_id": transfer_id,
+            "state": live_data.get("state"),
+            "amount": live_data.get("amount"),
+            "currency": live_data.get("destination", {}).get("currency"),
+            "created_at": live_data.get("created_at"),
+            "updated_at": live_data.get("updated_at"),
+            "is_complete": live_data.get("state") in ["payment_processed"],
+            "is_failed": live_data.get("state") in ["failed", "canceled"],
+        }
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Failed to fetch transfer status: {e}")
 
 # ---------------------------- Routes: Listing ----------------------------
 

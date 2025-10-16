@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 from pydantic import BaseModel
 import requests
 from typing import List, Dict, Optional
+import logging, json
 
 from ..database import get_db
 from ..auth import get_current_user
@@ -108,6 +109,54 @@ def verify_identity_advanced(bridge_first: str, bridge_last: str, plaid_names: L
     
     return False, f"No match found for '{bridge_first} {bridge_last}' in Plaid names: {plaid_names}"
 
+# --- Helpers: Country normalization for IBAN (ISO2 → ISO3) ---
+_ISO2_TO_ISO3: Dict[str, str] = {
+    # Enabled Plaid EU markets (only these are mapped/enabled)
+    "AT": "AUT",
+    "BE": "BEL",
+    "DK": "DNK",
+    "EE": "EST",
+    "FI": "FIN",
+    "FR": "FRA",
+    "DE": "DEU",
+    "IE": "IRL",
+    "IT": "ITA",
+    "LV": "LVA",
+    "LT": "LTU",
+    "NO": "NOR",
+    "PL": "POL",
+    "PT": "PRT",
+    "ES": "ESP",
+    "SE": "SWE",
+    "NL": "NLD",
+}
+
+# Restrict allowed ISO2 countries to the same list for Plaid link token creation
+_ALLOWED_EU_ISO2: List[str] = list(_ISO2_TO_ISO3.keys())
+
+def _iso2_to_iso3(code: Optional[str]) -> Optional[str]:
+    if not code:
+        return None
+    return _ISO2_TO_ISO3.get(code.upper())
+
+def _derive_iban_country(iban_entry: Dict[str, str]) -> str:
+    """Return ISO3 country for IBAN. Prefer provided fields, else parse IBAN prefix.
+
+    Bridge requires ISO3 (alpha-3). If we cannot determine, return empty string.
+    """
+    provided = (iban_entry.get("iban_country") or iban_entry.get("country") or "").strip()
+    if len(provided) == 3:
+        return provided.upper()
+    if len(provided) == 2:
+        iso3 = _iso2_to_iso3(provided)
+        return iso3 or provided.upper()
+    iban = (iban_entry.get("iban") or "").strip()
+    if len(iban) >= 2:
+        iso2 = iban[:2]
+        iso3 = _iso2_to_iso3(iso2)
+        return iso3 or iso2.upper()
+    return ""
+
 def map_plaid_to_bridge_external_account(
     plaid_auth: Dict, plaid_identity: Dict, bridge_customer: BridgeCustomer, account_id: str, institution_name: Optional[str] = None
 ) -> Dict[str, any]:
@@ -200,6 +249,242 @@ def map_plaid_to_bridge_external_account(
     
     return payload
 
+@router.get("/eu/plaid/link_token")
+def get_plaid_link_token_eu(
+    db: Session = Depends(get_db),
+    jwt = Depends(get_current_user),
+    redirect_uri: Optional[str] = None,
+    mode: Optional[str] = None,
+    countries: Optional[str] = None,
+):
+    """Return a Plaid EU Link token.
+
+    Query params:
+      - mode: "auth" | "pi" (default: "pi")
+      - countries: comma-separated ISO2 list (e.g., FR,IE)
+    """
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    try:
+        plaid_client = PlaidClient()
+        cc_list = None
+        if countries:
+            req = [c.strip().upper() for c in countries.split(',') if c.strip()]
+            # Intersect with allowed list
+            cc_list = [c for c in req if c in _ALLOWED_EU_ISO2]
+            if not cc_list:
+                cc_list = _ALLOWED_EU_ISO2
+        else:
+            cc_list = _ALLOWED_EU_ISO2
+
+        if (mode or '').lower() == 'auth':
+            resp = plaid_client.create_eu_auth_link_token(str(user.id), country_codes=cc_list, redirect_uri=redirect_uri)
+        else:
+            resp = plaid_client.create_eu_link_token(str(user.id), country_codes=cc_list, redirect_uri=redirect_uri)
+        return resp
+    except requests.HTTPError as e:
+        status = e.response.status_code if getattr(e, "response", None) else 502
+        detail = e.response.text if getattr(e, "response", None) else str(e)
+        raise HTTPException(status_code=status, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+@router.post("/eu/plaid/exchange_auth")
+def exchange_plaid_token_eu_auth(payload: PublicTokenSchema, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
+    """EU Auth flow: exchange public_token, call /auth/get and /identity/get, then create Bridge external account with IBAN/BIC.
+
+    Identity matching is relaxed for sandbox; we prefer Plaid's owner name when available.
+    """
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    bridge_customer = db.query(BridgeCustomer).filter(BridgeCustomer.user_id == user.id).first()
+    if not bridge_customer:
+        raise HTTPException(status_code=404, detail="Bridge customer not found")
+
+    try:
+        plaid = PlaidClient()
+        ex = plaid.exchange_public_token(payload.public_token)
+        access_token = ex.get("access_token")
+        item_id = ex.get("item_id")
+        auth = plaid.get_auth(access_token)
+        identity = plaid.get_identity(access_token)
+    except requests.HTTPError as e:
+        status = e.response.status_code if getattr(e, "response", None) else 502
+        detail = e.response.text if getattr(e, "response", None) else str(e)
+        raise HTTPException(status_code=status, detail=detail)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=str(e))
+
+    # Extract IBAN/BIC
+    iban_entry = None
+    try:
+        for entry in (auth.get("numbers", {}) or {}).get("international", []) or []:
+            iban_entry = entry
+            break
+    except Exception:
+        iban_entry = None
+    if not iban_entry:
+        raise HTTPException(status_code=422, detail="Institution did not return IBAN via Auth; please enter IBAN manually.")
+
+    # Collect owner names
+    plaid_names: List[str] = []
+    try:
+        for account in identity.get("accounts", []) or []:
+            for owner in account.get("owners", []) or []:
+                plaid_names.extend(owner.get("names", []) or [])
+    except Exception:
+        plaid_names = []
+
+    verified, _reason = verify_identity_advanced(
+        bridge_customer.first_name or "",
+        bridge_customer.last_name or "",
+        plaid_names,
+    )
+    if not verified:
+        raise HTTPException(status_code=400, detail="Identity verification failed")
+
+    # Choose owner name (use BridgeCustomer, already verified)
+    owner_full = f"{bridge_customer.first_name or ''} {bridge_customer.last_name or ''}".strip()
+    try:
+        owner_first = bridge_customer.first_name or ""
+        owner_last = bridge_customer.last_name or ""
+    except Exception:
+        owner_first = bridge_customer.first_name or ""
+        owner_last = bridge_customer.last_name or ""
+
+    # Normalize country to ISO3 for Bridge
+    try:
+        country = _derive_iban_country(iban_entry)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"country_normalization_failed: {e}")
+
+    try:
+        bridge_payload = {
+        "currency": "eur",
+        "account_type": "iban",
+        "bank_name": payload.institution_name or "EU Bank",
+        "account_name": f"{payload.institution_name or 'EU Bank'} Account",
+        "first_name": owner_first,
+        "last_name": owner_last,
+        "account_owner_type": "individual",
+        "account_owner_name": owner_full or f"{owner_first} {owner_last}".strip() or "Unknown",
+        "iban": {
+            "account_number": iban_entry.get("iban"),
+            "bic": iban_entry.get("bic"),
+            "country": country,
+        },
+        "address": {
+            "street_line_1": bridge_customer.street_line_1 or "",
+            "city": bridge_customer.city or "",
+            "state": bridge_customer.subdivision or "",
+            "postal_code": bridge_customer.postal_code or "",
+            "country": (bridge_customer.country or country or "").upper(),
+        },
+    }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"payload_build_failed: {e}")
+
+    # Log masked payload for debugging (no sensitive values)
+    try:
+        masked = dict(bridge_payload)
+        masked_iban = (bridge_payload.get("iban", {}) or {}).get("account_number", "")
+        masked_bic = (bridge_payload.get("iban", {}) or {}).get("bic", "")
+        if isinstance(masked.get("iban"), dict):
+            masked["iban"] = {
+                "account_number": f"****{masked_iban[-4:]}" if masked_iban else None,
+                "bic": f"***{masked_bic[-3:]}" if masked_bic else None,
+                "country": bridge_payload.get("iban", {}).get("country"),
+            }
+        logging.getLogger(__name__).info(
+            "Creating Bridge EU external_account with payload (masked): %s",
+            json.dumps(masked),
+        )
+    except Exception:
+        pass
+
+    # Persist Plaid item FIRST (peg external account to Plaid)
+    from datetime import datetime
+    try:
+        item = PlaidItem(
+            external_account_id=None,
+            customer_id=bridge_customer.id,
+            user_id=user.id,
+            access_token=access_token,
+            item_id=item_id,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(item)
+        db.flush()  # Ensure plaid_item_id is generated
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"plaid_item_persist_failed: {e}")
+
+    try:
+        created = BridgeClient().create_external_account(bridge_customer.id, bridge_payload)
+    except requests.HTTPError as e:
+        # Log exact upstream error for debugging
+        body_text = getattr(e, "response", None).text if getattr(e, "response", None) else str(e)
+        try:
+            logging.getLogger(__name__).error(
+                "Bridge create_external_account failed: status=%s, body=%s",
+                getattr(e, "response", None).status_code if getattr(e, "response", None) else None,
+                body_text,
+            )
+        except Exception:
+            pass
+
+        # If duplicate external account, fetch and proceed with existing
+        try:
+            data = json.loads(body_text)
+            if isinstance(data, dict) and data.get("code") == "duplicate_external_account" and data.get("id"):
+                existing_id = data["id"]
+                created = BridgeClient().get_external_account(existing_id, customer_id=bridge_customer.id)
+            else:
+                status = e.response.status_code if getattr(e, "response", None) else 502
+                db.rollback()
+                raise HTTPException(status_code=status, detail=body_text)
+        except ValueError:
+            # Not JSON; rethrow
+            status = e.response.status_code if getattr(e, "response", None) else 502
+            db.rollback()
+            raise HTTPException(status_code=status, detail=body_text)
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=502, detail=f"Failed to create Bridge external account: {e}")
+
+    # Store ExternalAccount and link to Plaid item
+    try:
+        ext = ExternalAccount(
+            external_account_id=created["id"],
+            customer_id=bridge_customer.id,
+            user_id=user.id,
+            currency=created.get("currency", "eur"),
+            bank_name=created.get("bank_name", payload.institution_name or "Bank"),
+            account_owner_name=created.get("account_owner_name", owner_full),
+            account_owner_type=created.get("account_owner_type", "individual"),
+            last_4=(created.get("iban", {}) or {}).get("last_4") or (created.get("account", {}) or {}).get("last_4", ""),
+            active=created.get("active", True),
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+            plaid_item_id=item.plaid_item_id,
+        )
+        db.add(ext)
+        db.flush()
+
+        # Backfill item.external_account_id for compatibility
+        item.external_account_id = created["id"]
+        item.updated_at = datetime.utcnow()
+        db.add(item)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"local_persist_failed: {e}")
+
+    return {"account_id": created["id"], "plaid_item_id": str(item.plaid_item_id)}
 @router.get("/plaid/link_token")
 def get_plaid_link_token(db: Session = Depends(get_db), jwt = Depends(get_current_user)):
     """Return OUR Plaid Link token for the authenticated user (Option A flow)."""
@@ -285,46 +570,78 @@ def exchange_plaid_token(link_token: str, payload: PublicTokenSchema, db: Sessio
         raise HTTPException(status_code=400, detail=f"Identity verification failed: {verification_reason}")
 
     # ------------------------------------------------------------------
-    # Step 4: Create Bridge external account for the selected Plaid account
+    # Step 4: Persist Plaid item FIRST, then create Bridge external account
     # ------------------------------------------------------------------
-    
+    from datetime import datetime
     try:
-        # Map Plaid data to Bridge format (using institution name from frontend)
+        plaid_item = PlaidItem(
+            external_account_id=None,
+            customer_id=bridge_customer.id,
+            user_id=user.id,
+            access_token=access_token,
+            item_id=item_id,
+            created_at=datetime.utcnow(),
+            updated_at=datetime.utcnow(),
+        )
+        db.add(plaid_item)
+        db.flush()  # ensure plaid_item_id is generated
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"plaid_item_persist_failed: {e}")
+
+    # Map to Bridge payload and create account (with duplicate handling)
+    try:
         bridge_payload = map_plaid_to_bridge_external_account(
             plaid_auth, plaid_identity, bridge_customer, selected_account.get('account_id'), payload.institution_name
         )
-        
-        # Create external account in Bridge
         bridge_client = BridgeClient()
-        bridge_account = bridge_client.create_external_account(bridge_customer.id, bridge_payload)
-        
+        try:
+            bridge_account = bridge_client.create_external_account(bridge_customer.id, bridge_payload)
+        except requests.HTTPError as e:
+            body_text = getattr(e, "response", None).text if getattr(e, "response", None) else str(e)
+            try:
+                logging.getLogger(__name__).error(
+                    "Bridge create_external_account (US) failed: status=%s, body=%s",
+                    getattr(e, "response", None).status_code if getattr(e, "response", None) else None,
+                    body_text,
+                )
+            except Exception:
+                pass
+            # Attempt duplicate recovery if Bridge returns duplicate_external_account
+            try:
+                data = json.loads(body_text)
+                if isinstance(data, dict) and data.get("code") == "duplicate_external_account" and data.get("id"):
+                    existing_id = data["id"]
+                    bridge_account = bridge_client.get_external_account(existing_id, customer_id=bridge_customer.id)
+                else:
+                    db.rollback()
+                    raise HTTPException(status_code=e.response.status_code if getattr(e, "response", None) else 502, detail=body_text)
+            except ValueError:
+                db.rollback()
+                raise HTTPException(status_code=e.response.status_code if getattr(e, "response", None) else 502, detail=body_text)
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"Failed to create Bridge external account: {e}") from e
+        db.rollback()
+        raise HTTPException(status_code=502, detail=f"Failed to create Bridge external account: {e}")
 
     # ------------------------------------------------------------------
-    # Step 5: Store account locally in our database
+    # Step 5: Store ExternalAccount and link to Plaid item
     # ------------------------------------------------------------------
-    
     try:
-        # Store in our local database with all fields populated from Bridge API data
-        from datetime import datetime
-        
-        # Parse Bridge timestamps
         created_at = datetime.utcnow()
         updated_at = datetime.utcnow()
-        
         if bridge_account.get("created_at"):
             try:
                 created_at = datetime.fromisoformat(bridge_account["created_at"].replace("Z", "+00:00"))
             except:
                 pass
-                
         if bridge_account.get("updated_at"):
             try:
                 updated_at = datetime.fromisoformat(bridge_account["updated_at"].replace("Z", "+00:00"))
             except:
                 pass
-        
+
         ext = ExternalAccount(
             external_account_id=bridge_account["id"],
             customer_id=bridge_customer.id,
@@ -337,24 +654,19 @@ def exchange_plaid_token(link_token: str, payload: PublicTokenSchema, db: Sessio
             last_4=bridge_account.get("account", {}).get("last_4", "") if bridge_account.get("account") else "",
             active=bridge_account.get("active", False),
             created_at=created_at,
-            updated_at=updated_at
+            updated_at=updated_at,
+            plaid_item_id=plaid_item.plaid_item_id,
         )
-        
         db.add(ext)
-        
-        # Create Plaid item for this account
-        plaid_item = PlaidItem(
-            external_account_id=bridge_account["id"],
-            customer_id=bridge_customer.id,
-            user_id=user.id,
-            access_token=access_token,
-            item_id=item_id,
-        )
+        db.flush()
+
+        # Backfill PlaidItem.external_account_id for compatibility
+        plaid_item.external_account_id = bridge_account["id"]
+        plaid_item.updated_at = datetime.utcnow()
         db.add(plaid_item)
-        
         db.commit()
-        
     except Exception as e:
+        db.rollback()
         raise HTTPException(status_code=500, detail=f"Failed to store account locally: {e}") from e
 
     return {

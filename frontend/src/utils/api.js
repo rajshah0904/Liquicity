@@ -245,6 +245,23 @@ export const externalAccountsAPI = {
       ...institutionData
     }),
 
+  // Plaid EU Payment Initiation
+  getPlaidLinkTokenEU: (options = {}) => api.get('/external_accounts/eu/plaid/link_token', options),
+  exchangePlaidTokenEU: (publicToken, institutionData = {}) => 
+    api.post('/external_accounts/eu/plaid/exchange', { 
+      public_token: publicToken,
+      ...institutionData
+    }),
+  exchangePlaidTokenEUAuth: (publicToken, institutionData = {}) =>
+    api.post('/external_accounts/eu/plaid/exchange_auth', {
+      public_token: publicToken,
+      ...institutionData
+    }),
+  createEURecipient: (payload) => api.post('/external_accounts/eu/plaid/recipient', payload),
+  createEUPayment: (payload) => api.post('/external_accounts/eu/plaid/payment', payload),
+  prepareEUPayment: (payload) => api.post('/external_accounts/eu/plaid/payment/prepare', payload),
+  getEUPaymentStatus: (paymentId) => api.get(`/external_accounts/eu/plaid/payment/${paymentId}`),
+
   // Plaid passthrough APIs for linked accounts
   /**
    * Fetch real-time balance information for the specified external account.
@@ -281,6 +298,8 @@ export const transferAPI = {
   
   // Withdraw funds
   withdraw: (data) => api.post('/transfers/withdraw', data),
+  // Withdraw preview (estimate only)
+  withdrawPreview: (data) => api.post('/transfers/withdraw_preview', data),
   
   // Internal transfer
   transfer: (data) => api.post('/transfers', data),

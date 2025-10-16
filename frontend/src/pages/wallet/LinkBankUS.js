@@ -51,7 +51,8 @@ export default function LinkBankUS() {
         }
       }
       
-      const response = await externalAccountsAPI.getPlaidLinkToken();
+      const redirect = `${window.location.origin}/plaid/callback`;
+      const response = await externalAccountsAPI.getPlaidLinkToken({ params: { redirect_uri: redirect } });
       
       if (response && response.data && response.data.link_token) {
         // Open Plaid Link automatically once we have the token
@@ -72,8 +73,11 @@ export default function LinkBankUS() {
     if (!token) return;
     
     const linkTokenUsed = token;  // pass same token back to server for Option A flow
+    const isRedirectBack = window.location.href.includes('/plaid/callback');
     const handler = window.Plaid.create({
       token,
+      // Required for OAuth institutions after redirect back to app
+      ...(isRedirectBack ? { receivedRedirectUri: window.location.href } : {}),
       onSuccess: async (publicToken, metadata) => {
         try {
           setLoading(true);
@@ -85,15 +89,15 @@ export default function LinkBankUS() {
           console.log('🏦 Plaid Link Institution:', institutionName, institutionId);
           
           // Exchange the public token via Option A flow (Plaid → Identity verification → Manual Bridge account creation)
-          const response = await externalAccountsAPI.exchangePlaidToken(linkTokenUsed, publicToken, {
+          const { data } = await externalAccountsAPI.exchangePlaidToken(linkTokenUsed, publicToken, {
             institution_name: institutionName,
             institution_id: institutionId
           });
           
-          console.log('Plaid exchange successful:', response);
+          console.log('Plaid exchange successful:', data);
           
           // Show success message with account count
-          const accountCount = response.account_count || 0;
+          const accountCount = data?.account_count || 0;
           if (accountCount > 0) {
             setError(null);
             // Navigate back to wallet on success
@@ -103,12 +107,8 @@ export default function LinkBankUS() {
           }
         } catch (err) {
           console.error('Error exchanging Plaid token:', err);
-          if (err.response && err.response.status === 400) {
-            // Identity verification failure
-            setError(err.response.data.detail || 'Identity verification failed. Please ensure the bank account is in your name.');
-          } else {
-            setError('Failed to link your bank account. Please try again.');
-          }
+          const msg = err?.response?.data?.detail || err?.response?.data || err?.message || 'Failed to link your bank account. Please try again.';
+          setError(typeof msg === 'string' ? msg : JSON.stringify(msg));
         } finally {
           setLoading(false);
         }

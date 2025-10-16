@@ -527,7 +527,7 @@ export default function Send() {
               bgcolor: '#10b981'
             }} />
             <Typography variant="body2" color="text.secondary">
-              Instant USD Delivery
+              Instant Delivery
             </Typography>
           </Box>
           {recipient?.region && (
