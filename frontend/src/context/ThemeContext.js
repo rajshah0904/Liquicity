@@ -9,31 +9,31 @@ export const useThemeMode = () => {
   return useContext(ThemeContext);
 };
 
-// Define theme settings - only dark mode
+// Define theme settings - light mode
 const getThemeOptions = () => ({
   palette: {
-    mode: 'dark',
+    mode: 'light',
     primary: {
-      main: '#4361FF',
-      light: '#6A83FF',
-      dark: '#2A41E8',
+      main: '#1e40af',
+      light: '#3b82f6',
+      dark: '#1565c0',
     },
     secondary: {
-      main: '#00BAFF',
-      light: '#33C9FF',
-      dark: '#0096D0',
+      main: '#37b24d',
+      light: '#51cf66',
+      dark: '#2f9e44',
     },
     background: {
-      default: '#000000',
-      paper: '#121212',
+      default: '#ffffff',
+      paper: '#ffffff',
     },
     text: {
-      primary: '#F1F5F9',
-      secondary: '#94A3B8',
+      primary: '#000000',
+      secondary: '#666666',
     },
   },
   typography: {
-    fontFamily: 'Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
+    fontFamily: '"Sora", "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif',
     h1: { fontWeight: 700 },
     h2: { fontWeight: 700 },
     h3: { fontWeight: 600 },
@@ -46,24 +46,23 @@ const getThemeOptions = () => ({
     },
   },
   shape: {
-    borderRadius: 0, // Consistent with your existing design
+    borderRadius: 8,
   },
   components: {
     MuiAppBar: {
       styleOverrides: {
         root: {
-          backgroundColor: '#000000',
+          backgroundColor: '#ffffff',
           boxShadow: 'none',
-          borderBottom: '1px solid rgba(255, 255, 255, 0.1)',
+          borderBottom: '1px solid #e5e7eb',
         },
       },
     },
     MuiDrawer: {
       styleOverrides: {
         paper: {
-          backgroundColor: 'rgba(0, 0, 0, 0.85)',
-          backdropFilter: 'blur(10px)',
-          borderRight: '1px solid rgba(255, 255, 255, 0.1)',
+          backgroundColor: '#ffffff',
+          borderRight: '1px solid #e5e7eb',
         },
       },
     },
@@ -77,7 +76,7 @@ const getThemeOptions = () => ({
     MuiButton: {
       styleOverrides: {
         root: {
-          borderRadius: 0,
+          borderRadius: 8,
           textTransform: 'none',
           fontWeight: 600,
         },
@@ -86,8 +85,8 @@ const getThemeOptions = () => ({
     MuiCard: {
       styleOverrides: {
         root: {
-          borderRadius: 0,
-          boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.1)',
+          borderRadius: 12,
+          boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.05)',
         },
       },
     },
@@ -96,10 +95,10 @@ const getThemeOptions = () => ({
 
 // Theme provider component
 export const CustomThemeProvider = ({ children }) => {
-  // Always use dark mode - no toggle functionality
-  const themeMode = 'dark';
+  // Always use light mode
+  const themeMode = 'light';
   
-  // Create dark theme
+  // Create light theme
   const theme = useMemo(() => createTheme(getThemeOptions()), []);
 
   // Simplified value object without toggle function

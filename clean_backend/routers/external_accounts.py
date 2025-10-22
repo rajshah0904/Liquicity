@@ -7,7 +7,7 @@ import logging, json
 
 from ..database import get_db
 from ..auth import get_current_user
-from ..models import User, ExternalAccount, BridgeCustomer
+from ..models import User, ExternalAccount, BridgeCustomer, ExternalWallet
 from ..bridge import BridgeClient
 from ..services.plaid_client import PlaidClient
 from ..models import PlaidItem
@@ -458,6 +458,10 @@ def exchange_plaid_token_eu_auth(payload: PublicTokenSchema, db: Session = Depen
 
     # Store ExternalAccount and link to Plaid item
     try:
+        # Check if this is the first external account for this user
+        existing_accounts = db.query(ExternalAccount).filter(ExternalAccount.user_id == user.id).count()
+        is_first_account = existing_accounts == 0
+        
         ext = ExternalAccount(
             external_account_id=created["id"],
             customer_id=bridge_customer.id,
@@ -471,6 +475,7 @@ def exchange_plaid_token_eu_auth(payload: PublicTokenSchema, db: Session = Depen
             created_at=datetime.utcnow(),
             updated_at=datetime.utcnow(),
             plaid_item_id=item.plaid_item_id,
+            is_preferred=is_first_account,
         )
         db.add(ext)
         db.flush()
@@ -642,6 +647,10 @@ def exchange_plaid_token(link_token: str, payload: PublicTokenSchema, db: Sessio
             except:
                 pass
 
+        # Check if this is the first external account for this user
+        existing_accounts = db.query(ExternalAccount).filter(ExternalAccount.user_id == user.id).count()
+        is_first_account = existing_accounts == 0
+
         ext = ExternalAccount(
             external_account_id=bridge_account["id"],
             customer_id=bridge_customer.id,
@@ -656,6 +665,7 @@ def exchange_plaid_token(link_token: str, payload: PublicTokenSchema, db: Sessio
             created_at=created_at,
             updated_at=updated_at,
             plaid_item_id=plaid_item.plaid_item_id,
+            is_preferred=is_first_account,
         )
         db.add(ext)
         db.flush()
@@ -685,8 +695,15 @@ def list_external_accounts(db: Session = Depends(get_db), jwt = Depends(get_curr
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     
-    # Get external accounts directly from our local database
-    external_accounts = db.query(ExternalAccount).filter(ExternalAccount.user_id == user.id).all()
+    # Get external accounts directly from our local database, sorted by is_preferred desc
+    external_accounts = db.query(ExternalAccount).filter(
+        ExternalAccount.user_id == user.id
+    ).order_by(ExternalAccount.is_preferred.desc(), ExternalAccount.created_at.asc()).all()
+    
+    # If no accounts have is_preferred set, set the first one as preferred
+    if external_accounts and not any(acc.is_preferred for acc in external_accounts):
+        external_accounts[0].is_preferred = True
+        db.commit()
     
     # Map to frontend-friendly format
     mapped_accounts = []
@@ -696,10 +713,74 @@ def list_external_accounts(db: Session = Depends(get_db), jwt = Depends(get_curr
             "bank_name": acc.bank_name,
             "last4": acc.last_4,
             "currency": acc.currency.upper() if acc.currency else "USD",
-            "active": acc.active
+            "active": acc.active,
+            "is_preferred": acc.is_preferred or False
         })
     
     return {"accounts": mapped_accounts}
+
+@router.get("/payment-methods")
+def list_payment_methods(db: Session = Depends(get_db), jwt = Depends(get_current_user)):
+    """Return all payment methods (bank accounts + crypto wallets) for the authenticated user - unified endpoint."""
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Get external accounts (bank accounts) sorted
+    external_accounts = db.query(ExternalAccount).filter(
+        ExternalAccount.user_id == user.id
+    ).order_by(ExternalAccount.is_preferred.desc(), ExternalAccount.created_at.asc()).all()
+    
+    # Get external wallets (crypto wallets) sorted
+    external_wallets = db.query(ExternalWallet).filter(
+        ExternalWallet.user_id == user.id
+    ).order_by(ExternalWallet.is_preferred.desc(), ExternalWallet.created_at.asc()).all()
+    
+    # If no payment methods have is_preferred set, set the first one as preferred
+    all_payment_methods = external_accounts + external_wallets
+    if all_payment_methods and not any(
+        (hasattr(pm, 'is_preferred') and pm.is_preferred) for pm in all_payment_methods
+    ):
+        all_payment_methods[0].is_preferred = True
+        db.commit()
+    
+    # Map to unified frontend-friendly format
+    mapped_payment_methods = []
+    
+    # Add bank accounts
+    for acc in external_accounts:
+        mapped_payment_methods.append({
+            "id": acc.external_account_id,
+            "type": "bank_account",
+            "bank_name": acc.bank_name,
+            "last4": acc.last_4,
+            "currency": acc.currency.upper() if acc.currency else "USD",
+            "active": acc.active,
+            "is_preferred": acc.is_preferred or False,
+            "display_name": f"{acc.bank_name} ****{acc.last_4}" if acc.last_4 else f"{acc.bank_name} Account",
+            "created_at": acc.created_at.isoformat() if acc.created_at else None
+        })
+    
+    # Add crypto wallets
+    for wallet in external_wallets:
+        # Format address display (first 6 + last 4 characters)
+        short_address = f"{wallet.address[:6]}...{wallet.address[-4:]}" if len(wallet.address) > 10 else wallet.address
+        
+        mapped_payment_methods.append({
+            "id": wallet.external_wallet_id,
+            "type": "crypto_wallet",
+            "chain": wallet.chain.upper() if wallet.chain else "",
+            "address": wallet.address,
+            "short_address": short_address,
+            "is_preferred": wallet.is_preferred or False,
+            "display_name": f"{wallet.chain.title() if wallet.chain else 'Crypto'} Wallet {short_address}",
+            "created_at": wallet.created_at.isoformat() if wallet.created_at else None
+        })
+    
+    # Sort by is_preferred (preferred first), then by created_at
+    mapped_payment_methods.sort(key=lambda x: (not x['is_preferred'], x['created_at'] or ''))
+    
+    return {"payment_methods": mapped_payment_methods}
 
 
 
@@ -783,6 +864,119 @@ def get_external_account_details(account_id: str, db: Session = Depends(get_db),
         "payment_method_type": "bank_account",
         "display_name": f"{ext.bank_name} ****{ext.last_4}" if ext.last_4 else f"{ext.bank_name} Account"
     }
+
+# ---------------------------------------------------------------------------
+# Update external account                                                    
+# ---------------------------------------------------------------------------
+
+class UpdateAccountSchema(BaseModel):
+    is_preferred: Optional[bool] = None
+
+class UpdatePaymentMethodSchema(BaseModel):
+    is_preferred: Optional[bool] = None
+
+@router.put("/accounts/{account_id}")
+def update_external_account(account_id: str, payload: UpdateAccountSchema, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
+    """Update an external account (e.g., set as preferred)."""
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Verify ownership locally first
+    ext = db.query(ExternalAccount).filter(
+        ExternalAccount.external_account_id == account_id, 
+        ExternalAccount.user_id == user.id
+    ).first()
+    if not ext:
+        raise HTTPException(status_code=404, detail="Account not found")
+    
+    # If setting as preferred, unset all other payment methods (both accounts and wallets) for this user
+    if payload.is_preferred is True:
+        db.query(ExternalAccount).filter(
+            ExternalAccount.user_id == user.id
+        ).update({"is_preferred": False})
+        db.query(ExternalWallet).filter(
+            ExternalWallet.user_id == user.id
+        ).update({"is_preferred": False})
+        ext.is_preferred = True
+    elif payload.is_preferred is False:
+        ext.is_preferred = False
+    
+    db.commit()
+    
+    return {
+        "id": ext.external_account_id,
+        "bank_name": ext.bank_name,
+        "last4": ext.last_4,
+        "currency": ext.currency.upper() if ext.currency else "USD",
+        "active": ext.active,
+        "is_preferred": ext.is_preferred
+    }
+
+@router.put("/payment-methods/{payment_method_id}")
+def update_payment_method(payment_method_id: str, payload: UpdatePaymentMethodSchema, db: Session = Depends(get_db), jwt = Depends(get_current_user)):
+    """Update a payment method (bank account or crypto wallet) - unified endpoint."""
+    user: Optional[User] = db.query(User).filter(User.auth0_id == jwt.id).first()
+    if not user:
+        raise HTTPException(status_code=404, detail="User not found")
+    
+    # Try to find in external accounts first
+    ext_account = db.query(ExternalAccount).filter(
+        ExternalAccount.external_account_id == payment_method_id,
+        ExternalAccount.user_id == user.id
+    ).first()
+    
+    # If not found, try external wallets
+    ext_wallet = None
+    if not ext_account:
+        ext_wallet = db.query(ExternalWallet).filter(
+            ExternalWallet.external_wallet_id == payment_method_id,
+            ExternalWallet.user_id == user.id
+        ).first()
+    
+    if not ext_account and not ext_wallet:
+        raise HTTPException(status_code=404, detail="Payment method not found")
+    
+    # If setting as preferred, unset all other payment methods (both types) for this user
+    if payload.is_preferred is True:
+        db.query(ExternalAccount).filter(
+            ExternalAccount.user_id == user.id
+        ).update({"is_preferred": False})
+        db.query(ExternalWallet).filter(
+            ExternalWallet.user_id == user.id
+        ).update({"is_preferred": False})
+        
+        if ext_account:
+            ext_account.is_preferred = True
+        else:
+            ext_wallet.is_preferred = True
+    elif payload.is_preferred is False:
+        if ext_account:
+            ext_account.is_preferred = False
+        else:
+            ext_wallet.is_preferred = False
+    
+    db.commit()
+    
+    # Return unified format
+    if ext_account:
+        return {
+            "id": ext_account.external_account_id,
+            "type": "bank_account",
+            "bank_name": ext_account.bank_name,
+            "last4": ext_account.last_4,
+            "currency": ext_account.currency.upper() if ext_account.currency else "USD",
+            "active": ext_account.active,
+            "is_preferred": ext_account.is_preferred
+        }
+    else:
+        return {
+            "id": ext_wallet.external_wallet_id,
+            "type": "crypto_wallet",
+            "chain": ext_wallet.chain,
+            "address": ext_wallet.address,
+            "is_preferred": ext_wallet.is_preferred
+        }
 
 # ---------------------------------------------------------------------------
 # Delete external account                                                    

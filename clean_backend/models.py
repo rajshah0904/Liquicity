@@ -117,6 +117,7 @@ class ExternalWallet(Base):
     chain      = Column(String(32), nullable=False)
     address    = Column(String(64), nullable=False)
     created_at = Column(DateTime, default=datetime.utcnow)
+    is_preferred = Column(Boolean, default=False)  # User's preferred payment method
 
     user = relationship("User", back_populates="external_wallets")
 
@@ -138,6 +139,7 @@ class ExternalAccount(Base):
     created_at           = Column(DateTime, nullable=False)      # Bridge API timestamp
     updated_at           = Column(DateTime, nullable=False)      # Bridge API timestamp
     active               = Column(Boolean, nullable=False)       # Bridge API active status                         # Google Maps or Plaid provided address
+    is_preferred         = Column(Boolean, default=False)        # User's preferred payment method
 
     plaid_item           = relationship(
         "PlaidItem",

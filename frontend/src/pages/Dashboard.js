@@ -44,9 +44,9 @@ import ArrowForwardIcon from '@mui/icons-material/ArrowForward';
 import ReceiptLongIcon from '@mui/icons-material/ReceiptLong';
 import AddIcon from '@mui/icons-material/Add';
 import PaymentsIcon from '@mui/icons-material/Payments';
+import AccountBalanceWallet from '@mui/icons-material/AccountBalanceWallet';
 import { useAuth0 } from '@auth0/auth0-react';
 import NotificationCenter from '../components/NotificationCenter';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import useBridgeWallet from '../hooks/useBridgeWallet';
 import useBridgeTransactions from '../hooks/useBridgeTransactions';
 import { calculateLiquicityBalance } from '../utils/balanceUtils';
@@ -92,10 +92,10 @@ const Dashboard = () => {
   const [recentTransactions, setRecentTransactions] = useState([]);
 
   // Bridge wallet hook
-  const { wallet: bridgeWallet, loading: walletLoading, refetch: refetchWallet } = useBridgeWallet();
+  const { wallet: bridgeWallet, loading: walletLoading } = useBridgeWallet();
 
   // Hook for live transactions
-  const { txns: transactions, loading: txLoading, refetch: refetchTx } = useBridgeTransactions();
+  const { txns: transactions, loading: txLoading } = useBridgeTransactions();
 
   // Derive pending, recent, etc. whenever transactions update
   useEffect(() => {
@@ -138,11 +138,6 @@ const Dashboard = () => {
   const handleHistory = () => navigate('/transactions');
   const handleSwap = () => navigate('/wallet');
   const handleLink = () => navigate('/wallet');
-
-  // Manual refresh via icon
-  const handleRefresh = async () => {
-    await refetchWallet();
-  };
 
   // Helper functions for transactions
   const getTransactionTypeColor = (type) => {
@@ -268,69 +263,31 @@ const Dashboard = () => {
       sx={{ 
         width: '100%', 
         minHeight: 'calc(100vh - 64px)',
-        background: '#000000',
+        background: '#ffffff',
         pb: 8
       }}
     >
-      <AnimatedBackground />
-      
       <Container maxWidth="lg" sx={{ pt: 3 }}>
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          mb: 4,
-          flexDirection: isMobile ? 'column' : 'row',
-          gap: isMobile ? 2 : 0
-        }}>
-          <Box component={motion.div} variants={itemVariants}>
-            <Typography variant="h4" component="h1" fontWeight="600">
-              Dashboard
-            </Typography>
-            <Typography 
-              variant="body2" 
-              color="text.secondary" 
-              sx={{ mt: 0.5, display: 'flex', alignItems: 'center' }}
-            >
-              Last updated: {format(new Date(), 'MMM dd, yyyy • HH:mm')}
-              <IconButton 
-                size="small" 
-                sx={{ ml: 1 }}
-                onClick={handleRefresh}
-              >
-                <RefreshIcon fontSize="small" />
-              </IconButton>
-            </Typography>
-          </Box>
-        </Box>
-
         {/* Balance Summary */}
         <SlideRightBox variants={itemVariants}>
-          <FloatingCard 
-            sx={{ 
-              p: 3, 
-              mb: 4,
-              background: 'rgba(17, 24, 39, 0.7)',
-              borderColor: 'rgba(59, 130, 246, 0.1)'
-            }}
-          >
-            <Box>
-              <Typography variant="body2" color="text.secondary" fontWeight="500">Total Balance</Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-                <Typography variant="h3" component="div" fontWeight={700}>
-                  <CountUp
-                    start={0}
-                    end={mainBalance}
-                    duration={1.5}
-                    separator=","
-                    decimals={2}
-                    decimal="."
-                    prefix={`${getCurrencySymbol(mainCurrency)}`}
-                  />
-                </Typography>
-              </Box>
+          <Box sx={{ mb: 5 }}>
+            <Typography variant="body2" sx={{ color: '#666', fontWeight: 400, mb: 2, fontSize: '1rem' }}>
+              Total Balance
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center' }}>
+              <Typography variant="h2" component="div" fontWeight={700} sx={{ color: '#1a1a1a', fontSize: '3.5rem' }}>
+                <CountUp
+                  start={0}
+                  end={mainBalance}
+                  duration={1.5}
+                  separator=","
+                  decimals={2}
+                  decimal="."
+                  prefix={`${getCurrencySymbol(mainCurrency)}`}
+                />
+              </Typography>
             </Box>
-          </FloatingCard>
+          </Box>
         </SlideRightBox>
 
         {/* Quick Actions */}
@@ -344,7 +301,7 @@ const Dashboard = () => {
                 mb: 2 
               }}
             >
-              <Typography variant="h6" fontWeight="600">
+              <Typography variant="h6" fontWeight="600" sx={{ color: '#1a1a1a' }}>
                 Quick Actions
               </Typography>
             </Box>
@@ -352,73 +309,62 @@ const Dashboard = () => {
             <Grid container spacing={2}>
               {[
                 { 
-                  title: 'Deposit', 
-                  icon: <AddIcon />, 
-                  color: '#3b82f6', 
-                  onClick: handleAddFunds,
-                  bgColor: 'rgba(59, 130, 246, 0.1)'
-                },
-                { 
-                  title: 'Withdraw', 
-                  icon: <ArrowUpwardIcon />, 
-                  color: '#10b981', 
-                  onClick: handleWithdraw,
-                  bgColor: 'rgba(16, 185, 129, 0.1)'
-                },
-                { 
-                  title: 'Send', 
-                  icon: <SendIcon />, 
-                  color: '#8b5cf6', 
-                  onClick: handleSendMoney,
-                  bgColor: 'rgba(139, 92, 246, 0.1)'
+                  title: 'Wallet', 
+                  icon: <AccountBalanceWallet />, 
+                  onClick: () => navigate('/wallet'),
                 },
                 { 
                   title: 'Virtual Account', 
                   icon: <AccountBalanceIcon />, 
-                  color: '#f59e0b', 
                   onClick: () => navigate('/virtual-account'),
-                  bgColor: 'rgba(245, 158, 11, 0.1)'
+                },
+                { 
+                  title: 'Pay', 
+                  icon: <SendIcon />, 
+                  onClick: handleSendMoney,
+                },
+                { 
+                  title: 'Deposit', 
+                  icon: <AddIcon />, 
+                  onClick: handleAddFunds,
                 }
               ].map((action, index) => (
                 <Grid item xs={6} sm={3} key={index}>
                   <Box 
                     sx={{ 
-                      borderRadius: 2,
-                      p: 2,
+                      borderRadius: 3,
+                      p: 3,
                       display: 'flex',
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      background: 'rgba(17, 24, 39, 0.5)',
-                      border: '1px solid rgba(55, 65, 81, 0.5)',
-                      transition: 'all 0.3s ease',
+                      background: '#f5f5f5',
+                      border: 'none',
+                      transition: 'all 0.2s ease',
                       cursor: 'pointer',
-                      height: 100,
+                      height: 120,
                       '&:hover': {
-                        transform: 'translateY(-4px)',
-                        boxShadow: `0 4px 20px rgba(0, 0, 0, 0.1)`,
-                        borderColor: `${action.color}80`,
-                        background: 'rgba(17, 24, 39, 0.7)',
+                        background: '#e8e8e8',
                       }
                     }}
                     onClick={action.onClick}
                   >
                     <Box 
                       sx={{ 
-                        width: 50, 
-                        height: 50, 
+                        width: 56, 
+                        height: 56, 
                         borderRadius: '50%', 
                         display: 'flex', 
                         alignItems: 'center', 
                         justifyContent: 'center',
-                        color: action.color,
-                        background: action.bgColor,
-                        mb: 1
+                        color: '#1976d2',
+                        background: '#e3f2fd',
+                        mb: 1.5
                       }}
                     >
                       {action.icon}
                     </Box>
-                    <Typography variant="body2" fontWeight="600">
+                    <Typography variant="body2" fontWeight="500" sx={{ color: '#333' }}>
                       {action.title}
                     </Typography>
                   </Box>
@@ -439,101 +385,101 @@ const Dashboard = () => {
                 mb: 2 
               }}
             >
-              <Typography variant="h6" fontWeight="600">
+              <Typography variant="h6" fontWeight="600" sx={{ color: '#1a1a1a' }}>
                 Notifications
               </Typography>
               <Typography 
                 variant="body2" 
-                color="primary" 
-                sx={{ cursor: 'pointer' }}
+                sx={{ cursor: 'pointer', color: '#1976d2' }}
                 onClick={() => navigate('/notifications')}
               >
                 View all
               </Typography>
             </Box>
             
-            <FloatingCard sx={{ 
+            <Box sx={{ 
               p: 0, 
               overflow: 'hidden',
-              background: 'rgba(17, 24, 39, 0.7)',
-              borderColor: 'rgba(59, 130, 246, 0.1)'
+              background: '#ffffff',
+              borderRadius: 3,
+              border: '1px solid #e0e0e0'
             }}>
               <List sx={{ p: 0 }}>
                 <ListItem 
                   sx={{ 
-                    borderBottom: '1px solid rgba(55, 65, 81, 0.2)', 
+                    borderBottom: '1px solid #e0e0e0', 
                     py: 2,
-                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
+                    '&:hover': { background: '#f5f5f5' }
                   }}
                 >
                   <ListItemAvatar>
-                    <Avatar sx={{ backgroundColor: '#8b5cf6' }}>
+                    <Avatar sx={{ backgroundColor: '#1976d2' }}>
                       <AttachMoneyIcon />
                     </Avatar>
                   </ListItemAvatar>
                   <ListItemText 
-                    primary="You sent Alex Johnson money" 
-                    secondary={<>$150.00 • 2 hours ago</>} 
+                    primary={<Typography sx={{ color: '#1a1a1a', fontWeight: 500 }}>You sent Alex Johnson money</Typography>}
+                    secondary={<Typography sx={{ color: '#666' }}>$150.00 • 2 hours ago</Typography>} 
                   />
                   <Box sx={{ 
                     width: 8, 
                     height: 8, 
                     borderRadius: '50%', 
-                    bgcolor: 'primary.main',
-                    boxShadow: '0 0 8px 0 rgba(59, 130, 246, 0.8)'
+                    bgcolor: '#1976d2',
+                    boxShadow: '0 0 8px 0 rgba(25, 118, 210, 0.5)'
                   }} />
                 </ListItem>
                 
                 <ListItem 
                   sx={{ 
-                    borderBottom: '1px solid rgba(55, 65, 81, 0.2)', 
+                    borderBottom: '1px solid #e0e0e0', 
                     py: 2,
-                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
+                    '&:hover': { background: '#f5f5f5' }
                   }}
                 >
                   <ListItemAvatar>
-                    <Avatar sx={{ backgroundColor: '#10b981' }}>
+                    <Avatar sx={{ backgroundColor: '#1976d2' }}>
                       <AttachMoneyIcon />
                     </Avatar>
                   </ListItemAvatar>
                   <ListItemText 
-                    primary="Sarah Miller sent you money" 
-                    secondary={<>$75.50 • Yesterday</>} 
+                    primary={<Typography sx={{ color: '#1a1a1a', fontWeight: 500 }}>Sarah Miller sent you money</Typography>}
+                    secondary={<Typography sx={{ color: '#666' }}>$75.50 • Yesterday</Typography>} 
                   />
                   <Box sx={{ 
                     width: 8, 
                     height: 8, 
                     borderRadius: '50%', 
-                    bgcolor: 'primary.main',
-                    boxShadow: '0 0 8px 0 rgba(59, 130, 246, 0.8)'
+                    bgcolor: '#1976d2',
+                    boxShadow: '0 0 8px 0 rgba(25, 118, 210, 0.5)'
                   }} />
                 </ListItem>
                 
                 <ListItem 
                   sx={{ 
                     py: 2,
-                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
+                    '&:hover': { background: '#f5f5f5' }
                   }}
                 >
                   <ListItemAvatar>
-                    <Avatar sx={{ backgroundColor: '#f59e0b' }}>
+                    <Avatar sx={{ backgroundColor: '#1976d2' }}>
                       <AttachMoneyIcon />
                     </Avatar>
                   </ListItemAvatar>
                   <ListItemText 
-                    primary="David Williams requested money" 
-                    secondary={<>$42.99 • Yesterday</>} 
+                    primary={<Typography sx={{ color: '#1a1a1a', fontWeight: 500 }}>David Williams requested money</Typography>}
+                    secondary={<Typography sx={{ color: '#666' }}>$42.99 • Yesterday</Typography>} 
                   />
                   <Box sx={{ 
                     width: 8, 
                     height: 8, 
                     borderRadius: '50%', 
-                    bgcolor: 'primary.main',
-                    boxShadow: '0 0 8px 0 rgba(59, 130, 246, 0.8)'
+                    bgcolor: '#1976d2',
+                    boxShadow: '0 0 8px 0 rgba(25, 118, 210, 0.5)'
                   }} />
                 </ListItem>
               </List>
-            </FloatingCard>
+            </Box>
           </Box>
         </motion.div>
 
@@ -548,92 +494,95 @@ const Dashboard = () => {
                 mb: 2 
               }}
             >
-              <Typography variant="h6" fontWeight="600">
+              <Typography variant="h6" fontWeight="600" sx={{ color: '#1a1a1a' }}>
                 Recent Transactions
               </Typography>
               <Typography 
                 variant="body2" 
-                color="primary" 
-                sx={{ cursor: 'pointer' }}
+                sx={{ cursor: 'pointer', color: '#1976d2' }}
                 onClick={handleHistory}
               >
                 View all
               </Typography>
             </Box>
             
-            <FloatingCard sx={{ 
+            <Box sx={{ 
               p: 0, 
               overflow: 'hidden',
-              background: 'rgba(17, 24, 39, 0.7)',
-              borderColor: 'rgba(59, 130, 246, 0.1)'
+              background: '#ffffff',
+              borderRadius: 3,
+              border: '1px solid #e0e0e0'
             }}>
               <List sx={{ p: 0 }}>
                 <ListItem 
                   sx={{ 
-                    borderBottom: '1px solid rgba(55, 65, 81, 0.2)', 
+                    borderBottom: '1px solid #e0e0e0', 
                     py: 2,
-                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
+                    px: 3,
+                    '&:hover': { background: '#f5f5f5' }
                   }}
                 >
                   <ListItemIcon>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: 'rgba(59, 130, 246, 0.1)' }}>
-                      <ArrowUpwardIcon color="error" />
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: '#e3f2fd' }}>
+                      <ArrowUpwardIcon sx={{ color: '#1976d2' }} />
                     </Box>
                   </ListItemIcon>
                   <ListItemText 
-                    primary={<Box component="span" sx={{ fontWeight: 500 }}>Withdrawal to Bank ****4582</Box>} 
-                    secondary={<>May 10, 2023</>}
+                    primary={<Typography sx={{ fontWeight: 500, color: '#1a1a1a' }}>Withdrawal to Bank ****4582</Typography>} 
+                    secondary={<Typography sx={{ color: '#666' }}>May 10, 2023</Typography>}
                   />
                   <Box sx={{ textAlign: 'right' }}>
-                    <Typography variant="body2" color="error.main" fontWeight="600">-$250.00</Typography>
-                    <Typography variant="caption" color="text.secondary">Completed</Typography>
+                    <Typography variant="body2" sx={{ color: '#d32f2f', fontWeight: 600 }}>-$250.00</Typography>
+                    <Typography variant="caption" sx={{ color: '#666' }}>Completed</Typography>
                   </Box>
                 </ListItem>
                 
                 <ListItem 
                   sx={{ 
-                    borderBottom: '1px solid rgba(55, 65, 81, 0.2)', 
+                    borderBottom: '1px solid #e0e0e0', 
                     py: 2,
-                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
+                    px: 3,
+                    '&:hover': { background: '#f5f5f5' }
                   }}
                 >
                   <ListItemIcon>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: 'rgba(139, 92, 246, 0.1)' }}>
-                      <SendIcon color="error" />
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: '#e3f2fd' }}>
+                      <SendIcon sx={{ color: '#1976d2' }} />
                     </Box>
                   </ListItemIcon>
                   <ListItemText 
-                    primary={<Box component="span" sx={{ fontWeight: 500 }}>Sent to Alex Johnson</Box>} 
-                    secondary={<>May 9, 2023</>}
+                    primary={<Typography sx={{ fontWeight: 500, color: '#1a1a1a' }}>Sent to Alex Johnson</Typography>} 
+                    secondary={<Typography sx={{ color: '#666' }}>May 9, 2023</Typography>}
                   />
                   <Box sx={{ textAlign: 'right' }}>
-                    <Typography variant="body2" color="error.main" fontWeight="600">-$150.00</Typography>
-                    <Typography variant="caption" color="text.secondary">Completed</Typography>
+                    <Typography variant="body2" sx={{ color: '#d32f2f', fontWeight: 600 }}>-$150.00</Typography>
+                    <Typography variant="caption" sx={{ color: '#666' }}>Completed</Typography>
                   </Box>
                 </ListItem>
                 
                 <ListItem 
                   sx={{ 
                     py: 2,
-                    '&:hover': { background: 'rgba(59, 130, 246, 0.05)' }
+                    px: 3,
+                    '&:hover': { background: '#f5f5f5' }
                   }}
                 >
                   <ListItemIcon>
-                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: 'rgba(16, 185, 129, 0.1)' }}>
-                      <ReceiveIcon color="success" />
+                    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', width: 40, height: 40, borderRadius: '50%', bgcolor: '#e3f2fd' }}>
+                      <ReceiveIcon sx={{ color: '#1976d2' }} />
                     </Box>
                   </ListItemIcon>
                   <ListItemText 
-                    primary={<Box component="span" sx={{ fontWeight: 500 }}>Deposit from Bank ****4582</Box>} 
-                    secondary={<>May 8, 2023</>}
+                    primary={<Typography sx={{ fontWeight: 500, color: '#1a1a1a' }}>Deposit from Bank ****4582</Typography>} 
+                    secondary={<Typography sx={{ color: '#666' }}>May 8, 2023</Typography>}
                   />
                   <Box sx={{ textAlign: 'right' }}>
-                    <Typography variant="body2" color="success.main" fontWeight="600">+$500.00</Typography>
-                    <Typography variant="caption" color="text.secondary">Completed</Typography>
+                    <Typography variant="body2" sx={{ color: '#2e7d32', fontWeight: 600 }}>+$500.00</Typography>
+                    <Typography variant="caption" sx={{ color: '#666' }}>Completed</Typography>
                   </Box>
                 </ListItem>
               </List>
-            </FloatingCard>
+            </Box>
           </Box>
         </motion.div>
       </Container>

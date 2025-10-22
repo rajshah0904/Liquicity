@@ -7,8 +7,7 @@ import {
   CardContent, 
   Button, 
   CircularProgress,
-  Alert,
-  Stack
+  Alert
 } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { ArrowBack, Link as LinkIcon } from '@mui/icons-material';
@@ -140,15 +139,6 @@ export default function LinkBankUS() {
         >
           Back to Country Selection
         </Button>
-        
-        <Box sx={{ textAlign: 'center', mb: 4 }}>
-          <Typography variant="h4" fontWeight={600} gutterBottom>
-            Link US Bank Account
-          </Typography>
-          <Typography variant="body1" color="text.secondary">
-            Securely connect your US bank account with Plaid
-          </Typography>
-        </Box>
       </Box>
 
       {error && (
@@ -157,21 +147,20 @@ export default function LinkBankUS() {
         </Alert>
       )}
 
-      <Card>
-        <CardContent sx={{ p: 4 }}>
-          <Stack spacing={3} alignItems="center" textAlign="center">
-            <LinkIcon sx={{ fontSize: 48, color: 'primary.main' }} />
-            
-            <Box>
-              <Typography variant="h6" fontWeight={600} gutterBottom>
-                Connect with Plaid
-              </Typography>
-              <Typography variant="body2" color="text.secondary">
-                Plaid securely connects to your bank account using bank-grade security. 
-                Your login credentials are never shared with Liquicity.
-              </Typography>
-            </Box>
+      <Box sx={{ maxWidth: 600, mx: 'auto' }}>
+        <Box sx={{ textAlign: 'center', mb: 4 }}>
+          <LinkIcon sx={{ fontSize: 64, color: 'primary.main', mb: 3 }} />
+          
+          <Typography variant="h4" fontWeight={600} sx={{ mb: 2 }}>
+            Link Bank Account
+          </Typography>
+          <Typography variant="body1" color="text.secondary" sx={{ mb: 4, px: 2 }}>
+            Connect your bank account securely to transfer funds instantly. Your login credentials are never shared with Liquicity.
+          </Typography>
+        </Box>
 
+        <Card elevation={0} sx={{ border: '1px solid #e0e0e0', mb: 3 }}>
+          <CardContent sx={{ p: 4 }}>
             <Button 
               variant="contained" 
               size="large"
@@ -179,7 +168,8 @@ export default function LinkBankUS() {
               onClick={initializePlaidLink}
               disabled={loading}
               sx={{ 
-                py: 2,
+                py: 2.5,
+                fontSize: '1.1rem',
                 backgroundColor: 'primary.main',
                 '&:hover': {
                   backgroundColor: 'primary.dark',
@@ -190,16 +180,24 @@ export default function LinkBankUS() {
               {loading ? (
                 <CircularProgress size={24} color="inherit" />
               ) : (
-                'Connect with Plaid'
+                'Connect Bank Account'
               )}
             </Button>
+            
+            <Box sx={{ mt: 3, textAlign: 'center' }}>
+              <Typography variant="caption" color="text.secondary" sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 0.5 }}>
+                🔒 Protected by bank-level encryption
+              </Typography>
+            </Box>
+          </CardContent>
+        </Card>
 
-            <Typography variant="caption" color="text.secondary" sx={{ mt: 2 }}>
-              🔒 Secured by bank-level encryption
-            </Typography>
-          </Stack>
-        </CardContent>
-      </Card>
+        <Box sx={{ textAlign: 'center', px: 3 }}>
+          <Typography variant="body2" color="text.secondary">
+            We use industry-standard security protocols to protect your information. Instant transfers, no routing numbers needed.
+          </Typography>
+        </Box>
+      </Box>
     </Container>
   );
 } 

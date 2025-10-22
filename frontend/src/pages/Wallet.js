@@ -20,7 +20,12 @@ import {
   Alert,
   Accordion,
   AccordionSummary,
-  AccordionDetails
+  AccordionDetails,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Divider
 } from '@mui/material';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
@@ -38,7 +43,9 @@ import {
   Refresh as RefreshIcon,
   ArrowDownward as ArrowDownwardIcon,
   ArrowUpward as ArrowUpwardIcon,
-  ExpandMore as ExpandMoreIcon
+  ExpandMore as ExpandMoreIcon,
+  Check as CheckIcon,
+  Close as CloseIcon
 } from '@mui/icons-material';
 import VerifiedIcon from '@mui/icons-material/Verified';
 
@@ -70,6 +77,10 @@ export default function Wallet() {
   const [error, setError] = useState(null);
   const [data] = useState({ wallets: [], transactions: [] });
   const [linkedAccounts, setLinkedAccounts] = useState([]);
+  const [selectedAccount, setSelectedAccount] = useState(null);
+  const [accountDetailOpen, setAccountDetailOpen] = useState(false);
+  const [removeDialogOpen, setRemoveDialogOpen] = useState(false);
+  const [removingAccount, setRemovingAccount] = useState(false);
   const navigate = useNavigate();
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
@@ -136,6 +147,60 @@ export default function Wallet() {
   const handleWithdraw = () => navigate('/wallet/withdraw');
   const handleCardManagement = () => navigate('/virtual-account');
   const handleAddAccount = () => setLinkDialogOpen(true);
+  
+  const handleAccountClick = (account) => {
+    setSelectedAccount(account);
+    setAccountDetailOpen(true);
+  };
+
+  const handleRemoveClick = () => {
+    setAccountDetailOpen(false);
+    setRemoveDialogOpen(true);
+  };
+
+  const handleRemoveAccount = async () => {
+    if (!selectedAccount) return;
+    
+    setRemovingAccount(true);
+    try {
+      // Delete from external accounts
+      await externalAccountsAPI.deleteAccount(selectedAccount.id);
+      
+      // Refresh the linked accounts list
+      const response = await externalAccountsAPI.getAccounts();
+      setLinkedAccounts(response.data.accounts || []);
+      
+      setRemoveDialogOpen(false);
+      setSelectedAccount(null);
+    } catch (err) {
+      console.error('Error removing account:', err);
+      setError('Failed to remove account. Please try again.');
+    } finally {
+      setRemovingAccount(false);
+    }
+  };
+
+  const handleSetPreferred = async () => {
+    if (!selectedAccount) return;
+    
+    try {
+      // Update the payment method to be preferred (unified endpoint)
+      await externalAccountsAPI.updatePaymentMethod(selectedAccount.id, { is_preferred: true });
+      
+      // Refresh the linked accounts list
+      const response = await externalAccountsAPI.getAccounts();
+      setLinkedAccounts(response.data.accounts || []);
+      
+      // Update the selected account
+      const updatedAccount = response.data.accounts.find(acc => acc.id === selectedAccount.id);
+      if (updatedAccount) {
+        setSelectedAccount(updatedAccount);
+      }
+    } catch (err) {
+      console.error('Error setting preferred payment method:', err);
+      setError('Failed to set preferred payment method. Please try again.');
+    }
+  };
 
   if (walletLoading) {
     return (
@@ -162,117 +227,99 @@ export default function Wallet() {
       sx={{ 
         width: '100%', 
         minHeight: 'calc(100vh - 64px)',
-        background: '#000000',
+        background: '#ffffff',
         pb: 8
       }}
     >
-      <AnimatedBackground />
-      
       <Container maxWidth="lg" sx={{ pt: 3 }}>
-        {/* Header */}
-        <Box sx={{ 
-          display: 'flex', 
-          justifyContent: 'space-between', 
-          alignItems: 'center', 
-          mb: 4,
-          flexDirection: isMobile ? 'column' : 'row',
-          gap: isMobile ? 2 : 0
-        }}>
-          <Box component={motion.div} variants={itemVariants}>
-            <Typography variant="h4" component="h1" fontWeight="600">
-              Wallet
-            </Typography>
-            <Typography 
-              variant="body2" 
-              color="text.secondary" 
-              sx={{ mt: 0.5, display: 'flex', alignItems: 'center' }}
-            >
-              Last updated: {format(new Date(), 'MMM dd, yyyy • HH:mm')}
-              <IconButton 
-                size="small" 
-                sx={{ ml: 1 }}
-                onClick={refetchWallet}
-              >
-                <RefreshIcon fontSize="small" />
-              </IconButton>
-            </Typography>
-          </Box>
-        </Box>
-
         {/* Balance Summary */}
         <SlideRightBox variants={itemVariants}>
-          <FloatingCard 
-            sx={{ 
-              p: 3, 
-              mb: 4,
-              background: 'rgba(17, 24, 39, 0.7)',
-              borderColor: 'rgba(59, 130, 246, 0.1)'
-            }}
-          >
-            <Box>
-              <Typography variant="body2" color="text.secondary" fontWeight="500">Total Balance</Typography>
-              <Box sx={{ display: 'flex', alignItems: 'center', mt: 1 }}>
-                <Typography variant="h3" component="div" fontWeight={700}>
-                  <CountUp
-                    start={0}
-                    end={totalLocalBalance}
-                    duration={1.5}
-                    separator=","
-                    decimals={2}
-                    decimal="."
-                    prefix={`${getCurrencySymbol(currency)}`}
-                  />
-                </Typography>
-              </Box>
+          <Box sx={{ 
+            p: 4, 
+            mb: 5,
+            background: '#f5f5f5',
+            borderRadius: 3,
+            border: 'none',
+          }}>
+            <Typography variant="body2" sx={{ color: '#666', fontWeight: 400, mb: 2, fontSize: '1rem' }}>
+              Total Balance
+            </Typography>
+            <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+              <Typography variant="h2" component="div" fontWeight={700} sx={{ color: '#1a1a1a', fontSize: '3.5rem' }}>
+                <CountUp
+                  start={0}
+                  end={totalLocalBalance}
+                  duration={1.5}
+                  separator=","
+                  decimals={2}
+                  decimal="."
+                  prefix={`${getCurrencySymbol(currency)}`}
+                />
+              </Typography>
             </Box>
-          </FloatingCard>
+            <Typography 
+              variant="body2" 
+              sx={{ 
+                color: '#1976d2', 
+                fontWeight: 500,
+                display: 'flex',
+                alignItems: 'center',
+                gap: 0.5
+              }}
+            >
+              Daily Rewards (~4.0% APY)
+            </Typography>
+          </Box>
         </SlideRightBox>
 
         {/* Wallet Actions */}
         <Grid container spacing={3} sx={{ mb: 4 }}>
-          <Grid item xs={12} md={6}>
+          <Grid item xs={12}>
             <motion.div variants={itemVariants}>
-              <FloatingCard sx={{ 
-                p: 3,
-                height: '100%',
-                background: 'rgba(17, 24, 39, 0.7)',
-                borderColor: 'rgba(59, 130, 246, 0.1)'
+              <Box sx={{ 
+                p: 4,
+                background: '#f5f5f5',
+                borderRadius: 3,
+                border: 'none',
               }}>
-                <Typography variant="h6" fontWeight="600" sx={{ mb: 2 }}>
+                <Typography variant="h6" fontWeight="600" sx={{ mb: 3, color: '#1a1a1a' }}>
                   Wallet Actions
                 </Typography>
                 <Grid container spacing={2}>
-                  <Grid item xs={6}>
+                  <Grid item xs={12} sm={6}>
                     <Button
                       variant="contained"
                       fullWidth
                       startIcon={<ArrowDownwardIcon />}
                       onClick={handleDeposit}
                       sx={{ 
-                        py: 1.5, 
-                        backgroundColor: 'primary.main',
+                        py: 2, 
+                        backgroundColor: '#1976d2',
+                        color: '#ffffff',
+                        boxShadow: 'none',
                         '&:hover': {
-                          backgroundColor: 'primary.dark',
-                          boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)'
+                          backgroundColor: '#1565c0',
+                          boxShadow: 'none'
                         }
                       }}
                     >
                       Deposit
                     </Button>
                   </Grid>
-                  <Grid item xs={6}>
+                  <Grid item xs={12} sm={6}>
                     <Button
                       variant="outlined"
                       fullWidth
                       startIcon={<ArrowUpwardIcon />}
                       onClick={handleWithdraw}
                       sx={{ 
-                        py: 1.5,
-                        borderColor: 'rgba(59, 130, 246, 0.6)',
-                        color: 'primary.main',
+                        py: 2,
+                        borderColor: '#1976d2',
+                        color: '#1976d2',
+                        backgroundColor: '#ffffff',
                         '&:hover': {
-                          borderColor: 'primary.main',
-                          boxShadow: '0 0 15px rgba(59, 130, 246, 0.3)'
+                          borderColor: '#1565c0',
+                          backgroundColor: '#f5f5f5'
                         }
                       }}
                     >
@@ -280,63 +327,22 @@ export default function Wallet() {
                     </Button>
                   </Grid>
                 </Grid>
-              </FloatingCard>
-            </motion.div>
-          </Grid>
-          
-          <Grid item xs={12} md={6}>
-            <motion.div variants={itemVariants}>
-              <FloatingCard sx={{ 
-                p: 3,
-                height: '100%',
-                background: 'rgba(17, 24, 39, 0.7)',
-                borderColor: 'rgba(59, 130, 246, 0.1)'
-              }}>
-                <Box sx={{ 
-                  display: 'flex', 
-                  justifyContent: 'space-between', 
-                  alignItems: 'center', 
-                  mb: 2 
-                }}>
-                  <Typography variant="h6" fontWeight="600">
-                    Virtual Account
-                  </Typography>
-                </Box>
-                <Typography variant="body2" color="text.secondary">
-                  View your bank details to receive funds directly into your wallet via ACH or wire transfers.
-                </Typography>
-                <Button
-                  variant="contained"
-                  fullWidth
-                  startIcon={<AccountBalanceIcon />}
-                  onClick={handleCardManagement}
-                  sx={{ 
-                    mt: 2,
-                    py: 1.5,
-                    backgroundColor: 'primary.main',
-                    '&:hover': {
-                      backgroundColor: 'primary.dark',
-                      boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)'
-                    }
-                  }}
-                >
-                  View Account Details
-                </Button>
-              </FloatingCard>
+              </Box>
             </motion.div>
           </Grid>
         </Grid>
 
         {/* Linked Accounts */}
         <motion.div variants={itemVariants}>
-          <FloatingCard sx={{ 
-            p: 3,
+          <Box sx={{ 
+            p: 4,
             mb: 4,
-            background: 'rgba(17, 24, 39, 0.7)',
-            borderColor: 'rgba(59, 130, 246, 0.1)'
+            background: '#ffffff',
+            borderRadius: 3,
+            border: '1px solid #e0e0e0'
           }}>
-            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 2 }}>
-              <Typography variant="h6" fontWeight="600">
+            <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+              <Typography variant="h6" fontWeight="600" sx={{ color: '#1a1a1a' }}>
                 Linked Payment Methods
               </Typography>
               <Button
@@ -344,7 +350,7 @@ export default function Wallet() {
                 startIcon={<AddIcon />}
                 variant="text"
                 onClick={handleAddAccount}
-                sx={{ color: 'primary.main' }}
+                sx={{ color: '#1976d2', textTransform: 'none' }}
               >
                 Add
               </Button>
@@ -354,124 +360,300 @@ export default function Wallet() {
               {linkedAccounts.map((account, index) => (
                 <ListItem 
                   key={account.id}
+                  onClick={() => handleAccountClick(account)}
                   sx={{ 
-                    p: 2, 
+                    p: 3, 
                     mb: index < linkedAccounts.length - 1 ? 2 : 0, 
                     borderRadius: 2,
-                    background: 'rgba(17, 24, 39, 0.5)',
-                    border: '1px solid rgba(55, 65, 81, 0.5)',
+                    background: '#f5f5f5',
+                    border: 'none',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    '&:hover': {
+                      background: '#e8e8e8',
+                    }
                   }}
                 >
-                  <ListItemIcon sx={{ minWidth: 40 }}>
+                  <ListItemIcon sx={{ minWidth: 56, mr: 2 }}>
                     <Box sx={{ 
                       borderRadius: '50%', 
-                      width: 40, 
-                      height: 40, 
+                      width: 48, 
+                      height: 48, 
                       display: 'flex', 
                       alignItems: 'center', 
                       justifyContent: 'center',
-                      backgroundColor: 'rgba(59, 130, 246, 0.1)'
+                      backgroundColor: '#e3f2fd'
                     }}>
-                      <AccountBalanceIcon color="primary" />
+                      <AccountBalanceIcon sx={{ color: '#1976d2', fontSize: 28 }} />
                     </Box>
                   </ListItemIcon>
                   <ListItemText 
                     primary={
-                      <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                        <Typography variant="subtitle1" fontWeight={500}>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 0.5 }}>
+                        <Typography variant="subtitle1" fontWeight={600} sx={{ color: '#1a1a1a' }}>
                           {account.bank_name}
                         </Typography>
                         {account.active && (
                           <Box sx={{ 
                             display: 'flex', 
                             alignItems: 'center', 
-                            ml: 1,
-                            color: 'success.main',
+                            ml: 1.5,
+                            color: '#2e7d32',
                             fontSize: '0.75rem'
                           }}>
                             <VerifiedIcon fontSize="inherit" sx={{ mr: 0.5 }} />
-                            <Typography variant="caption" color="success.main">Active</Typography>
+                            <Typography variant="caption" sx={{ color: '#2e7d32', fontWeight: 500 }}>Active</Typography>
                           </Box>
                         )}
                       </Box>
                     }
-                    secondary={`****${account.last4}`}
+                    secondary={
+                      <Box>
+                        <Typography variant="body2" sx={{ color: '#666' }}>
+                          ****{account.last4}
+                        </Typography>
+                        <Typography variant="caption" sx={{ color: '#999', mt: 0.5, display: 'block' }}>
+                          {account.currency?.toUpperCase() || 'USD'}
+                        </Typography>
+                      </Box>
+                    }
                   />
+                  {account.is_preferred && (
+                    <Box sx={{ 
+                      display: 'flex', 
+                      alignItems: 'center',
+                      ml: 2,
+                      backgroundColor: '#2e7d32',
+                      borderRadius: '20px',
+                      px: 1.5,
+                      py: 0.75,
+                      gap: 0.5
+                    }}>
+                      <CheckIcon sx={{ color: '#ffffff', fontSize: 16 }} />
+                      <Typography 
+                        variant="caption" 
+                        sx={{ 
+                          color: '#ffffff', 
+                          fontWeight: 600,
+                          letterSpacing: '0.5px',
+                          fontSize: '0.7rem'
+                        }}
+                      >
+                        PREFERRED
+                      </Typography>
+                    </Box>
+                  )}
                 </ListItem>
               ))}
             </List>
             <LinkPaymentDialog open={linkDialogOpen} onClose={()=>setLinkDialogOpen(false)} />
-          </FloatingCard>
+          </Box>
         </motion.div>
 
-        {/* FAQs */}
-        <motion.div variants={itemVariants}>
-          <FloatingCard sx={{ 
-            p: 3,
-            background: 'rgba(17, 24, 39, 0.7)',
-            borderColor: 'rgba(59, 130, 246, 0.1)'
-          }}>
-            <Typography variant="h6" fontWeight="600" sx={{ mb: 2 }}>
-              Frequently Asked Questions
+        {/* Account Detail Dialog */}
+        <Dialog 
+          open={accountDetailOpen} 
+          onClose={() => setAccountDetailOpen(false)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: {
+              borderRadius: 3,
+            }
+          }}
+        >
+          {selectedAccount && (
+            <>
+              <DialogTitle sx={{ pb: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', mb: 1 }}>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    <Box sx={{ 
+                      borderRadius: '50%', 
+                      width: 56, 
+                      height: 56, 
+                      display: 'flex', 
+                      alignItems: 'center', 
+                      justifyContent: 'center',
+                      backgroundColor: '#e3f2fd',
+                      mr: 2
+                    }}>
+                      <AccountBalanceIcon sx={{ color: '#1976d2', fontSize: 32 }} />
+                    </Box>
+                    <Box>
+                      <Typography variant="h6" fontWeight={600}>
+                        {selectedAccount.bank_name}
+                      </Typography>
+                      <Typography variant="body2" color="text.secondary">
+                        ****{selectedAccount.last4}
+                      </Typography>
+                    </Box>
+                  </Box>
+                  <IconButton 
+                    onClick={() => setAccountDetailOpen(false)}
+                    sx={{ 
+                      color: '#666',
+                      '&:hover': {
+                        backgroundColor: '#f5f5f5'
+                      }
+                    }}
+                  >
+                    <CloseIcon />
+                  </IconButton>
+                </Box>
+              </DialogTitle>
+              <Divider />
+              <DialogContent sx={{ py: 3 }}>
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    Status
+                  </Typography>
+                  <Box sx={{ display: 'flex', alignItems: 'center' }}>
+                    {selectedAccount.active ? (
+                      <>
+                        <VerifiedIcon sx={{ color: '#2e7d32', fontSize: 20, mr: 1 }} />
+                        <Typography variant="body1" fontWeight={500} sx={{ color: '#2e7d32' }}>
+                          Active
+                        </Typography>
+                      </>
+                    ) : (
+                      <Typography variant="body1" fontWeight={500} color="text.secondary">
+                        Inactive
+                      </Typography>
+                    )}
+                  </Box>
+                </Box>
+
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    Currency
+                  </Typography>
+                  <Typography variant="body1" fontWeight={500}>
+                    {selectedAccount.currency?.toUpperCase() || 'USD'}
+                  </Typography>
+                </Box>
+
+                <Box sx={{ mb: 3 }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                    Account Type
+                  </Typography>
+                  <Typography variant="body1" fontWeight={500}>
+                    {selectedAccount.account_type || 'Checking'}
+                  </Typography>
+                </Box>
+
+                <Box>
+                  {selectedAccount.is_preferred ? (
+                    <>
+                      <Box sx={{ display: 'flex', alignItems: 'center', mb: 1 }}>
+                        <VerifiedIcon sx={{ color: '#2e7d32', fontSize: 20, mr: 1 }} />
+                        <Typography variant="body1" fontWeight={500} sx={{ color: '#1a1a1a' }}>
+                          Preferred when paying online
+                        </Typography>
+                      </Box>
+                      <Button
+                        onClick={handleSetPreferred}
+                        sx={{ 
+                          color: '#1976d2',
+                          textTransform: 'none',
+                          fontWeight: 500,
+                          pl: 0,
+                          '&:hover': {
+                            backgroundColor: 'transparent',
+                            textDecoration: 'underline'
+                          }
+                        }}
+                      >
+                        Change
+                      </Button>
+                    </>
+                  ) : (
+                    <>
+                      <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                        Set as preferred to use this account by default.
+                      </Typography>
+                      <Button
+                        variant="contained"
+                        onClick={handleSetPreferred}
+                        sx={{ 
+                          backgroundColor: '#1976d2',
+                          color: '#ffffff',
+                          textTransform: 'none',
+                          fontWeight: 500,
+                          boxShadow: 'none',
+                          '&:hover': {
+                            backgroundColor: '#1565c0',
+                            boxShadow: 'none'
+                          }
+                        }}
+                      >
+                        Set as preferred
+                      </Button>
+                    </>
+                  )}
+                </Box>
+              </DialogContent>
+              <Divider />
+              <DialogActions sx={{ p: 3, justifyContent: 'center' }}>
+                <Button 
+                  onClick={handleRemoveClick}
+                  sx={{ 
+                    color: '#1976d2',
+                    textTransform: 'none',
+                    fontWeight: 500
+                  }}
+                >
+                  Remove bank
+                </Button>
+              </DialogActions>
+            </>
+          )}
+        </Dialog>
+
+        {/* Remove Confirmation Dialog */}
+        <Dialog
+          open={removeDialogOpen}
+          onClose={() => !removingAccount && setRemoveDialogOpen(false)}
+          maxWidth="xs"
+          fullWidth
+          PaperProps={{
+            sx: {
+              borderRadius: 3,
+            }
+          }}
+        >
+          <DialogTitle sx={{ pb: 2 }}>
+            Remove Bank Account?
+          </DialogTitle>
+          <DialogContent>
+            <Typography variant="body2" color="text.secondary">
+              Are you sure you want to remove {selectedAccount?.bank_name} ending in {selectedAccount?.last4}? 
+              This action cannot be undone.
             </Typography>
-            
-            <Accordion 
+          </DialogContent>
+          <DialogActions sx={{ p: 3 }}>
+            <Button 
+              onClick={() => setRemoveDialogOpen(false)}
+              disabled={removingAccount}
+              sx={{ textTransform: 'none' }}
+            >
+              Cancel
+            </Button>
+            <Button 
+              onClick={handleRemoveAccount}
+              disabled={removingAccount}
+              variant="contained"
               sx={{ 
-                background: 'rgba(17, 24, 39, 0.5)', 
-                mb: 2,
-                '&::before': {
-                  display: 'none',
+                textTransform: 'none',
+                backgroundColor: '#d32f2f',
+                '&:hover': {
+                  backgroundColor: '#c62828'
                 }
               }}
             >
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography variant="subtitle1" fontWeight={500}>How long do bank transfers take?</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Typography variant="body2" color="text.secondary">
-                  Bank transfers typically take 1-3 business days to complete, depending on your bank and location.
-                </Typography>
-              </AccordionDetails>
-            </Accordion>
-            
-            <Accordion 
-              sx={{ 
-                background: 'rgba(17, 24, 39, 0.5)', 
-                mb: 2,
-                '&::before': {
-                  display: 'none',
-                }
-              }}
-            >
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography variant="subtitle1" fontWeight={500}>Are there any withdrawal limits?</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Typography variant="body2" color="text.secondary">
-                  Yes, withdrawal limits depend on your account verification level. Standard accounts can withdraw up to $5,000 per day.
-                </Typography>
-              </AccordionDetails>
-            </Accordion>
-            
-            <Accordion 
-              sx={{ 
-                background: 'rgba(17, 24, 39, 0.5)',
-                '&::before': {
-                  display: 'none',
-                }
-              }}
-            >
-              <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-                <Typography variant="subtitle1" fontWeight={500}>How do I link a new bank account?</Typography>
-              </AccordionSummary>
-              <AccordionDetails>
-                <Typography variant="body2" color="text.secondary">
-                  To link a new bank account, go to the "Linked Payment Methods" section and click "Add". You'll need your bank account details and may need to verify small test deposits.
-                </Typography>
-              </AccordionDetails>
-            </Accordion>
-          </FloatingCard>
-        </motion.div>
+              {removingAccount ? 'Removing...' : 'Remove'}
+            </Button>
+          </DialogActions>
+        </Dialog>
       </Container>
     </Box>
   );

@@ -225,11 +225,20 @@ export const externalAccountsAPI = {
   // Get all external accounts for the current user
   getAccounts: () => api.get('/external_accounts/accounts'),
   
+  // Get all payment methods (bank accounts + crypto wallets) - unified endpoint
+  getPaymentMethods: () => api.get('/external_accounts/payment-methods'),
+  
   // Get a specific external account
   getAccount: (id) => api.get(`/external_accounts/accounts/${id}`),
   
   // Create a new external account (manual entry)
   createAccount: (accountData) => api.post('/external_accounts/accounts', accountData),
+  
+  // Update an external account
+  updateAccount: (id, accountData) => api.put(`/external_accounts/accounts/${id}`, accountData),
+  
+  // Update a payment method (unified - handles both bank accounts and crypto wallets)
+  updatePaymentMethod: (id, data) => api.put(`/external_accounts/payment-methods/${id}`, data),
   
   // Delete an external account
   deleteAccount: (id) => api.delete(`/external_accounts/accounts/${id}`),

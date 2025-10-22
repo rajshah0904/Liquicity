@@ -3,374 +3,166 @@ import {
   Box, 
   Typography, 
   TextField, 
-  FormControlLabel, 
-  Switch, 
   Button, 
   Alert, 
   CircularProgress, 
   Container,
-  Grid,
-  Stack,
-  ListItem,
-  ListItemIcon,
-  ListItemText,
-  List,
-  Radio,
-  RadioGroup,
-  FormControl,
-  FormLabel,
-  useTheme,
-  useMediaQuery,
-  IconButton,
-  Divider,
-  Paper,
-  InputAdornment,
   MenuItem,
-  Tooltip,
-  Stepper,
-  Step,
-  StepLabel
+  Select,
+  FormControl,
+  Divider,
+  InputAdornment,
+  Avatar,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  List,
+  ListItem,
+  ListItemButton,
+  ListItemAvatar,
+  ListItemText,
+  IconButton
 } from '@mui/material';
-import { motion } from 'framer-motion';
-import { format } from 'date-fns';
-import { transferAPI, bridgeAPI, authAPI, externalAccountsAPI } from '../../utils/api';
+import { useNavigate } from 'react-router-dom';
+import { transferAPI, authAPI, externalAccountsAPI } from '../../utils/api';
 import useBridgeWallet from '../../hooks/useBridgeWallet';
-import { useNavigate, useLocation } from 'react-router-dom';
-import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
 import ArrowBackIcon from '@mui/icons-material/ArrowBack';
-import RefreshIcon from '@mui/icons-material/Refresh';
 import BoltIcon from '@mui/icons-material/Bolt';
-import VerifiedIcon from '@mui/icons-material/Verified';
-import AddIcon from '@mui/icons-material/Add';
-import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
-import { 
-  INSTANT_DEPOSIT_FEE_RATE, 
-  UI_INSTANT_DEPOSIT_FEE,
-  calculateFee
-} from '../../utils/feeConstants';
-
-import {
-  FloatingCard,
-  GlassContainer,
-  GradientText,
-  GradientDivider,
-  AnimatedBackground,
-  NeonButton
-} from '../../components/ui/ModernUIComponents';
-
-import {
-  SlideRightBox,
-  StaggerContainer,
-  StaggerItem
-} from '../../components/animations/AnimatedComponents';
-
-import LinkPaymentDialog from '../../components/LinkPaymentDialog';
-import { calculateLiquicityBalance } from '../../utils/balanceUtils';
+import ReceiptIcon from '@mui/icons-material/Receipt';
+import AccountBalanceIcon from '@mui/icons-material/AccountBalance';
+import KeyboardArrowDownIcon from '@mui/icons-material/KeyboardArrowDown';
+import CloseIcon from '@mui/icons-material/Close';
+import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import { getCurrencySymbol } from '../../utils/currency';
+import { calculateFee } from '../../utils/feeConstants';
 
-// Replace the region detection with a function that gets the user's region directly from profile
-const getUserRegion = (userData) => {
-  // Get the user's country from their profile
-  const country = userData?.country || 'US';
-  
-  // Map country to region and currency
-  if (country === 'MX') return { region: 'mx', currency: 'mxn' };
-  if (country === 'US') return { region: 'us', currency: 'usd' };
-  
-  // Check if country is in EU
-  const EU_COUNTRIES = [
-    'AT','BE','BG','CH','CY','CZ','DE','DK','EE','ES','FI','FR','GB',
-    'GR','HR','HU','IE','IS','IT','LI','LT','LU','LV','MT','NL','NO',
-    'PL','PT','RO','SE','SI','SK'
-  ];
-  
-  if (EU_COUNTRIES.includes(country)) return { region: 'eu', currency: 'eur' };
-  
-  // Default to US if unknown
-  return { region: 'us', currency: 'usd' };
-};
+// Supported currencies with their info
+const SUPPORTED_CURRENCIES = [
+  { code: 'USDC', name: 'USD Coin', flag: '💵', symbol: '$' },
+  { code: 'USD', name: 'United States dollar', flag: '🇺🇸', symbol: '$' },
+  { code: 'EUR', name: 'Euro', flag: '🇪🇺', symbol: '€' },
+  { code: 'MXN', name: 'Mexican peso', flag: '🇲🇽', symbol: '$' },
+  { code: 'BRL', name: 'Brazilian real', flag: '🇧🇷', symbol: 'R$' },
+  { code: 'ARS', name: 'Argentine peso', flag: '🇦🇷', symbol: '$' },
+  { code: 'COP', name: 'Colombian peso', flag: '🇨🇴', symbol: '$' },
+  { code: 'PEN', name: 'Peruvian sol', flag: '🇵🇪', symbol: 'S/' }
+];
 
 export default function Deposit() {
-  const [step, setStep] = useState('select-method'); // select-method, link-bank, deposit-form
-  const [form, setForm] = useState({ 
-    amount: '', 
-    external_account_id: '',
-    depositType: 'instant' // only instant deposit supported
-  });
+  const navigate = useNavigate();
+  const { wallet: bridgeWallet } = useBridgeWallet();
+  
+  const [selectedCurrency, setSelectedCurrency] = useState('USD');
+  const [amount, setAmount] = useState('');
+  const [linkedAccounts, setLinkedAccounts] = useState([]);
+  const [selectedAccount, setSelectedAccount] = useState(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
   const [success, setSuccess] = useState(null);
-  const [linkedAccounts, setLinkedAccounts] = useState([]);
-  const [userRegion, setUserRegion] = useState({ region: 'us', currency: 'usd' });
-  const [newAccountForm, setNewAccountForm] = useState({ 
-    bank_name: '',
-    account_owner_name: '',
-    account_number: '', 
-    routing_number: '', 
-    iban: '',
-    account_type: 'checking',
-    account_name: '',
-    address: {
-      street_line_1: '',
-      street_line_2: '',
-      city: '',
-      state: '',
-      postal_code: '',
-      country: ''
-    }
-  });
-  
-  const [plaidLinkToken, setPlaidLinkToken] = useState(null);
-  
-  const { wallet: bridgeWallet, loading: walletLoading } = useBridgeWallet();
-  const [balanceData, setBalanceData] = useState({ total: 0, available: 0, currency: 'USD' });
-  const [linkDialogOpen, setLinkDialogOpen] = useState(false);
-  
-  const navigate = useNavigate();
-  const location = useLocation();
-  const theme = useTheme();
-  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
-  const isLinkBankMode = location.pathname.includes('/link-bank');
+  const [paymentMethodDialogOpen, setPaymentMethodDialogOpen] = useState(false);
+  const [exchangeRate, setExchangeRate] = useState(null);
+  const [homeCurrency, setHomeCurrency] = useState('USD');
 
-  // If deposit page is opened with ?action=link-account, just show link-bank step
+  // Fetch linked accounts and set default currency
   useEffect(() => {
-    const params = new URLSearchParams(location.search);
-    if (params.get('action') === 'link-account' || isLinkBankMode) {
-      setStep('link-bank');
-    }
-  }, [location.pathname, location.search]);
-
-  const fetchLinkedAccounts = async () => {
-    setLoading(true);
-    try {
-      // Fetch the accounts directly - no sync needed since we get fresh data from Bridge
-      const response = await externalAccountsAPI.getAccounts();
-      setLinkedAccounts(response.data.accounts || []);
-    } catch (err) {
-      console.error('Error fetching linked accounts:', err);
-      setError('Failed to load your linked payment methods');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  useEffect(() => {
-    // Fetch linked accounts when component mounts
-    fetchLinkedAccounts();
-    
-    // Set region from profile once
-    (async () => {
+    const fetchData = async () => {
       try {
-        const userResp = await authAPI.getCurrentUser();
-        if (userResp.data) {
-          const region = getUserRegion(userResp.data);
-          setUserRegion(region);
+        // Set home currency from wallet
+        if (bridgeWallet?.fiat_currency) {
+          setHomeCurrency(bridgeWallet.fiat_currency.toUpperCase());
         }
-      } catch (e) {}
-    })();
-  }, [location.search, userRegion.region]);
 
-  // Update balance when bridgeWallet changes
-  useEffect(() => {
-    if (bridgeWallet) {
-      const total = calculateLiquicityBalance(bridgeWallet);
-      const currency = bridgeWallet.fiat_currency || 'USD';
-      setBalanceData({ total, available: total, currency });
-    }
+        // Fetch linked payment methods
+        const response = await externalAccountsAPI.getAccounts();
+        const accounts = response.data.accounts || [];
+        setLinkedAccounts(accounts);
+
+        // Find preferred account or first active account
+        const preferredAccount = accounts.find(acc => acc.is_preferred && acc.active);
+        const defaultAccount = preferredAccount || accounts.find(acc => acc.active);
+        
+        if (defaultAccount) {
+          setSelectedAccount(defaultAccount);
+          // Set currency based on account
+          if (defaultAccount.currency) {
+            setSelectedCurrency(defaultAccount.currency.toUpperCase());
+          }
+        } else {
+          // Default to USDC (no fees for crypto deposits)
+          setSelectedCurrency('USDC');
+        }
+      } catch (err) {
+        console.error('Error fetching accounts:', err);
+      }
+    };
+
+    fetchData();
   }, [bridgeWallet]);
 
-  // Load Plaid script once based on user region
+  const handleCurrencyChange = (event) => {
+    const newCurrency = event.target.value;
+    setSelectedCurrency(newCurrency);
+    
+    // Find a payment method that supports this currency
+    const supportedAccount = linkedAccounts.find(
+      acc => acc.active && acc.currency?.toUpperCase() === newCurrency
+    );
+    
+    if (supportedAccount) {
+      setSelectedAccount(supportedAccount);
+    } else {
+      setSelectedAccount(null);
+    }
+  };
+
+  // Fetch exchange rate when amount or currency changes
   useEffect(() => {
-    if (userRegion.region === 'us' && !window.Plaid) {
+    const fetchExchangeRate = async () => {
+      if (!amount || parseFloat(amount) <= 0) {
+        setExchangeRate(null);
+        return;
+      }
+
+      // If same currency or USDC to USD, no conversion needed
+      if (selectedCurrency === homeCurrency || (selectedCurrency === 'USDC' && homeCurrency === 'USD')) {
+        setExchangeRate({ rate: 1, same_currency: true });
+        return;
+      }
+
       try {
-        const script = document.createElement('script');
-        script.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
-        script.async = true;
-        script.onerror = () => {
-          console.error('Failed to load Plaid script');
-        };
-        document.body.appendChild(script);
+        // Use a simple exchange rate API (you can replace this with your backend endpoint)
+        const response = await fetch(`https://api.exchangerate-api.com/v4/latest/${selectedCurrency}`);
+        const data = await response.json();
+        const rate = data.rates[homeCurrency] || 1;
+        setExchangeRate({ rate, same_currency: false });
       } catch (err) {
-        console.error('Error loading Plaid script:', err);
+        console.error('Error fetching exchange rate:', err);
+        setExchangeRate({ rate: 1, same_currency: true });
       }
-    }
-  }, [userRegion.region]);
+    };
 
-  const handleChange = (e) => {
-    const { name, value, type, checked } = e.target;
-    setForm((prev) => ({ 
-      ...prev, 
-      [name]: type === 'checkbox' ? checked : value 
-    }));
-  };
-
-  const handleNewAccountChange = (e) => {
-    const { name, value } = e.target;
-    setNewAccountForm((prev) => ({ 
-      ...prev, 
-      [name]: value 
-    }));
-  };
-
-  const handleSelectAccount = (accountId) => {
-    setForm((prev) => ({ 
-      ...prev, 
-      external_account_id: accountId 
-    }));
-    setStep('deposit-form');
-  };
-
-  // Function to initialize Plaid Link
-  const initializePlaidLink = async () => {
-    try {
-      // Ensure Plaid script is present
-      if (!window.Plaid) {
-        // Try to load script dynamically and wait for it
-        await new Promise((resolve, reject) => {
-          const existing = document.querySelector('script[src="https://cdn.plaid.com/link/v2/stable/link-initialize.js"]');
-          if (existing) {
-            existing.addEventListener('load', resolve);
-            existing.addEventListener('error', () => reject(new Error('Plaid script failed to load')));
-          } else {
-            const script = document.createElement('script');
-            script.src = 'https://cdn.plaid.com/link/v2/stable/link-initialize.js';
-            script.async = true;
-            script.onload = resolve;
-            script.onerror = () => reject(new Error('Plaid script failed to load'));
-            document.body.appendChild(script);
-          }
-        });
-        if (!window.Plaid) {
-          throw new Error('Plaid script not available after load');
-        }
-      }
-      
-      setLoading(true);
-      const response = await externalAccountsAPI.getPlaidLinkToken();
-      
-      if (response && response.data && response.data.link_token) {
-        // Open Plaid Link automatically once we have the token
-        openPlaidLink(response.data.link_token);
-      } else {
-        throw new Error('Failed to get Plaid link token');
-      }
-    } catch (err) {
-      console.error('Error initializing Plaid Link:', err);
-      setError('Failed to initialize Plaid Link. Please try manual entry instead.');
-      // Fall back to manual entry if Plaid fails
-      setStep('link-bank');
-    } finally {
-      setLoading(false);
-    }
-  };
-  
-  // Function to open Plaid Link
-  const openPlaidLink = async (token) => {
-    if (!token) return;
-    
-    const linkTokenUsed = token;  // pass same token back to server per Bridge docs
-    const handler = window.Plaid.create({
-      token,
-      onSuccess: async (publicToken, metadata) => {
-        try {
-          setLoading(true);
-          // Exchange the public token via Bridge with institution metadata
-          await externalAccountsAPI.exchangePlaidToken(linkTokenUsed, publicToken, {
-            institution_name: metadata.institution?.name,
-            institution_id: metadata.institution?.institution_id
-          });
-          
-          // Fetch updated list of accounts after linking
-          fetchLinkedAccounts();
-          // Move to deposit form
-          setStep('deposit-form');
-        } catch (err) {
-          console.error('Error exchanging Plaid token:', err);
-          setError('Failed to link your bank account. Please try again.');
-        } finally {
-          setLoading(false);
-        }
-      },
-      onExit: (err) => {
-        if (err) {
-          console.error('Plaid Link exit with error:', err);
-          setError('There was an issue connecting to your bank. Please try manual entry.');
-          setStep('link-bank');
-        } else {
-          // User closed Plaid Link without completing
-          setStep('select-method');
-        }
-      },
-      onEvent: (eventName, metadata) => {
-        console.log('Plaid Link Event:', eventName, metadata);
-      }
-    });
-    
-    handler.open();
-  };
-
-  const handleLinkNewAccount = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError(null);
-    
-    try {
-      // Create payload for API call
-      const payload = {
-        bank_name: newAccountForm.bank_name,
-        account_owner_name: newAccountForm.account_owner_name,
-        account_name: newAccountForm.account_name,
-        account_type: newAccountForm.account_type,
-        currency: userRegion.currency,
-        address: newAccountForm.address
-      };
-      
-      // Add account number and routing number for US accounts
-      if (userRegion.region === 'us') {
-        payload.account_number = newAccountForm.account_number;
-        payload.routing_number = newAccountForm.routing_number;
-      } else {
-        // Add IBAN for EU accounts
-        payload.iban = newAccountForm.iban;
-      }
-      
-      const response = await externalAccountsAPI.createAccount(payload);
-      
-      // Refresh the accounts list
-      fetchLinkedAccounts();
-      
-      // Move to deposit form with the new account selected
-      setForm(prev => ({ ...prev, external_account_id: response.data.id }));
-      setStep('deposit-form');
-    } catch (err) {
-      console.error('Error linking bank account:', err);
-      setError('Failed to link your bank account. Please check your information and try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    fetchExchangeRate();
+  }, [amount, selectedCurrency, homeCurrency]);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!selectedAccount) return;
+
     setLoading(true);
     setError(null);
     setSuccess(null);
-    
+
     try {
       const resp = await transferAPI.deposit({
-        amount: form.amount,
-        currency: userRegion.currency,
-        external_account_id: form.external_account_id,
-        instant: form.depositType === 'instant',
+        amount: amount,
+        currency: selectedCurrency.toLowerCase(),
+        external_account_id: selectedAccount.id,
+        instant: true,
       });
-      
-      setSuccess(resp.data);
-      // Reset form but keep the selected account
-      setForm(prev => ({ 
-        amount: '', 
-        external_account_id: prev.external_account_id,
-        depositType: 'instant'
-      }));
+
+      setSuccess('Deposit successful!');
+      setAmount('');
+      setTimeout(() => navigate('/wallet'), 2000);
     } catch (err) {
       console.error(err);
       setError(err?.response?.data?.detail || err.message || 'Deposit failed');
@@ -379,488 +171,567 @@ export default function Deposit() {
     }
   };
 
-  const handleBack = () => {
-    if (step === 'deposit-form') {
-      setStep('select-method');
-    } else if (step === 'link-bank') {
-      setStep('select-method');
+  // Calculate fees and amounts
+  const depositAmount = amount ? parseFloat(amount) : 0;
+  
+  // Fee calculation: 0% for USDC, 1.5% for USD and EUR, use calculateFee for others
+  const getFee = () => {
+    if (!amount || depositAmount <= 0) return 0;
+    if (selectedCurrency === 'USDC') return 0; // No fees for USDC
+    if (selectedCurrency === 'USD' || selectedCurrency === 'EUR') {
+      return depositAmount * 0.015; // 1.5% fee
     }
+    return calculateFee(depositAmount); // Default fee calculation for other currencies
   };
+  
+  const fee = getFee();
+  const totalWithFees = depositAmount + fee;
+  const amountInHomeCurrency = exchangeRate && !exchangeRate.same_currency 
+    ? depositAmount * exchangeRate.rate 
+    : depositAmount;
 
-  // Animation variants
-  const pageVariants = {
-    initial: { opacity: 0 },
-    animate: { 
-      opacity: 1,
-      transition: { staggerChildren: 0.1 }
-    }
-  };
-
-  const itemVariants = {
-    initial: { opacity: 0, y: 20 },
-    animate: { 
-      opacity: 1, 
-      y: 0,
-      transition: { type: "spring", damping: 15 }
-    }
-  };
-
-  // Get rail name based on user's region
-  const getRailName = () => {
-    switch (userRegion.region) {
-      case 'us': return 'ACH';
-      case 'eu': return 'SEPA';
-      case 'mx': return 'SPEI';
-      default: return 'Bank Transfer';
-    }
-  };
-
-  // Set up the "Add Account" click handler to automatically direct users based on region
-  const handleAddAccount = () => {
-    if (userRegion.region === 'us') {
-      // US users go to Plaid
-      initializePlaidLink();
-    } else {
-      // Non-US users go to manual entry
-      setStep('link-bank');
-    }
-  };
+  const currencyInfo = SUPPORTED_CURRENCIES.find(c => c.code === selectedCurrency);
+  const supportedAccount = linkedAccounts.find(
+    acc => acc.active && acc.currency?.toUpperCase() === selectedCurrency
+  );
 
   return (
-    <Box 
-      component={motion.div}
-      initial="initial"
-      animate="animate"
-      variants={pageVariants}
-      sx={{ 
-        width: '100%', 
-        minHeight: 'calc(100vh - 64px)',
-        background: '#000000',
-        pb: 8,
-        position: 'relative'
-      }}
-    >
-      <AnimatedBackground />
-      
-      <Container maxWidth="lg" sx={{ pt: 3 }}>
-        <Grid container spacing={3} justifyContent="center">
-          <Grid item xs={12} md={6}>
+    <Box sx={{ minHeight: '100vh', bgcolor: '#ffffff', py: 4 }}>
+      <Container maxWidth="sm">
+        <Button 
+          startIcon={<ArrowBackIcon />} 
+          onClick={() => navigate('/wallet')}
+          sx={{ mb: 3, color: '#666' }}
+        >
+          Back
+        </Button>
+
+        <Box sx={{ mb: 4, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <Box>
+            <Typography variant="h4" fontWeight={600} sx={{ mb: 1, color: '#1a1a1a' }}>
+              Add Money
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              Deposit funds to your Liquicity account
+            </Typography>
+          </Box>
+          
+          {/* Exchange Rate Display */}
+          {exchangeRate && !exchangeRate.same_currency && amount && parseFloat(amount) > 0 && (
             <Box sx={{ 
-              display: 'flex', 
-              justifyContent: 'space-between', 
+              p: 1.5, 
+              bgcolor: '#f5f5f5', 
+              borderRadius: 2,
+              display: 'flex',
               alignItems: 'center',
-              mb: 2
+              gap: 0.5
             }}>
-              <Box sx={{ display: 'flex', alignItems: 'center' }}>
-                {step !== 'select-method' && (
-                  <Button 
-                    startIcon={<ArrowBackIcon />} 
-                    onClick={handleBack}
-                    sx={{ mr: 2, color: 'text.secondary' }}
-                  >
-                    Back
-                  </Button>
-                )}
-              </Box>
-              <Typography variant="body2" color="text.secondary">
-                Balance: <Typography component="span" fontWeight="600" color="#fff">{getCurrencySymbol(balanceData.currency)}{balanceData.available.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</Typography>
+              <Typography variant="caption" color="text.secondary" sx={{ fontSize: '0.75rem' }}>
+                🔒
+              </Typography>
+              <Typography variant="body2" fontWeight={600} sx={{ fontSize: '0.9rem' }}>
+                1 {selectedCurrency} = {exchangeRate.rate.toFixed(4)} {homeCurrency}
               </Typography>
             </Box>
-            
-            <Paper
-              elevation={0}
-              sx={{
-                borderRadius: 3,
-                bgcolor: 'rgba(17, 25, 40, 0.75)',
-                backdropFilter: 'blur(16px)',
-                border: '1px solid rgba(255, 255, 255, 0.1)',
-                p: 3,
-                mb: 4
-              }}
-            >
-              <Box sx={{ mb: 4 }}>
-                <Typography variant="h4" component="h1" fontWeight="600" color="#fff">
-                  {(isLinkBankMode || step==='link-bank') ? 'Link Payment Method' : 'Deposit Funds'}
-                </Typography>
-                <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                  {(isLinkBankMode || step==='link-bank') ? 'Securely link a bank or crypto wallet' : 'Add money to your Liquicity account'}
-                </Typography>
-              </Box>
-              
-              {/* Step 1: Select Bank Account or Link New One */}
-              {step === 'select-method' && (
-                <>
-                  <Typography variant="h6" fontWeight="600" sx={{ mb: 3 }}>
-                    Select Payment Method
-                  </Typography>
-                  
-                  {loading ? (
-                    <Box sx={{ display: 'flex', justifyContent: 'center', py: 4 }}>
-                      <CircularProgress />
+          )}
+        </Box>
+
+        {/* Currency Selector */}
+        <Box sx={{ mb: 5 }}>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2, fontSize: '0.95rem', fontWeight: 400 }}>
+            You add
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2, alignItems: 'center', flexWrap: 'nowrap' }}>
+            <FormControl sx={{ flexShrink: 0 }}>
+              <Select
+                value={selectedCurrency}
+                onChange={handleCurrencyChange}
+                renderValue={(value) => {
+                  const currency = SUPPORTED_CURRENCIES.find(c => c.code === value);
+                  return (
+                    <Box sx={{ display: 'flex', alignItems: 'center', gap: 0.8 }}>
+                      <Typography sx={{ fontSize: '1.2rem' }}>{currency?.flag}</Typography>
+                      <Typography fontWeight={600} fontSize="1rem">{currency?.code}</Typography>
                     </Box>
-                  ) : linkedAccounts.filter(account => account.active).length > 0 ? (
-                    <List disablePadding>
-                      {linkedAccounts.filter(account => account.active).map(account => (
-                        <ListItem 
-                          key={account.id}
-                          sx={{ 
-                            mb: 2, 
-                            p: 2, 
-                            borderRadius: 2, 
-                            cursor: 'pointer',
-                            border: '1px solid rgba(255, 255, 255, 0.1)',
-                            '&:hover': {
-                              borderColor: 'primary.main',
-                              bgcolor: 'rgba(59, 130, 246, 0.1)'
-                            }
-                          }}
-                          onClick={() => handleSelectAccount(account.id)}
-                        >
-                          <ListItemIcon sx={{ minWidth: 42 }}>
-                            <AccountBalanceIcon color="primary" />
-                          </ListItemIcon>
-                          <ListItemText 
-                            primary={account.bank_name || account.name} 
-                            secondary={account.last4 ? `****${account.last4}` : account.accountNumber}
-                            primaryTypographyProps={{ fontWeight: 600 }}
-                          />
-                        </ListItem>
-                      ))}
-                    </List>
-                  ) : (
-                    <Box sx={{ 
-                      p: 3, 
-                      borderRadius: 2, 
-                      textAlign: 'center',
-                      border: '1px dashed rgba(255, 255, 255, 0.2)',
-                      mb: 3
-                    }}>
-                      <Typography color="text.secondary" sx={{ mb: 1 }}>
-                        No payment methods linked yet
+                  );
+                }}
+                MenuProps={{
+                  PaperProps: {
+                    sx: {
+                      borderRadius: 2,
+                      mt: 1,
+                      maxHeight: 400,
+                      '& .MuiList-root': {
+                        py: 1
+                      }
+                    }
+                  }
+                }}
+                sx={{
+                  bgcolor: '#f5f5f5',
+                  borderRadius: '24px',
+                  fontSize: '1rem',
+                  fontWeight: 600,
+                  minWidth: '130px',
+                  width: '130px',
+                  '& .MuiOutlinedInput-notchedOutline': { border: 'none' },
+                  '& .MuiSelect-select': { 
+                    py: 1.2, 
+                    px: 2,
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 0.8
+                  },
+                  '&:hover': {
+                    bgcolor: '#eeeeee'
+                  }
+                }}
+              >
+                {/* Preferred Method - USDC (No fees) */}
+                <Box sx={{ px: 2, py: 1, pointerEvents: 'none' }}>
+                  <Typography variant="body2" color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                    Preferred method • <Box component="span" sx={{ fontWeight: 700, color: '#1976d2' }}>No fees</Box>
+                  </Typography>
+                </Box>
+                <MenuItem 
+                  value="USDC"
+                  sx={{
+                    py: 1.5,
+                    px: 2,
+                    '&.Mui-selected': {
+                      bgcolor: '#f5f5f5',
+                      '&:hover': {
+                        bgcolor: '#eeeeee'
+                      }
+                    }
+                  }}
+                >
+                  <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', pointerEvents: 'none' }}>
+                    <Typography sx={{ fontSize: '1.5rem' }}>💵</Typography>
+                    <Box sx={{ flex: 1 }}>
+                      <Typography fontWeight={600} fontSize="1rem">
+                        USDC
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        USD Coin
                       </Typography>
                     </Box>
-                  )}
-                  
-                    <Button
-                      startIcon={<AddIcon />}
-                      variant="outlined"
-                      fullWidth
-                    onClick={() => setLinkDialogOpen(true)}
-                      sx={{ 
-                        py: 1.5, 
-                        mt: 2,
-                        borderColor: 'rgba(255, 255, 255, 0.2)',
-                        color: 'white',
-                        '&:hover': {
-                          borderColor: 'primary.main',
-                          bgcolor: 'rgba(59, 130, 246, 0.05)'
+                    {selectedCurrency === 'USDC' && (
+                      <CheckCircleIcon sx={{ color: '#4caf50', fontSize: '1.2rem' }} />
+                    )}
+                  </Box>
+                </MenuItem>
+
+                <Divider sx={{ my: 1 }} />
+
+                {/* Your Currencies - Linked bank accounts */}
+                {linkedAccounts.filter(acc => acc.active).length > 0 && (
+                  <Box sx={{ px: 2, py: 1, pointerEvents: 'none' }}>
+                    <Typography variant="body2" fontWeight={600} color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                      Your currencies
+                    </Typography>
+                  </Box>
+                )}
+                {SUPPORTED_CURRENCIES
+                  .filter(currency => {
+                    if (currency.code === 'USDC') return false; // Exclude USDC from this section
+                    return linkedAccounts.some(
+                      acc => acc.active && acc.currency?.toUpperCase() === currency.code
+                    );
+                  })
+                  .map(currency => (
+                    <MenuItem 
+                      key={currency.code} 
+                      value={currency.code}
+                      sx={{
+                        py: 1.5,
+                        px: 2,
+                        '&.Mui-selected': {
+                          bgcolor: '#f5f5f5',
+                          '&:hover': {
+                            bgcolor: '#eeeeee'
+                          }
                         }
                       }}
                     >
-                    Link Payment Method
-                    </Button>
-                </>
-              )}
-              
-              {/* Step 2: Link New Bank Account */}
-              {step === 'link-bank' && (
-                <>
-                  <Typography variant="h6" fontWeight="600" sx={{ mb: 3 }}>
-                    Add Bank Account
-                  </Typography>
-                  
-                  {userRegion.region === 'us' && (
-                    <Box sx={{ mb: 4, p: 3, borderRadius: 2, bgcolor: 'rgba(59, 130, 246, 0.1)', border: '1px solid rgba(59, 130, 246, 0.3)' }}>
-                      <Typography variant="subtitle1" fontWeight="600" sx={{ mb: 1 }}>
-                          Recommended: Connect with Plaid
-                        </Typography>
-                      <Typography variant="body2" color="text.secondary" gutterBottom>
-                        Securely connect your US bank account with Plaid for faster verification and setup.
-                      </Typography>
-                      <Button 
-                        variant="contained" 
-                        color="primary" 
-                        fullWidth 
-                        onClick={initializePlaidLink}
-                        sx={{ mt: 2 }}
-                      >
-                        Connect with Plaid
-                      </Button>
-                      <Typography variant="caption" color="text.secondary" sx={{ display: 'block', textAlign: 'center', mt: 1 }}>
-                        Or continue with manual entry below if your bank isn't supported
-                      </Typography>
-                    </Box>
-                  )}
-                  
-                  <form onSubmit={handleLinkNewAccount}>
-                    <Grid container spacing={3}>
-                      <Grid item xs={12}>
-                        <TextField
-                          fullWidth
-                          label="Bank Name"
-                          name="bank_name"
-                          value={newAccountForm.bank_name}
-                          onChange={(e) => setNewAccountForm({...newAccountForm, bank_name: e.target.value})}
-                          required
-                          variant="outlined"
-                        />
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <TextField
-                          fullWidth
-                          label="Account Owner Name"
-                          name="account_owner_name"
-                          value={newAccountForm.account_owner_name}
-                          onChange={(e) => setNewAccountForm({...newAccountForm, account_owner_name: e.target.value})}
-                          required
-                          variant="outlined"
-                        />
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <TextField
-                          fullWidth
-                          label="Account Name (optional)"
-                          name="account_name"
-                          value={newAccountForm.account_name}
-                          onChange={(e) => setNewAccountForm({...newAccountForm, account_name: e.target.value})}
-                          variant="outlined"
-                          helperText="A nickname for your account, e.g., 'Personal Checking'"
-                        />
-                      </Grid>
-                      
-                      {userRegion.region === 'us' ? (
-                        // US account fields
-                        <>
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              fullWidth
-                              label="Account Number"
-                              name="account_number"
-                              value={newAccountForm.account_number}
-                              onChange={(e) => setNewAccountForm({...newAccountForm, account_number: e.target.value})}
-                              required
-                              variant="outlined"
-                            />
-                          </Grid>
-                          
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              fullWidth
-                              label="Routing Number"
-                              name="routing_number"
-                              value={newAccountForm.routing_number}
-                              onChange={(e) => setNewAccountForm({...newAccountForm, routing_number: e.target.value})}
-                              required
-                              variant="outlined"
-                            />
-                          </Grid>
-                        </>
-                      ) : (
-                        // EU account fields
-                        <Grid item xs={12}>
-                          <TextField
-                            fullWidth
-                            label="IBAN"
-                            name="iban"
-                            value={newAccountForm.iban}
-                            onChange={(e) => setNewAccountForm({...newAccountForm, iban: e.target.value})}
-                            required
-                            variant="outlined"
-                          />
-                        </Grid>
-                      )}
-                      
-                      <Grid item xs={12}>
-                        <Typography variant="subtitle2" sx={{ mb: 2 }}>
-                          Account Address
-                        </Typography>
-                        
-                        <Grid container spacing={2}>
-                          <Grid item xs={12}>
-                            <TextField
-                              fullWidth
-                              label="Street Address"
-                              name="street_line_1"
-                              value={newAccountForm.address.street_line_1}
-                              onChange={(e) => setNewAccountForm({
-                                ...newAccountForm, 
-                                address: {...newAccountForm.address, street_line_1: e.target.value}
-                              })}
-                              required
-                              variant="outlined"
-                            />
-                          </Grid>
-                          
-                          <Grid item xs={12}>
-                            <TextField
-                              fullWidth
-                              label="Street Address Line 2 (optional)"
-                              name="street_line_2"
-                              value={newAccountForm.address.street_line_2}
-                              onChange={(e) => setNewAccountForm({
-                                ...newAccountForm, 
-                                address: {...newAccountForm.address, street_line_2: e.target.value}
-                              })}
-                              variant="outlined"
-                            />
-                          </Grid>
-                          
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              fullWidth
-                              label="City"
-                              name="city"
-                              value={newAccountForm.address.city}
-                              onChange={(e) => setNewAccountForm({
-                                ...newAccountForm, 
-                                address: {...newAccountForm.address, city: e.target.value}
-                              })}
-                              required
-                              variant="outlined"
-                            />
-                          </Grid>
-                          
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              fullWidth
-                              label={userRegion.region === 'us' ? "State" : "Province/Region"}
-                              name="state"
-                              value={newAccountForm.address.state}
-                              onChange={(e) => setNewAccountForm({
-                                ...newAccountForm, 
-                                address: {...newAccountForm.address, state: e.target.value}
-                              })}
-                              required
-                              variant="outlined"
-                            />
-                          </Grid>
-                          
-                          <Grid item xs={12} sm={6}>
-                            <TextField
-                              fullWidth
-                              label={userRegion.region === 'us' ? "ZIP Code" : "Postal Code"}
-                              name="postal_code"
-                              value={newAccountForm.address.postal_code}
-                              onChange={(e) => setNewAccountForm({
-                                ...newAccountForm, 
-                                address: {...newAccountForm.address, postal_code: e.target.value}
-                              })}
-                              required
-                              variant="outlined"
-                            />
-                          </Grid>
-                        </Grid>
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <Button
-                          type="submit"
-                          fullWidth
-                          variant="contained"
-                          disabled={loading}
-                          sx={{ 
-                            py: 1.8,
-                            backgroundColor: 'primary.main',
-                            '&:hover': {
-                              backgroundColor: 'primary.dark',
-                              boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)'
-                            }
-                          }}
-                        >
-                          {loading ? <CircularProgress size={24} color="inherit" /> : 'Link Account'}
-                        </Button>
-                      </Grid>
-                    </Grid>
-                  </form>
-                </>
-              )}
-              
-              {/* Step 3: Deposit Form */}
-              {step === 'deposit-form' && (
-                <>
-                  <Typography variant="h6" fontWeight="600" sx={{ mb: 3 }}>
-                    Make a Deposit
-                  </Typography>
-                  
-                  <form onSubmit={handleSubmit}>
-                    <Grid container spacing={3}>
-                      <Grid item xs={12}>
-                        <TextField
-                          fullWidth
-                          label="Amount"
-                          name="amount"
-                          type="number"
-                          inputProps={{ step: '0.01', min: '0.01' }}
-                          value={form.amount}
-                          onChange={handleChange}
-                          required
-                          variant="outlined"
-                          InputProps={{ startAdornment: (<InputAdornment position="start">{getCurrencySymbol(balanceData.currency)}</InputAdornment>) }}
-                          sx={{
-                            '& .MuiOutlinedInput-root': {
-                              borderRadius: '12px',
-                            }
-                          }}
-                        />
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <Box sx={{ p: 3, border: '1px solid rgba(55, 65, 81, 0.5)', borderRadius: 2 }}>
-                          <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', mb: 0.5 }}>
-                            <Typography variant="subtitle1" fontWeight={600}>
-                              Instant Deposit
-                            </Typography>
-                            <Typography variant="caption" component="span" sx={{ bgcolor: 'rgba(59, 130, 246, 0.1)', px: 1, py: 0.5, borderRadius: 1, fontWeight: 'medium' }}>
-                              No Fee
-                            </Typography>
-                          </Box>
-                          <Typography variant="body2" color="text.secondary" sx={{ mt: 0.5 }}>
-                            Deposits are credited instantly (under&nbsp;1&nbsp;minute).
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', pointerEvents: 'none' }}>
+                        <Typography sx={{ fontSize: '1.5rem' }}>{currency.flag}</Typography>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography fontWeight={600} fontSize="1rem">
+                            {currency.code}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {currency.name}
                           </Typography>
                         </Box>
-                      </Grid>
-                      
-                      <Grid item xs={12}>
-                        <Button
-                          type="submit"
-                          fullWidth
-                          variant="contained"
-                          disabled={loading || !form.amount}
-                          sx={{ 
-                            py: 1.8,
-                            backgroundColor: 'primary.main',
-                            '&:hover': {
-                              backgroundColor: 'primary.dark',
-                              boxShadow: '0 0 15px rgba(59, 130, 246, 0.4)'
-                            }
-                          }}
-                        >
-                          {loading ? <CircularProgress size={24} color="inherit" /> : 'Make Deposit'}
-                        </Button>
-                      </Grid>
-                    </Grid>
-                  </form>
-                  
-                  {error && (
-                    <Alert severity="error" sx={{ mt: 3, borderRadius: 2 }}>
-                      {typeof error === 'string' ? error : JSON.stringify(error)}
-                    </Alert>
-                  )}
-                  
-                  {success && (
-                    <Alert severity="success" sx={{ mt: 3, borderRadius: 2 }}>
-                      Deposit initiated! Transfer ID: {success.on_ramp_transfer_id || success.id}
-                    </Alert>
-                  )}
-                </>
+                        {selectedCurrency === currency.code && (
+                          <CheckCircleIcon sx={{ color: '#4caf50', fontSize: '1.2rem' }} />
+                        )}
+                      </Box>
+                    </MenuItem>
+                  ))}
+                
+                {linkedAccounts.filter(acc => acc.active).length > 0 && (
+                  <Divider sx={{ my: 1 }} />
+                )}
+
+                {/* New Currency - Not linked yet */}
+                <Box sx={{ px: 2, py: 1, pointerEvents: 'none' }}>
+                  <Typography variant="body2" fontWeight={600} color="text.secondary" sx={{ fontSize: '0.875rem' }}>
+                    New currency
+                  </Typography>
+                </Box>
+                {SUPPORTED_CURRENCIES
+                  .filter(currency => {
+                    if (currency.code === 'USDC') return false; // Exclude USDC
+                    return !linkedAccounts.some(
+                      acc => acc.active && acc.currency?.toUpperCase() === currency.code
+                    );
+                  })
+                  .map(currency => (
+                    <MenuItem 
+                      key={currency.code} 
+                      value={currency.code}
+                      sx={{
+                        py: 1.5,
+                        px: 2,
+                        '&.Mui-selected': {
+                          bgcolor: '#f5f5f5',
+                          '&:hover': {
+                            bgcolor: '#eeeeee'
+                          }
+                        }
+                      }}
+                    >
+                      <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, width: '100%', pointerEvents: 'none' }}>
+                        <Typography sx={{ fontSize: '1.5rem' }}>{currency.flag}</Typography>
+                        <Box sx={{ flex: 1 }}>
+                          <Typography fontWeight={600} fontSize="1rem">
+                            {currency.code}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {currency.name}
+                          </Typography>
+                        </Box>
+                        {selectedCurrency === currency.code && (
+                          <CheckCircleIcon sx={{ color: '#4caf50', fontSize: '1.2rem' }} />
+                        )}
+                      </Box>
+                    </MenuItem>
+                  ))}
+              </Select>
+            </FormControl>
+
+            <Box sx={{ flex: 1, minWidth: 0, ml: 1 }}>
+              <TextField
+                fullWidth
+                type="number"
+                value={amount}
+                onChange={(e) => setAmount(e.target.value)}
+                placeholder="0.00"
+                inputProps={{ step: '0.01', min: '0.01' }}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    fontSize: '3rem',
+                    fontWeight: 600,
+                    fontFamily: '"SF Pro Display", "Inter", "-apple-system", "BlinkMacSystemFont", "Roboto", sans-serif',
+                    bgcolor: '#ffffff',
+                    borderRadius: 1,
+                    '& fieldset': { border: 'none', borderBottom: '2px solid #e0e0e0' },
+                    '&:hover fieldset': { borderBottom: '2px solid #bdbdbd' },
+                    '&.Mui-focused fieldset': { borderBottom: '2px solid #1976d2' },
+                    '& input': { 
+                      textAlign: 'left', 
+                      color: '#333',
+                      py: 1,
+                      px: 0,
+                      letterSpacing: '-0.02em'
+                    }
+                  }
+                }}
+              />
+            </Box>
+          </Box>
+        </Box>
+
+        {/* Show payment method if currency is supported and amount is entered */}
+        {amount && parseFloat(amount) > 0 && supportedAccount ? (
+          <Box>
+            {/* Paying with section */}
+            <Box sx={{ mb: 3 }}>
+              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+                Paying with
+              </Typography>
+              <Box 
+                onClick={() => setPaymentMethodDialogOpen(true)}
+                sx={{ 
+                  display: 'flex', 
+                  justifyContent: 'space-between', 
+                  alignItems: 'center',
+                  mb: 2,
+                  p: 2,
+                  bgcolor: '#f8f9fa',
+                  borderRadius: 2,
+                  cursor: 'pointer',
+                  transition: 'all 0.2s',
+                  '&:hover': {
+                    bgcolor: '#e3f2fd',
+                    transform: 'translateY(-1px)'
+                  }
+                }}
+              >
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+                  <Avatar sx={{ bgcolor: '#e3f2fd', width: 48, height: 48 }}>
+                    <AccountBalanceIcon sx={{ color: '#1976d2' }} />
+                  </Avatar>
+                  <Box>
+                    <Typography variant="body1" fontWeight={600} sx={{ color: '#1a1a1a' }}>
+                      {supportedAccount.bank_name}
+                    </Typography>
+                    <Typography variant="body2" color="text.secondary">
+                      {supportedAccount.currency?.toUpperCase()} • ****{supportedAccount.last4}
+                    </Typography>
+                  </Box>
+                </Box>
+                <KeyboardArrowDownIcon sx={{ color: '#666' }} />
+              </Box>
+              <Divider />
+            </Box>
+
+            {/* Arrival time */}
+            <Box sx={{ mb: 3 }}>
+              <Box sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2 }}>
+                <Avatar sx={{ bgcolor: '#f5f5f5', width: 40, height: 40 }}>
+                  <BoltIcon sx={{ color: '#666' }} />
+                </Avatar>
+                <Box>
+                  <Typography variant="body2" color="text.secondary">
+                    Arrives
+                  </Typography>
+                  <Typography variant="body1" fontWeight={600} sx={{ color: '#1a1a1a' }}>
+                    Today - in seconds
+                  </Typography>
+                </Box>
+              </Box>
+              <Divider />
+            </Box>
+
+            {/* Fee breakdown */}
+            {amount && parseFloat(amount) > 0 && (
+              <Box sx={{ mb: 3, p: 3, bgcolor: '#f8f9fa', borderRadius: 2 }}>
+                <Box sx={{ display: 'flex', alignItems: 'center', gap: 1.5, mb: 2 }}>
+                  <ReceiptIcon sx={{ color: '#666', fontSize: '1.2rem' }} />
+                  <Typography variant="body2" fontWeight={600} color="text.secondary">
+                    Payment breakdown
+                  </Typography>
+                </Box>
+
+                {/* Subtotal */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Subtotal
+                  </Typography>
+                  <Typography variant="body2" fontWeight={500}>
+                    {currencyInfo?.symbol}{depositAmount.toFixed(2)} {selectedCurrency}
+                  </Typography>
+                </Box>
+
+                {/* Fees */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
+                  <Typography variant="body2" color="text.secondary">
+                    Fees
+                  </Typography>
+                  <Typography variant="body2" fontWeight={500} sx={{ color: fee === 0 ? '#4caf50' : 'inherit' }}>
+                    {fee === 0 ? 'No fees' : `${currencyInfo?.symbol}${fee.toFixed(2)}`}
+                  </Typography>
+                </Box>
+
+                <Divider sx={{ my: 2 }} />
+
+                {/* Amount in deposit currency */}
+                <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 1.5 }}>
+                  <Typography variant="body2" fontWeight={600}>
+                    You pay
+                  </Typography>
+                  <Typography variant="body1" fontWeight={600}>
+                    {currencyInfo?.symbol}{totalWithFees.toFixed(2)} {selectedCurrency}
+                  </Typography>
+                </Box>
+
+                {/* Amount in home currency (if different) */}
+                {exchangeRate && !exchangeRate.same_currency && (
+                  <Box sx={{ display: 'flex', justifyContent: 'space-between', pt: 1.5, borderTop: '1px dashed #e0e0e0' }}>
+                    <Typography variant="body2" fontWeight={600} color="text.secondary">
+                      You receive
+                    </Typography>
+                    <Typography variant="body1" fontWeight={600} sx={{ color: '#1976d2' }}>
+                      {getCurrencySymbol(homeCurrency)}{amountInHomeCurrency.toFixed(2)} {homeCurrency}
+                    </Typography>
+                  </Box>
+                )}
+              </Box>
+            )}
+
+            {error && (
+              <Alert severity="error" sx={{ mb: 3 }}>
+                {error}
+              </Alert>
+            )}
+
+            {success && (
+              <Alert severity="success" sx={{ mb: 3 }}>
+                {success}
+              </Alert>
+            )}
+
+            <Button
+              fullWidth
+              variant="contained"
+              size="large"
+              onClick={handleSubmit}
+              disabled={loading || !amount || parseFloat(amount) <= 0}
+              sx={{
+                py: 2,
+                bgcolor: '#1976d2',
+                color: '#ffffff',
+                textTransform: 'none',
+                fontSize: '1.1rem',
+                fontWeight: 600,
+                borderRadius: 2,
+                '&:hover': {
+                  bgcolor: '#1565c0'
+                },
+                '&:disabled': {
+                  bgcolor: '#e0e0e0',
+                  color: '#9e9e9e'
+                }
+              }}
+            >
+              {loading ? <CircularProgress size={24} sx={{ color: '#fff' }} /> : 'Continue'}
+            </Button>
+          </Box>
+        ) : amount && parseFloat(amount) > 0 ? (
+          /* No payment method for selected currency */
+          <Box sx={{ 
+            p: 4, 
+            textAlign: 'center',
+            border: '1px dashed #e0e0e0',
+            borderRadius: 2
+          }}>
+            <AccountBalanceIcon sx={{ fontSize: 48, color: '#bbb', mb: 2 }} />
+            <Typography variant="body1" fontWeight={500} sx={{ mb: 1, color: '#1a1a1a' }}>
+              No payment method for {selectedCurrency}
+            </Typography>
+            <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
+              {selectedCurrency === 'USDC' 
+                ? 'Link a crypto wallet that supports USDC to continue'
+                : `Link a bank account that supports ${selectedCurrency} to continue`
+              }
+            </Typography>
+            <Button
+              variant="contained"
+              onClick={() => navigate(selectedCurrency === 'USDC' ? '/wallet/link-wallet' : '/wallet/link-bank')}
+              sx={{
+                bgcolor: '#1976d2',
+                color: '#ffffff',
+                textTransform: 'none',
+                '&:hover': {
+                  bgcolor: '#1565c0'
+                }
+              }}
+            >
+              Link Payment Method
+            </Button>
+          </Box>
+        ) : null}
+
+        {/* Payment Method Selection Dialog */}
+        <Dialog
+          open={paymentMethodDialogOpen}
+          onClose={() => setPaymentMethodDialogOpen(false)}
+          maxWidth="sm"
+          fullWidth
+          PaperProps={{
+            sx: {
+              borderRadius: 3,
+              maxHeight: '80vh'
+            }
+          }}
+        >
+          <DialogTitle sx={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
+            pb: 2
+          }}>
+            <Typography variant="h6" fontWeight={600}>
+              Choose how to pay
+            </Typography>
+            <IconButton 
+              onClick={() => setPaymentMethodDialogOpen(false)}
+              size="small"
+            >
+              <CloseIcon />
+            </IconButton>
+          </DialogTitle>
+          <DialogContent sx={{ px: 0 }}>
+            <List>
+              {linkedAccounts
+                .filter(acc => acc.active && acc.currency?.toUpperCase() === selectedCurrency)
+                .map((account) => (
+                  <ListItem key={account.id} disablePadding>
+                    <ListItemButton
+                      onClick={() => {
+                        setSelectedAccount(account);
+                        setPaymentMethodDialogOpen(false);
+                      }}
+                      selected={selectedAccount?.id === account.id}
+                      sx={{
+                        py: 2,
+                        px: 3,
+                        '&.Mui-selected': {
+                          bgcolor: '#f0f7ff',
+                          '&:hover': {
+                            bgcolor: '#e3f2fd'
+                          }
+                        }
+                      }}
+                    >
+                      <ListItemAvatar>
+                        <Avatar sx={{ bgcolor: '#e3f2fd', width: 48, height: 48 }}>
+                          <AccountBalanceIcon sx={{ color: '#1976d2' }} />
+                        </Avatar>
+                      </ListItemAvatar>
+                      <ListItemText
+                        primary={
+                          <Typography variant="body1" fontWeight={600}>
+                            {account.bank_name}
+                          </Typography>
+                        }
+                        secondary={
+                          <Typography variant="body2" color="text.secondary">
+                            {account.currency?.toUpperCase()} Checking • ****{account.last4}
+                          </Typography>
+                        }
+                      />
+                      {selectedAccount?.id === account.id && (
+                        <CheckCircleIcon sx={{ color: '#4caf50', ml: 2 }} />
+                      )}
+                    </ListItemButton>
+                  </ListItem>
+                ))}
+              
+              {linkedAccounts.filter(acc => acc.active && acc.currency?.toUpperCase() === selectedCurrency).length === 0 && (
+                <Box sx={{ p: 4, textAlign: 'center' }}>
+                  <Typography variant="body2" color="text.secondary">
+                    No payment methods available for {selectedCurrency}
+                  </Typography>
+                </Box>
               )}
-            </Paper>
-          </Grid>
-        </Grid>
+            </List>
+          </DialogContent>
+        </Dialog>
       </Container>
-      <LinkPaymentDialog open={linkDialogOpen} onClose={() => setLinkDialogOpen(false)} />
     </Box>
   );
-} 
+}

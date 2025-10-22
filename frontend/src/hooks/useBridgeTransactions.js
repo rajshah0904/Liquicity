@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { walletAPI } from '../utils/api';
 
-export default function useBridgeTransactions(pollMs = 15000) {
+export default function useBridgeTransactions() {
   const [txns, setTxns] = useState([]);
   const [loading, setLoading] = useState(true);
 
@@ -20,10 +20,8 @@ export default function useBridgeTransactions(pollMs = 15000) {
   }, []);
 
   useEffect(() => {
-    fetchTxns();
-    const id = setInterval(fetchTxns, pollMs);
-    return () => clearInterval(id);
-  }, [fetchTxns, pollMs]);
+    fetchTxns(); // initial fetch only, no polling
+  }, [fetchTxns]);
 
   return { txns, loading, refetch: fetchTxns };
 } 

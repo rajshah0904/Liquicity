@@ -334,20 +334,37 @@ export default function LinkBankEU() {
                 <LinkIcon sx={{ fontSize: 40, color: 'primary.main' }} />
                 <Box>
                   <Typography variant="h6" fontWeight={600} gutterBottom>
-                    Connect with Plaid EU
+                    Connect with Plaid
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Securely connect your European bank account (Coming Soon)
+                    Plaid securely connects to your bank with bank-grade encryption. Your credentials are never shared with Liquicity.
                   </Typography>
                 </Box>
                 <Button 
-                  variant="outlined" 
+                  variant="contained" 
                   fullWidth
                   onClick={initializePlaidEU}
                   disabled={loading}
+                  sx={{
+                    backgroundColor: '#1565c0',
+                    color: '#ffffff',
+                    '&:hover': {
+                      backgroundColor: '#0d47a1'
+                    },
+                    '&:disabled': {
+                      backgroundColor: '#e0e0e0',
+                      color: '#9e9e9e'
+                    }
+                  }}
                 >
-                  {loading ? 'Connecting…' : 'Connect with Plaid EU'}
+                  {loading ? 'Connecting…' : 'Connect with Plaid'}
                 </Button>
+                
+                <Box sx={{ textAlign: 'center' }}>
+                  <Typography variant="caption" color="text.secondary">
+                    🔒 Protected by bank-level encryption
+                  </Typography>
+                </Box>
               </Stack>
             </CardContent>
           </Card>
@@ -365,7 +382,7 @@ export default function LinkBankEU() {
                     Enter Bank Details Manually
                   </Typography>
                   <Typography variant="body2" color="text.secondary">
-                    Manually enter your IBAN and bank information
+                    Choose this if your bank isn't supported by Plaid. Note: Plaid enables automatic transfers for a seamless experience.
                   </Typography>
                 </Box>
                 <Button 

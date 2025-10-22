@@ -2,12 +2,11 @@ import { useState, useEffect, useCallback } from 'react';
 import { walletAPI } from '../utils/api';
 
 /**
- * Continually fetch the authenticated user's Bridge wallet and expose it.
+ * Fetch the authenticated user's Bridge wallet and expose it.
  *
- * @param {number} pollMs How often to poll in milliseconds (default 10s)
  * @returns {{wallet: object|null, loading: boolean, refetch: Function}}
  */
-export default function useBridgeWallet(pollMs = 10000) {
+export default function useBridgeWallet() {
   const [wallet, setWallet] = useState(null);
   const [loading, setLoading] = useState(true);
 
@@ -26,10 +25,8 @@ export default function useBridgeWallet(pollMs = 10000) {
   }, []);
 
   useEffect(() => {
-    fetchWallet(); // initial fetch
-    const id = setInterval(fetchWallet, pollMs);
-    return () => clearInterval(id);
-  }, [fetchWallet, pollMs]);
+    fetchWallet(); // initial fetch only, no polling
+  }, [fetchWallet]);
 
   return { wallet, loading, refetch: fetchWallet };
 } 

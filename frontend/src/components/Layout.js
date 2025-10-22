@@ -1,79 +1,41 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import {
-  AppBar,
   Box,
-  CssBaseline,
-  Divider,
-  Drawer,
-  IconButton,
   List,
   ListItem,
   ListItemButton,
   ListItemIcon,
   ListItemText,
-  Toolbar,
   Typography,
   Button,
-  Avatar,
   Menu,
   MenuItem,
-  Collapse,
-  Badge,
-  Switch,
-  FormControlLabel
+  Divider,
 } from '@mui/material';
 import {
-  Menu as MenuIcon,
-  Dashboard,
-  AccountBalanceWallet,
-  Send,
-  Paid,
-  ChatBubbleOutline,
-  Assessment,
-  Settings,
+  Dashboard as DashboardIcon,
+  AccountBalanceWallet as WalletIcon,
+  Send as SendIcon,
+  CallReceived as ReceiveIcon,
+  AccountBalance as VirtualAccountIcon,
+  Receipt as TransactionsIcon,
+  Person,
+  Settings as SettingsIcon,
   Logout,
-  AccountCircle,
-  SwapHoriz,
-  ExpandLess,
-  ExpandMore,
-  Payment,
-  Receipt,
-  Notifications,
-  DarkMode
+  Payment as PaymentsIcon,
+  RequestQuote as RequestIcon,
+  KeyboardArrowDown,
 } from '@mui/icons-material';
-import { useAuth0 } from '@auth0/auth0-react';
-
-const drawerWidth = 240;
-
-const menuItems = [
-  { text: 'Home', icon: <Dashboard />, path: '/dashboard' },
-  { text: 'Wallet', icon: <AccountBalanceWallet />, path: '/wallets' },
-  { text: 'Send & Receive', icon: <Send />, path: '/send' },
-  { text: 'Transactions', icon: <Paid />, path: '/transactions' },
-  { text: 'Swap Currency', icon: <SwapHoriz />, path: '/swap' }
-];
 
 const Layout = ({ children }) => {
-  const { isAuthenticated, isLoading, logout } = useAuth0();
   const navigate = useNavigate();
   const location = useLocation();
-  const [mobileOpen, setMobileOpen] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
-  const [paymentOpen, setPaymentOpen] = useState(false);
-  const [notificationsAnchorEl, setNotificationsAnchorEl] = useState(null);
-  const [darkMode, setDarkMode] = useState(false);
-
-  useEffect(() => {
-    // Auto-expand payment submenu if we're on a payment page
-    if (location.pathname.includes('/payment') || location.pathname.includes('/invoice')) {
-      setPaymentOpen(true);
-    }
-  }, [location.pathname]);
-
-  const handleDrawerToggle = () => {
-    setMobileOpen(!mobileOpen);
-  };
+  const [paymentsOpen, setPaymentsOpen] = useState(false);
+  
+  // Mock user data - replace with actual user context
+  const user = { name: 'Raj Shah' };
 
   const handleMenuOpen = (event) => {
     setAnchorEl(event.currentTarget);
@@ -83,331 +45,348 @@ const Layout = ({ children }) => {
     setAnchorEl(null);
   };
 
-  const handleNotificationsOpen = (event) => {
-    setNotificationsAnchorEl(event.currentTarget);
+  const handleProfile = () => {
+    navigate('/profile');
+    handleMenuClose();
   };
 
-  const handleNotificationsClose = () => {
-    setNotificationsAnchorEl(null);
+  const handleSettings = () => {
+    navigate('/settings');
+    handleMenuClose();
   };
 
   const handleLogout = () => {
     handleMenuClose();
-    
-    // Clear all Auth0 cache to prevent session interference with new signups
-    localStorage.clear();
-    sessionStorage.clear();
-    
-    // Simple logout and navigate
-    logout();
+    // Add logout logic here
     navigate('/login');
   };
 
-  const handleProfile = () => {
-    handleMenuClose();
-    navigate('/settings');
-  };
+  const menuItems = [
+    { text: 'Dashboard', icon: <DashboardIcon />, path: '/dashboard' },
+    { text: 'Wallet', icon: <WalletIcon />, path: '/wallet' },
+    { text: 'Send', icon: <SendIcon />, path: '/payments/send' },
+    { text: 'Receive', icon: <ReceiveIcon />, path: '/receive' },
+    { text: 'Virtual Account', icon: <VirtualAccountIcon />, path: '/virtual-account' },
+    { text: 'Transactions', icon: <TransactionsIcon />, path: '/transactions' },
+  ];
 
-  const handlePaymentToggle = () => {
-    setPaymentOpen(!paymentOpen);
-  };
+  const paymentsSubmenu = [
+    { text: 'Send Money', icon: <SendIcon />, path: '/payments/send' },
+    { text: 'Request Money', icon: <RequestIcon />, path: '/payments/request' },
+  ];
 
-  const handleDarkModeToggle = () => {
-    setDarkMode(!darkMode);
-    // In a real app, you would implement theme switching here
-  };
-
-  const drawer = (
-    <div>
-      <Toolbar>
-        <Typography variant="h6" noWrap component="div" sx={{ fontWeight: 'bold' }}>
-          Liquicity
-        </Typography>
-      </Toolbar>
-      <Divider />
-      <List>
-        {menuItems.map((item) => (
-          <ListItem key={item.text} disablePadding>
-            <ListItemButton 
-              selected={location.pathname === item.path}
-              onClick={() => {
-                navigate(item.path);
-                if (mobileOpen) handleDrawerToggle();
-              }}
-            >
-              <ListItemIcon>
-                {item.icon}
-              </ListItemIcon>
-              <ListItemText primary={item.text} />
-            </ListItemButton>
-          </ListItem>
-        ))}
-        
-        {/* Payment submenu */}
-        <ListItem disablePadding>
-          <ListItemButton onClick={handlePaymentToggle}>
-            <ListItemIcon>
-              <Payment />
-            </ListItemIcon>
-            <ListItemText primary="Payments" />
-            {paymentOpen ? <ExpandLess /> : <ExpandMore />}
-          </ListItemButton>
-        </ListItem>
-        <Collapse in={paymentOpen} timeout="auto" unmountOnExit>
-          <List component="div" disablePadding>
-            <ListItemButton 
-              selected={location.pathname === '/payment/request'}
-              onClick={() => {
-                navigate('/payment/request');
-                if (mobileOpen) handleDrawerToggle();
-              }}
-              sx={{ pl: 4 }}
-            >
-              <ListItemIcon>
-                <Receipt fontSize="small" />
-              </ListItemIcon>
-              <ListItemText primary="Request Money" />
-            </ListItemButton>
-            <ListItemButton 
-              selected={location.pathname === '/payment/invoices'}
-              onClick={() => {
-                navigate('/payment/invoices');
-                if (mobileOpen) handleDrawerToggle();
-              }}
-              sx={{ pl: 4 }}
-            >
-              <ListItemIcon>
-                <Receipt fontSize="small" />
-              </ListItemIcon>
-              <ListItemText primary="Invoices" />
-            </ListItemButton>
-          </List>
-        </Collapse>
-
-        <ListItem disablePadding>
-          <ListItemButton 
-            selected={location.pathname === '/settings'}
-            onClick={() => {
-              navigate('/settings');
-              if (mobileOpen) handleDrawerToggle();
-            }}
-          >
-            <ListItemIcon>
-              <Settings />
-            </ListItemIcon>
-            <ListItemText primary="Settings" />
-          </ListItemButton>
-        </ListItem>
-        
-        <ListItem disablePadding>
-          <ListItemButton 
-            selected={location.pathname === '/help'}
-            onClick={() => {
-              navigate('/help');
-              if (mobileOpen) handleDrawerToggle();
-            }}
-          >
-            <ListItemIcon>
-              <ChatBubbleOutline />
-            </ListItemIcon>
-            <ListItemText primary="Help & Support" />
-          </ListItemButton>
-        </ListItem>
-      </List>
-      
-      <Box sx={{ position: 'absolute', bottom: 0, width: '100%', p: 2 }}>
-        <FormControlLabel
-          control={
-            <Switch
-              checked={darkMode}
-              onChange={handleDarkModeToggle}
-              name="darkMode"
-              color="primary"
-            />
-          }
-          label={
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <DarkMode fontSize="small" sx={{ mr: 1 }} />
-              <Typography variant="body2">Dark Mode</Typography>
-            </Box>
-          }
-        />
-      </Box>
-    </div>
-  );
-
-  // Use display names or initials for the avatar
-  const getAvatarText = () => {
-    if (isAuthenticated) {
-      if (isAuthenticated.first_name && isAuthenticated.last_name) {
-        return `${isAuthenticated.first_name.charAt(0)}${isAuthenticated.last_name.charAt(0)}`;
-      } else if (isAuthenticated.username) {
-        return isAuthenticated.username.charAt(0).toUpperCase();
-      }
-    }
-    return 'U';
-  };
+  const otherItems = [
+    { text: 'Profile', icon: <Person />, path: '/profile' },
+    { text: 'Settings', icon: <SettingsIcon />, path: '/settings' },
+    { text: 'Logout', icon: <Logout />, path: '/logout' },
+  ];
 
   return (
-    <Box sx={{ display: 'flex' }}>
-      <CssBaseline />
-      <AppBar
-        position="fixed"
+    <Box sx={{ display: 'flex', minHeight: '100vh', bgcolor: '#ffffff' }}>
+      {/* Top Bar - Full width with logo on left */}
+      <Box
         sx={{
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-          ml: { sm: `${drawerWidth}px` },
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          height: 72,
+          bgcolor: '#ffffff',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          px: 4,
+          zIndex: 1100,
         }}
       >
-        <Toolbar>
-          <IconButton
-            color="inherit"
-            aria-label="open drawer"
-            edge="start"
-            onClick={handleDrawerToggle}
-            sx={{ mr: 2, display: { sm: 'none' } }}
+        {/* Logo */}
+        <Typography 
+          variant="h5" 
+          sx={{ 
+            fontWeight: 700, 
+            color: '#000000', 
+            fontSize: '1.5rem',
+            letterSpacing: '-0.5px',
+            cursor: 'pointer',
+          }}
+          onClick={() => navigate('/dashboard')}
+        >
+          Liquicity
+        </Typography>
+
+        {/* Right side - Promo button + User */}
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Button
+            variant="contained"
+            sx={{
+              bgcolor: '#37b24d',
+              color: '#fff',
+              px: 2.5,
+              py: 1,
+              fontSize: '0.875rem',
+              fontWeight: 600,
+              borderRadius: 2,
+              textTransform: 'none',
+              boxShadow: 'none',
+              '&:hover': {
+                bgcolor: '#2f9e44',
+                boxShadow: 'none',
+              },
+            }}
           >
-            <MenuIcon />
-          </IconButton>
-          <Typography variant="h6" noWrap component="div" sx={{ flexGrow: 1 }}>
-            {menuItems.find(item => item.path === location.pathname)?.text || 
-             'Liquicity'}
-          </Typography>
-          
-          {isAuthenticated ? (
-            <>
-              <IconButton 
-                color="inherit"
-                onClick={handleNotificationsOpen}
-                sx={{ mr: 2 }}
-              >
-                <Badge badgeContent={3} color="error">
-                  <Notifications />
-                </Badge>
-              </IconButton>
-              <Menu
-                id="notifications-menu"
-                anchorEl={notificationsAnchorEl}
-                open={Boolean(notificationsAnchorEl)}
-                onClose={handleNotificationsClose}
-                anchorOrigin={{
-                  vertical: 'bottom',
-                  horizontal: 'right',
-                }}
-                transformOrigin={{
-                  vertical: 'top',
-                  horizontal: 'right',
-                }}
-              >
-                <MenuItem onClick={handleNotificationsClose}>
-                  <Typography variant="body2">You received $250.00 from John D.</Typography>
-                </MenuItem>
-                <MenuItem onClick={handleNotificationsClose}>
-                  <Typography variant="body2">Your invoice #INV-2023 was paid</Typography>
-                </MenuItem>
-                <MenuItem onClick={handleNotificationsClose}>
-                  <Typography variant="body2">Welcome to Liquicity!</Typography>
-                </MenuItem>
-                <Divider />
-                <MenuItem onClick={() => {
-                  handleNotificationsClose();
-                  navigate('/notifications');
-                }}>
-                  <Typography variant="body2" color="primary">View all notifications</Typography>
-                </MenuItem>
-              </Menu>
-              
-              <IconButton
-                onClick={handleMenuOpen}
-                color="inherit"
-                edge="end"
-                aria-label="account menu"
-                aria-controls="menu-appbar"
-                aria-haspopup="true"
-              >
-                <Avatar sx={{ bgcolor: 'secondary.main' }}>
-                  {getAvatarText()}
-                </Avatar>
-              </IconButton>
-              <Menu
-                id="menu-appbar"
-                anchorEl={anchorEl}
-                anchorOrigin={{
-                  vertical: 'bottom',
-                  horizontal: 'right',
-                }}
-                keepMounted
-                transformOrigin={{
-                  vertical: 'top',
-                  horizontal: 'right',
-                }}
-                open={Boolean(anchorEl)}
-                onClose={handleMenuClose}
-              >
-                <MenuItem onClick={handleProfile}>
-                  <ListItemIcon>
-                    <AccountCircle fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText>Profile</ListItemText>
-                </MenuItem>
-                <MenuItem onClick={handleLogout}>
-                  <ListItemIcon>
-                    <Logout fontSize="small" />
-                  </ListItemIcon>
-                  <ListItemText>Logout</ListItemText>
-                </MenuItem>
-              </Menu>
-            </>
-          ) : (
-            <Button color="inherit" onClick={() => navigate('/login')}>Login</Button>
-          )}
-        </Toolbar>
-      </AppBar>
-      <Box
-        component="nav"
-        sx={{ width: { sm: drawerWidth }, flexShrink: { sm: 0 } }}
-        aria-label="navigation drawer"
-      >
-        <Drawer
-          variant="temporary"
-          open={mobileOpen}
-          onClose={handleDrawerToggle}
-          ModalProps={{
-            keepMounted: true, // Better open performance on mobile
-          }}
-          sx={{
-            display: { xs: 'block', sm: 'none' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
-          }}
-        >
-          {drawer}
-        </Drawer>
-        <Drawer
-          variant="permanent"
-          sx={{
-            display: { xs: 'none', sm: 'block' },
-            '& .MuiDrawer-paper': { boxSizing: 'border-box', width: drawerWidth },
-          }}
-          open
-        >
-          {drawer}
-        </Drawer>
+            Earn US$115
+          </Button>
+
+          <Box
+            onClick={handleMenuOpen}
+            sx={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: 1.5,
+              cursor: 'pointer',
+              px: 2,
+              py: 1,
+              borderRadius: 3,
+              transition: 'all 0.2s',
+              '&:hover': {
+                bgcolor: '#f5f5f5',
+              },
+            }}
+          >
+            <Box
+              sx={{
+                width: 40,
+                height: 40,
+                borderRadius: '50%',
+                bgcolor: '#d0d0d0',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                color: '#333',
+                fontSize: '0.875rem',
+                fontWeight: 600,
+              }}
+            >
+              {user?.name?.substring(0, 2).toUpperCase() || 'RS'}
+            </Box>
+            <Typography variant="body2" sx={{ fontWeight: 500, color: '#333', fontSize: '0.9375rem' }}>
+              {user?.name || 'Raj Shah'}
+            </Typography>
+            <KeyboardArrowDown sx={{ color: '#666', fontSize: 20 }} />
+          </Box>
+        </Box>
       </Box>
+
+      {/* Sidebar */}
+      <Box
+        sx={{
+          width: 280,
+          bgcolor: '#ffffff',
+          display: 'flex',
+          flexDirection: 'column',
+          position: 'fixed',
+          top: 72,
+          left: 0,
+          height: 'calc(100vh - 72px)',
+          overflowY: 'auto',
+          pt: 3,
+        }}
+      >
+        {/* Main Navigation */}
+        <List sx={{ px: 2.5, pb: 0 }}>
+          {menuItems.map((item) => (
+            <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
+              <ListItemButton
+                selected={location.pathname === item.path}
+                onClick={() => navigate(item.path)}
+                sx={{
+                  borderRadius: '100px',
+                  py: 1.25,
+                  px: 2.5,
+                  '&.Mui-selected': {
+                    bgcolor: '#e8e8e8',
+                    '&:hover': {
+                      bgcolor: '#e8e8e8',
+                    },
+                  },
+                  '&:hover': {
+                    bgcolor: '#f5f5f5',
+                  },
+                }}
+              >
+                <ListItemIcon sx={{ minWidth: 40, color: location.pathname === item.path ? '#333' : '#666' }}>
+                  {item.icon}
+                </ListItemIcon>
+                <ListItemText
+                  primary={item.text}
+                  primaryTypographyProps={{
+                    fontSize: '1rem',
+                    fontWeight: location.pathname === item.path ? 500 : 400,
+                    color: '#333',
+                    fontFamily: 'sans-serif',
+                  }}
+                />
+              </ListItemButton>
+            </ListItem>
+          ))}
+
+          {/* Payments with submenu - Commented out for now
+          <ListItem disablePadding sx={{ mb: 0.5 }}>
+            <ListItemButton
+              onClick={() => setPaymentsOpen(!paymentsOpen)}
+              sx={{
+                borderRadius: '100px',
+                py: 1.25,
+                px: 2.5,
+                '&:hover': {
+                  bgcolor: '#f5f5f5',
+                },
+              }}
+            >
+              <ListItemIcon sx={{ minWidth: 40, color: '#666' }}>
+                <PaymentsIcon />
+              </ListItemIcon>
+              <ListItemText
+                primary="Payments"
+                primaryTypographyProps={{
+                  fontSize: '1rem',
+                  fontWeight: 400,
+                  color: '#333',
+                  fontFamily: 'sans-serif',
+                }}
+              />
+              <KeyboardArrowDown
+                sx={{
+                  transform: paymentsOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                  transition: 'transform 0.2s',
+                  fontSize: 20,
+                  color: '#666',
+                }}
+              />
+            </ListItemButton>
+          </ListItem>
+
+          {paymentsOpen && (
+            <Box sx={{ pl: 2 }}>
+              {paymentsSubmenu.map((item) => (
+                <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
+                  <ListItemButton
+                    onClick={() => navigate(item.path)}
+                    sx={{
+                      borderRadius: '100px',
+                      py: 1.25,
+                      px: 2.5,
+                      '&:hover': {
+                        bgcolor: '#f5f5f5',
+                      },
+                    }}
+                  >
+                    <ListItemIcon sx={{ minWidth: 36, color: '#666' }}>
+                      {item.icon}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={item.text}
+                      primaryTypographyProps={{
+                        fontSize: '0.9375rem',
+                        fontWeight: 400,
+                        color: '#555',
+                        fontFamily: 'sans-serif',
+                      }}
+                    />
+                  </ListItemButton>
+                </ListItem>
+              ))}
+            </Box>
+          )}
+          */}
+
+          {/* Bottom section items */}
+          <Box sx={{ mt: 'auto', pt: 2 }}>
+            {otherItems.map((item) => (
+              <ListItem key={item.text} disablePadding sx={{ mb: 0.5 }}>
+                <ListItemButton
+                  onClick={() => {
+                    if (item.path === '/logout') {
+                      handleLogout();
+                    } else {
+                      navigate(item.path);
+                    }
+                  }}
+                  sx={{
+                    borderRadius: '100px',
+                    py: 1.25,
+                    px: 2.5,
+                    '&:hover': {
+                      bgcolor: '#f5f5f5',
+                    },
+                  }}
+                >
+                  <ListItemIcon sx={{ minWidth: 40, color: '#666' }}>
+                    {item.icon}
+                  </ListItemIcon>
+                  <ListItemText
+                    primary={item.text}
+                    primaryTypographyProps={{
+                      fontSize: '1rem',
+                      fontWeight: 400,
+                      color: '#333',
+                      fontFamily: 'sans-serif',
+                    }}
+                  />
+                </ListItemButton>
+              </ListItem>
+            ))}
+          </Box>
+        </List>
+      </Box>
+
+      {/* Main Content Area */}
       <Box
         component="main"
         sx={{
           flexGrow: 1,
-          p: 3,
-          width: { sm: `calc(100% - ${drawerWidth}px)` },
-          minHeight: '100vh',
-          bgcolor: darkMode ? '#121212' : '#f5f5f5',
-          color: darkMode ? '#fff' : 'inherit',
+          ml: '280px',
+          mt: '72px',
+          bgcolor: '#ffffff',
+          minHeight: 'calc(100vh - 72px)',
         }}
       >
-        <Toolbar /> {/* Spacing to account for the AppBar */}
-        {children || <Outlet />}
+        <Box sx={{ px: 5, py: 4 }}>{children || <Outlet />}</Box>
       </Box>
+
+      {/* User Menu */}
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleMenuClose}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }}
+        transformOrigin={{ vertical: 'top', horizontal: 'right' }}
+        PaperProps={{
+          sx: { mt: 1, minWidth: 180, borderRadius: 2 },
+        }}
+      >
+        <MenuItem onClick={handleProfile} sx={{ py: 1.5 }}>
+          <ListItemIcon>
+            <Person fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Profile</ListItemText>
+        </MenuItem>
+        <MenuItem onClick={handleSettings} sx={{ py: 1.5 }}>
+          <ListItemIcon>
+            <SettingsIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Settings</ListItemText>
+        </MenuItem>
+        <Divider />
+        <MenuItem onClick={handleLogout} sx={{ py: 1.5 }}>
+          <ListItemIcon>
+            <Logout fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Logout</ListItemText>
+        </MenuItem>
+      </Menu>
     </Box>
   );
 };
 
-export default Layout; 
+export default Layout;
